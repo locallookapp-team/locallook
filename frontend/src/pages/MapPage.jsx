@@ -28,7 +28,7 @@ const generatePinHTML = (category, storeName, isOpen, zoom) => {
   const iconSize = 14; 
 
   return `
-    <div style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+    <div style="display: flex; align-items: center; gap: 6px; cursor: pointer; will-change: transform;">
       <div style="position: relative; width: ${circleSize}px; height: ${circleSize}px; background-color: ${config.color}; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; justify-content: center; align-items: center; transition: all 0.2s;">
         ${isIconVisible ? `<svg viewBox="0 0 24 24" width="${iconSize}" height="${iconSize}" fill="white"><path d="${config.icon}" /></svg>` : ''}
         <div style="position: absolute; top: -2px; right: -2px; width: ${isIconVisible ? '8px' : '6px'}; height: ${isIconVisible ? '8px' : '6px'}; background-color: ${statusColor}; border: 1.5px solid white; border-radius: 50%;"></div>
@@ -41,6 +41,19 @@ const generatePinHTML = (category, storeName, isOpen, zoom) => {
     </div>
   `;
 };
+
+const PULSING_DOT_HTML = `
+  <div style="position: relative; width: 22px; height: 22px; display: flex; justify-content: center; align-items: center; pointer-events: none; will-change: transform;">
+    <div style="position: absolute; width: 100%; height: 100%; background-color: #3b82f6; border-radius: 50%; opacity: 0.5; animation: pulse 2s ease-out infinite;"></div>
+    <div style="position: relative; width: 16px; height: 16px; background-color: #2563eb; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.4);"></div>
+  </div>
+  <style>
+    @keyframes pulse {
+      0% { transform: scale(1); opacity: 0.6; }
+      100% { transform: scale(3.5); opacity: 0; }
+    }
+  </style>
+`;
 
 export default function MapPage() {
   const mapContainer = useRef(null);
@@ -57,19 +70,19 @@ export default function MapPage() {
   
   const [selectedStore, setSelectedStore] = useState(null);
   const [zoomLevel, setZoomLevel] = useState(16.5);
-  const [isLocating, setIsLocating] = useState(false); // NEW: Tracks GPS fetching status
+  const [isLocating, setIsLocating] = useState(false);
   
   const navigate = useNavigate();
   const categories = ['All', 'Food & Dining', 'Retail', 'Services', 'Groceries'];
 
-  // 1. INITIALIZE NATIVE MAPBOX
+  // 1. BULLETPROOF MAP INITIALIZATION
   useEffect(() => {
     if (map.current) return; 
 
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/streets-v12',
-      center: [121.9823, 12.3985], // Odiongan
+      center: [121.9823, 12.3985], // Odiongan default
       zoom: 16.5,
       pitch: 55, 
       bearing: 0
@@ -77,9 +90,44 @@ export default function MapPage() {
 
     map.current.addControl(new mapboxgl.NavigationControl({ showZoom: false, visualizePitch: true }), 'bottom-left');
 
-    map.current.on('zoom', () => {
+    // FIX: Using zoomend instead of zoom to prevent CPU lag
+    map.current.on('zoomend', () => {
       setZoomLevel(map.current.getZoom());
     });
+
+    map.current.on('load', () => {
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const { longitude, latitude } = position.coords;
+            
+            if (!userMarkerRef.current && map.current) {
+              const el = document.createElement('div');
+              el.innerHTML = PULSING_DOT_HTML;
+              userMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'center' }).addTo(map.current);
+            }
+            if (userMarkerRef.current) userMarkerRef.current.setLngLat([longitude, latitude]);
+            
+            if (map.current) {
+              map.current.easeTo({
+                center: [longitude, latitude],
+                zoom: 16.5,
+                duration: 1000
+              });
+            }
+          },
+          (error) => console.log("Auto-locate skipped.", error),
+          { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
+        );
+      }
+    });
+
+    return () => {
+      if (map.current) {
+        map.current.remove();
+        map.current = null;
+      }
+    };
   }, []);
 
   // 2. FETCH DATA
@@ -151,7 +199,8 @@ export default function MapPage() {
           map.current.flyTo({ center: [Number(store.lng), Number(store.lat)], zoom: 18, pitch: 60, duration: 1500 });
         });
 
-        const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
+        // FIX: Changed anchor to 'left' so the pin never shifts position when text is added
+        const marker = new mapboxgl.Marker({ element: el, anchor: 'left' })
           .setLngLat([Number(store.lng), Number(store.lat)])
           .addTo(map.current);
 
@@ -200,73 +249,57 @@ export default function MapPage() {
     };
   }, [selectedStore, navigate]);
 
-  // 6. UPGRADED LOCATE ME WITH PERMISSIONS & 3D SWOOP
-  const handleLocateMe = () => {
+  // 6. EXPLICIT LOCATE ME WITH HIGH ACCURACY
+  const handleLocateMe = (e) => {
+    e.stopPropagation();
     if (!navigator.geolocation) {
       alert("Your device doesn't support location services.");
       return;
     }
 
-    setIsLocating(true); // Triggers the loading spinner on the button
+    setIsLocating(true);
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
         setIsLocating(false);
         const { longitude, latitude } = position.coords;
         
-        // Create the pulsing blue dot if it doesn't exist
         if (!userMarkerRef.current) {
           const el = document.createElement('div');
-          el.innerHTML = `
-            <div style="position: relative; width: 22px; height: 22px; display: flex; justify-content: center; align-items: center;">
-              <div style="position: absolute; width: 100%; height: 100%; background-color: #3b82f6; border-radius: 50%; opacity: 0.5; animation: pulse 2s ease-out infinite;"></div>
-              <div style="position: relative; width: 16px; height: 16px; background-color: #2563eb; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.4);"></div>
-            </div>
-            <style>
-              @keyframes pulse {
-                0% { transform: scale(1); opacity: 0.6; }
-                100% { transform: scale(3.5); opacity: 0; }
-              }
-            </style>
-          `;
+          el.innerHTML = PULSING_DOT_HTML;
           userMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'center' }).addTo(map.current);
         }
         
         userMarkerRef.current.setLngLat([longitude, latitude]);
         
-        // Premium Cinematic Swoop
-        map.current.flyTo({ 
-          center: [longitude, latitude], 
-          zoom: 18, 
-          pitch: 65, // aggressive 3D tilt 
-          bearing: map.current.getBearing() + 25, // gentle rotation
-          duration: 3000, // 3-second smooth flight
-          essential: true
-        });
+        if (map.current) {
+          map.current.flyTo({ 
+            center: [longitude, latitude], 
+            zoom: 17.5, 
+            pitch: 50, 
+            duration: 2000, 
+            essential: true
+          });
+        }
       },
       (error) => {
         setIsLocating(false);
-        // Precise Mobile Error Handling
         switch(error.code) {
           case error.PERMISSION_DENIED:
-            alert("Location access denied. Please go to your phone's browser settings and allow location access for this site.");
+            alert("Location access denied. Please allow location access for this site.");
             break;
           case error.POSITION_UNAVAILABLE:
-            alert("Location information is currently unavailable on your network.");
+            alert("Location information is currently unavailable.");
             break;
           case error.TIMEOUT:
-            alert("The request to get your location timed out. Ensure your GPS is on.");
+            alert("The request to get your location timed out.");
             break;
           default:
             alert("An unknown error occurred while trying to find your location.");
             break;
         }
       },
-      {
-        enableHighAccuracy: true, // Forces phone to use satellite GPS
-        timeout: 10000,           // 10 seconds timeout
-        maximumAge: 0             // Do not use cached locations
-      }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   };
 
@@ -276,7 +309,7 @@ export default function MapPage() {
       {/* MAPBOX CONTAINER */}
       <div ref={mapContainer} style={{ position: 'absolute', inset: 0, zIndex: 0 }} />
 
-      {/* LOCATE ME BUTTON (Now with Loading Spinner) */}
+      {/* LOCATE ME BUTTON */}
       <div style={{ position: 'absolute', bottom: '40px', right: '15px', zIndex: 1000 }}>
         <button 
           onClick={handleLocateMe} 
