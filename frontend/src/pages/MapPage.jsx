@@ -1,57 +1,89 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
-import { divIcon } from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import mapboxgl from 'mapbox-gl'; // USING PURE MAPBOX NOW
+import 'mapbox-gl/dist/mapbox-gl.css';
 import { supabase } from '../supabaseClient';
 
-// 1. THE STORE PIN ICON
-const customMarker = divIcon({
-  className: 'custom-map-pin',
-  html: `<div style="background-color: #2563eb; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 3px 6px rgba(0,0,0,0.4);"></div>`,
-  iconSize: [24, 24],
-  iconAnchor: [12, 12],
-  popupAnchor: [0, -14],
-});
+// YOUR NATIVE MAPBOX TOKEN
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
+mapboxgl.accessToken = MAPBOX_TOKEN;
 
-// 2. THE NEW USER LOCATION ICON (Glowing Blue Dot)
-const userMarker = divIcon({
-  className: 'user-location-pin',
-  html: `<div style="background-color: #3b82f6; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 15px rgba(59,130,246,0.8);"></div>`,
-  iconSize: [20, 20],
-  iconAnchor: [10, 10],
-  popupAnchor: [0, -12],
-});
-
-// 3. THE CAMERA CONTROLLER (Smoothly flies the map to the user)
-function LocationController({ userPosition }) {
-  const map = useMap();
-  useEffect(() => {
-    if (userPosition) {
-      map.flyTo(userPosition, 16, { animate: true, duration: 1.5 });
+// 1. NATIVE HTML PIN GENERATOR
+const generatePinHTML = (category, storeName, isOpen, zoom) => {
+  const getPinConfig = (cat) => {
+    switch (cat) {
+      case 'Food & Dining': return { color: '#ea4335', icon: 'M11 9H9V2H7v7H5V2H3v7c0 2.12 1.66 3.88 3.75 3.97V22h2.5v-9.03C11.34 12.88 13 11.12 13 9V2h-2v7zm5-3v8h2.5v8H21V2c-2.76 0-5 2.24-5 4z' }; 
+      case 'Retail':
+      case 'Groceries': return { color: '#4285f4', icon: 'M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42c-.14 0-.25-.11-.25-.25l.03-.12.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49A1.003 1.003 0 0 0 20 4H5.21l-.94-2H1zm16 16c-1.1 0-1.99.9-1.99 2s.89 2 1.99 2 2-.9 2-2-.9-2-2-2z' }; 
+      case 'Services': return { color: '#0f9d58', icon: 'M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.5 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z' }; 
+      case 'Health & Wellness': return { color: '#f50057', icon: 'M19 3H5c-1.1 0-1.99.9-1.99 2L3 19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-1 11h-4v4h-4v-4H6v-4h4V6h4v4h4v4z' }; 
+      case 'Tourism & Lodging': return { color: '#ab47bc', icon: 'M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z' }; 
+      default: return { color: '#5f6368', icon: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 0 1 0-5 2.5 2.5 0 0 1 0 5z' }; 
     }
-  }, [userPosition, map]);
-  
-  return userPosition === null ? null : (
-    <Marker position={userPosition} icon={userMarker}>
-      <Popup>You are here!</Popup>
-    </Marker>
-  );
-}
+  };
+
+  const config = getPinConfig(category);
+  const statusColor = isOpen ? '#10b981' : '#ef4444'; 
+  const isTextVisible = zoom >= 16.5; 
+  const isIconVisible = zoom >= 14.5; 
+  const circleSize = isIconVisible ? 24 : 12; 
+  const iconSize = 14; 
+
+  return `
+    <div style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+      <div style="position: relative; width: ${circleSize}px; height: ${circleSize}px; background-color: ${config.color}; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; justify-content: center; align-items: center; transition: all 0.2s;">
+        ${isIconVisible ? `<svg viewBox="0 0 24 24" width="${iconSize}" height="${iconSize}" fill="white"><path d="${config.icon}" /></svg>` : ''}
+        <div style="position: absolute; top: -2px; right: -2px; width: ${isIconVisible ? '8px' : '6px'}; height: ${isIconVisible ? '8px' : '6px'}; background-color: ${statusColor}; border: 1.5px solid white; border-radius: 50%;"></div>
+      </div>
+      ${isTextVisible ? `
+        <div style="color: ${config.color}; font-weight: 800; font-size: 13.5px; white-space: nowrap; text-shadow: -1.5px -1.5px 0 #fff, 1.5px -1.5px 0 #fff, -1.5px 1.5px 0 #fff, 1.5px 1.5px 0 #fff, 0 2px 5px rgba(0,0,0,0.3);">
+          ${storeName}
+        </div>
+      ` : ''}
+    </div>
+  `;
+};
 
 export default function MapPage() {
+  const mapContainer = useRef(null);
+  const map = useRef(null);
+  const markersRef = useRef({}); 
+  const popupRef = useRef(new mapboxgl.Popup({ offset: 24, closeButton: true, closeOnClick: false }));
+  const userMarkerRef = useRef(null);
+
   const [stores, setStores] = useState([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [itemResults, setItemResults] = useState([]);
   const [activeCategory, setActiveCategory] = useState('All');
   
-  // NEW: State to track where the user is
-  const [userPosition, setUserPosition] = useState(null);
+  const [selectedStore, setSelectedStore] = useState(null);
+  const [zoomLevel, setZoomLevel] = useState(16.5);
   
   const navigate = useNavigate();
   const categories = ['All', 'Food & Dining', 'Retail', 'Services', 'Groceries'];
 
+  // 1. INITIALIZE NATIVE MAPBOX
+  useEffect(() => {
+    if (map.current) return; 
+
+    map.current = new mapboxgl.Map({
+      container: mapContainer.current,
+      style: 'mapbox://styles/mapbox/streets-v12',
+      center: [121.9823, 12.3985], // Odiongan
+      zoom: 16.5,
+      pitch: 55, // 3D Pitch
+      bearing: 0
+    });
+
+    map.current.addControl(new mapboxgl.NavigationControl({ showZoom: false, visualizePitch: true }), 'bottom-left');
+
+    map.current.on('zoom', () => {
+      setZoomLevel(map.current.getZoom());
+    });
+  }, []);
+
+  // 2. FETCH DATA
   useEffect(() => {
     fetch('https://locallook-api.onrender.com/api/stores')
       .then(res => res.json())
@@ -69,6 +101,7 @@ export default function MapPage() {
     return () => { supabase.removeChannel(subscription); };
   }, []);
 
+  // 3. SEARCH LOGIC
   useEffect(() => {
     if (searchTerm.length > 1) {
       fetch(`https://locallook-api.onrender.com/api/search/items?q=${searchTerm}`)
@@ -80,13 +113,100 @@ export default function MapPage() {
     }
   }, [searchTerm]);
 
-  const filteredStores = stores.filter(store => {
-    const matchesSearch = store.store_name.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = activeCategory === 'All' || store.store_category === activeCategory;
-    return matchesSearch && matchesCategory;
-  });
+  const filteredStores = useMemo(() => {
+    return stores.filter(store => {
+      const matchesSearch = store.store_name.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesCategory = activeCategory === 'All' || store.store_category === activeCategory;
+      return matchesSearch && matchesCategory;
+    });
+  }, [stores, searchTerm, activeCategory]);
 
-  // NEW: Function to trigger browser GPS
+  // 4. SYNC MARKERS WITH MAP
+  useEffect(() => {
+    if (!map.current) return;
+
+    if (zoomLevel < 13) {
+      Object.values(markersRef.current).forEach(m => m.remove());
+      markersRef.current = {};
+      return;
+    }
+
+    const newStoreIds = new Set(filteredStores.map(s => s.id));
+
+    // Remove hidden pins
+    Object.keys(markersRef.current).forEach(id => {
+      if (!newStoreIds.has(id)) {
+        markersRef.current[id].remove();
+        delete markersRef.current[id];
+      }
+    });
+
+    // Add or Update pins
+    filteredStores.forEach(store => {
+      const pinHTML = generatePinHTML(store.store_category, store.store_name, store.is_open, zoomLevel);
+
+      if (!markersRef.current[store.id]) {
+        // Create new marker
+        const el = document.createElement('div');
+        el.innerHTML = pinHTML;
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          setSelectedStore(store);
+          map.current.flyTo({ center: [Number(store.lng), Number(store.lat)], zoom: 18, pitch: 60, duration: 1500 });
+        });
+
+        const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
+          .setLngLat([Number(store.lng), Number(store.lat)])
+          .addTo(map.current);
+
+        markersRef.current[store.id] = marker;
+      } else {
+        // Update existing marker size based on zoom
+        markersRef.current[store.id].getElement().innerHTML = pinHTML;
+      }
+    });
+  }, [filteredStores, zoomLevel]);
+
+  // 5. MANAGE NATIVE POPUP
+  useEffect(() => {
+    if (!map.current) return;
+
+    const onPopupClose = () => setSelectedStore(null);
+
+    if (selectedStore) {
+      const div = document.createElement('div');
+      div.innerHTML = `
+        <div style="text-align: center; padding: 8px 4px 4px 4px;">
+          <strong style="font-size: 16px; display: block; margin-bottom: 2px; color: #1f2937;">${selectedStore.store_name}</strong>
+          <span style="color: #6b7280; font-size: 13px; display: block; margin-bottom: 12px;">${selectedStore.store_category}</span>
+          <button id="popup-btn-${selectedStore.id}" style="width: 100%; padding: 10px; background-color: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold;">
+            View Full Menu
+          </button>
+        </div>
+      `;
+
+      popupRef.current
+        .setLngLat([Number(selectedStore.lng), Number(selectedStore.lat)])
+        .setDOMContent(div)
+        .addTo(map.current);
+
+      popupRef.current.on('close', onPopupClose);
+
+      // Add click event to the injected button
+      document.getElementById(`popup-btn-${selectedStore.id}`).onclick = () => {
+        navigate(`/store/${selectedStore.id}`);
+      };
+    } else {
+      popupRef.current.off('close', onPopupClose);
+      popupRef.current.remove();
+    }
+
+    return () => {
+      popupRef.current.off('close', onPopupClose);
+    };
+  }, [selectedStore, navigate]);
+
+  // 6. LOCATE ME 
   const handleLocateMe = () => {
     if (!navigator.geolocation) {
       alert("Your browser doesn't support location services.");
@@ -94,44 +214,29 @@ export default function MapPage() {
     }
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        setUserPosition([position.coords.latitude, position.coords.longitude]);
+        const { longitude, latitude } = position.coords;
+        
+        if (!userMarkerRef.current) {
+          const el = document.createElement('div');
+          el.innerHTML = `<div style="background-color: #3b82f6; width: 20px; height: 20px; border-radius: 50%; border: 4px solid white; box-shadow: 0 0 15px rgba(59,130,246,0.8);"></div>`;
+          userMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'center' }).addTo(map.current);
+        }
+        
+        userMarkerRef.current.setLngLat([longitude, latitude]);
+        map.current.flyTo({ center: [longitude, latitude], zoom: 17.5, pitch: 60, duration: 2500 });
       },
-      (error) => {
-        alert("Could not get your location. Please check your browser permissions.");
-      }
+      (error) => alert("Could not get your location.")
     );
   };
 
   return (
     <div style={{ position: 'relative', height: '100vh', width: '100vw', overflow: 'hidden', backgroundColor: '#f3f4f6', fontFamily: 'sans-serif' }}>
       
-      {/* 1. THE MAP BACKGROUND */}
-      <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
-        {/* Default center is Odiongan */}
-        <MapContainer center={[12.3985, 121.9823]} zoom={16} style={{ height: '100%', width: '100%' }} zoomControl={false}>
-          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-          
-          {/* Automatically controls the camera if user tracking is triggered */}
-          <LocationController userPosition={userPosition} />
-          
-          {filteredStores.map(store => (
-            <Marker key={store.id} position={[Number(store.lat), Number(store.lng)]} icon={customMarker}>
-              <Popup minWidth={200}>
-                <div style={{ textAlign: 'center', padding: '5px 0' }}>
-                  <strong style={{ fontSize: '16px', display: 'block', marginBottom: '4px' }}>{store.store_name}</strong>
-                  <span style={{ color: '#666', display: 'block', marginBottom: '8px' }}>{store.store_category}</span>
-                  <button onClick={() => navigate(`/store/${store.id}`)} style={{ width: '100%', padding: '10px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
-                    View Full Menu
-                  </button>
-                </div>
-              </Popup>
-            </Marker>
-          ))}
-        </MapContainer>
-      </div>
+      {/* THE NATIVE MAPBOX CONTAINER */}
+      <div ref={mapContainer} style={{ position: 'absolute', inset: 0, zIndex: 0 }} />
 
-      {/* NEW: LOCATE ME BUTTON (Bottom Right) */}
-      <div style={{ position: 'absolute', bottom: '30px', right: '15px', zIndex: 1000 }}>
+      {/* LOCATE ME BUTTON */}
+      <div style={{ position: 'absolute', bottom: '40px', right: '15px', zIndex: 1000 }}>
         <button 
           onClick={handleLocateMe} 
           style={{ width: '50px', height: '50px', backgroundColor: 'white', borderRadius: '50%', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', cursor: 'pointer', fontSize: '24px', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#2563eb', transition: 'transform 0.1s' }}
@@ -142,7 +247,7 @@ export default function MapPage() {
         </button>
       </div>
 
-      {/* 2. HAMBURGER MENU BUTTON */}
+      {/* HAMBURGER MENU BUTTON */}
       <div style={{ position: 'absolute', top: '15px', left: '15px', zIndex: 2000 }}>
         <button 
           onClick={() => setSidebarOpen(true)} 
@@ -152,7 +257,7 @@ export default function MapPage() {
         </button>
       </div>
 
-      {/* 3. SLIDE-OUT SIDEBAR MENU */}
+      {/* SLIDE-OUT SIDEBAR MENU */}
       {sidebarOpen && (
         <>
           <div onClick={() => setSidebarOpen(false)} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 2999, backdropFilter: 'blur(2px)' }} />
@@ -178,7 +283,7 @@ export default function MapPage() {
         </>
       )}
 
-      {/* 4. TOP FLOATING UI (Search Bar & Dropdown) */}
+      {/* TOP FLOATING UI (Search Bar & Dropdown) */}
       <div style={{ position: 'absolute', top: '15px', left: '50%', transform: 'translateX(-50%)', width: 'calc(100% - 140px)', maxWidth: '500px', zIndex: 1000, display: 'flex', flexDirection: 'column', gap: '10px' }}>
         
         <div style={{ position: 'relative' }}>
@@ -202,7 +307,6 @@ export default function MapPage() {
           {searchTerm.length > 0 && (
             <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '8px', backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.15)', overflow: 'hidden', maxHeight: '400px', overflowY: 'auto', border: '1px solid #f3f4f6' }}>
               
-              {/* STORE RESULTS */}
               {filteredStores.length > 0 && (
                 <div>
                   <div style={{ padding: '10px 15px', backgroundColor: '#f9fafb', fontSize: '11px', fontWeight: 'bold', color: '#6b7280', letterSpacing: '1px' }}>STORES</div>
@@ -226,7 +330,6 @@ export default function MapPage() {
                 </div>
               )}
 
-              {/* ITEM RESULTS */}
               {itemResults.length > 0 && (
                 <div>
                   <div style={{ padding: '10px 15px', backgroundColor: '#f9fafb', fontSize: '11px', fontWeight: 'bold', color: '#6b7280', letterSpacing: '1px' }}>ITEMS</div>
@@ -252,11 +355,6 @@ export default function MapPage() {
                         </h4>
                         <p style={{ margin: 0, fontSize: '12px', color: '#6b7280' }}>
                           at <strong style={{ color: item.is_open ? '#2563eb' : '#6b7280' }}>{item.store_name}</strong>
-                          {!item.is_open && (
-                            <span style={{ marginLeft: '6px', color: '#dc2626', fontWeight: '900', fontSize: '10px' }}>
-                              (CLOSED)
-                            </span>
-                          )}
                         </p>
                       </div>
                       <span style={{ fontSize: '13px', fontWeight: '800', color: item.is_open ? '#10b981' : '#9ca3af' }}>
@@ -267,7 +365,6 @@ export default function MapPage() {
                 </div>
               )}
 
-              {/* EMPTY STATE */}
               {filteredStores.length === 0 && itemResults.length === 0 && (
                 <div style={{ padding: '20px', textAlign: 'center', color: '#6b7280', fontSize: '14px', fontStyle: 'italic' }}>
                   No stores or items found for "{searchTerm}"
@@ -277,7 +374,6 @@ export default function MapPage() {
           )}
         </div>
 
-        {/* Category Pills */}
         <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '5px', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
           {categories.map(category => (
             <button 
@@ -289,8 +385,8 @@ export default function MapPage() {
                 border: 'none', 
                 backgroundColor: activeCategory === category ? '#2563eb' : 'white', 
                 color: activeCategory === category ? 'white' : '#4b5563', 
-                fontWeight: 'bold', 
-                fontSize: '13px',
+                fontWeight: '600', 
+                fontSize: '12.5px',
                 boxShadow: '0 2px 8px rgba(0,0,0,0.08)', 
                 cursor: 'pointer', 
                 whiteSpace: 'nowrap',
