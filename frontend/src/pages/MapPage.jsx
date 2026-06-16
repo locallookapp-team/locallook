@@ -1,14 +1,12 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import mapboxgl from 'mapbox-gl'; // USING PURE MAPBOX NOW
+import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { supabase } from '../supabaseClient';
 
-// YOUR NATIVE MAPBOX TOKEN
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
 mapboxgl.accessToken = MAPBOX_TOKEN;
 
-// 1. NATIVE HTML PIN GENERATOR
 const generatePinHTML = (category, storeName, isOpen, zoom) => {
   const getPinConfig = (cat) => {
     switch (cat) {
@@ -59,6 +57,7 @@ export default function MapPage() {
   
   const [selectedStore, setSelectedStore] = useState(null);
   const [zoomLevel, setZoomLevel] = useState(16.5);
+  const [isLocating, setIsLocating] = useState(false); // NEW: Tracks GPS fetching status
   
   const navigate = useNavigate();
   const categories = ['All', 'Food & Dining', 'Retail', 'Services', 'Groceries'];
@@ -72,7 +71,7 @@ export default function MapPage() {
       style: 'mapbox://styles/mapbox/streets-v12',
       center: [121.9823, 12.3985], // Odiongan
       zoom: 16.5,
-      pitch: 55, // 3D Pitch
+      pitch: 55, 
       bearing: 0
     });
 
@@ -133,7 +132,6 @@ export default function MapPage() {
 
     const newStoreIds = new Set(filteredStores.map(s => s.id));
 
-    // Remove hidden pins
     Object.keys(markersRef.current).forEach(id => {
       if (!newStoreIds.has(id)) {
         markersRef.current[id].remove();
@@ -141,12 +139,10 @@ export default function MapPage() {
       }
     });
 
-    // Add or Update pins
     filteredStores.forEach(store => {
       const pinHTML = generatePinHTML(store.store_category, store.store_name, store.is_open, zoomLevel);
 
       if (!markersRef.current[store.id]) {
-        // Create new marker
         const el = document.createElement('div');
         el.innerHTML = pinHTML;
         el.addEventListener('click', (e) => {
@@ -161,7 +157,6 @@ export default function MapPage() {
 
         markersRef.current[store.id] = marker;
       } else {
-        // Update existing marker size based on zoom
         markersRef.current[store.id].getElement().innerHTML = pinHTML;
       }
     });
@@ -192,7 +187,6 @@ export default function MapPage() {
 
       popupRef.current.on('close', onPopupClose);
 
-      // Add click event to the injected button
       document.getElementById(`popup-btn-${selectedStore.id}`).onclick = () => {
         navigate(`/store/${selectedStore.id}`);
       };
@@ -206,45 +200,105 @@ export default function MapPage() {
     };
   }, [selectedStore, navigate]);
 
-  // 6. LOCATE ME 
+  // 6. UPGRADED LOCATE ME WITH PERMISSIONS & 3D SWOOP
   const handleLocateMe = () => {
     if (!navigator.geolocation) {
-      alert("Your browser doesn't support location services.");
+      alert("Your device doesn't support location services.");
       return;
     }
+
+    setIsLocating(true); // Triggers the loading spinner on the button
+
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        setIsLocating(false);
         const { longitude, latitude } = position.coords;
         
+        // Create the pulsing blue dot if it doesn't exist
         if (!userMarkerRef.current) {
           const el = document.createElement('div');
-          el.innerHTML = `<div style="background-color: #3b82f6; width: 20px; height: 20px; border-radius: 50%; border: 4px solid white; box-shadow: 0 0 15px rgba(59,130,246,0.8);"></div>`;
+          el.innerHTML = `
+            <div style="position: relative; width: 22px; height: 22px; display: flex; justify-content: center; align-items: center;">
+              <div style="position: absolute; width: 100%; height: 100%; background-color: #3b82f6; border-radius: 50%; opacity: 0.5; animation: pulse 2s ease-out infinite;"></div>
+              <div style="position: relative; width: 16px; height: 16px; background-color: #2563eb; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.4);"></div>
+            </div>
+            <style>
+              @keyframes pulse {
+                0% { transform: scale(1); opacity: 0.6; }
+                100% { transform: scale(3.5); opacity: 0; }
+              }
+            </style>
+          `;
           userMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'center' }).addTo(map.current);
         }
         
         userMarkerRef.current.setLngLat([longitude, latitude]);
-        map.current.flyTo({ center: [longitude, latitude], zoom: 17.5, pitch: 60, duration: 2500 });
+        
+        // Premium Cinematic Swoop
+        map.current.flyTo({ 
+          center: [longitude, latitude], 
+          zoom: 18, 
+          pitch: 65, // aggressive 3D tilt 
+          bearing: map.current.getBearing() + 25, // gentle rotation
+          duration: 3000, // 3-second smooth flight
+          essential: true
+        });
       },
-      (error) => alert("Could not get your location.")
+      (error) => {
+        setIsLocating(false);
+        // Precise Mobile Error Handling
+        switch(error.code) {
+          case error.PERMISSION_DENIED:
+            alert("Location access denied. Please go to your phone's browser settings and allow location access for this site.");
+            break;
+          case error.POSITION_UNAVAILABLE:
+            alert("Location information is currently unavailable on your network.");
+            break;
+          case error.TIMEOUT:
+            alert("The request to get your location timed out. Ensure your GPS is on.");
+            break;
+          default:
+            alert("An unknown error occurred while trying to find your location.");
+            break;
+        }
+      },
+      {
+        enableHighAccuracy: true, // Forces phone to use satellite GPS
+        timeout: 10000,           // 10 seconds timeout
+        maximumAge: 0             // Do not use cached locations
+      }
     );
   };
 
   return (
     <div style={{ position: 'relative', height: '100vh', width: '100vw', overflow: 'hidden', backgroundColor: '#f3f4f6', fontFamily: 'sans-serif' }}>
       
-      {/* THE NATIVE MAPBOX CONTAINER */}
+      {/* MAPBOX CONTAINER */}
       <div ref={mapContainer} style={{ position: 'absolute', inset: 0, zIndex: 0 }} />
 
-      {/* LOCATE ME BUTTON */}
+      {/* LOCATE ME BUTTON (Now with Loading Spinner) */}
       <div style={{ position: 'absolute', bottom: '40px', right: '15px', zIndex: 1000 }}>
         <button 
           onClick={handleLocateMe} 
-          style={{ width: '50px', height: '50px', backgroundColor: 'white', borderRadius: '50%', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', cursor: 'pointer', fontSize: '24px', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#2563eb', transition: 'transform 0.1s' }}
+          disabled={isLocating}
+          style={{ width: '50px', height: '50px', backgroundColor: 'white', borderRadius: '50%', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', transition: 'transform 0.1s' }}
           onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.95)'}
           onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
         >
-          📍
+          {isLocating ? (
+             <svg style={{ animation: 'spin 1s linear infinite', width: '24px', height: '24px', color: '#2563eb' }} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+               <circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+               <path style={{ opacity: 0.75 }} fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+             </svg>
+          ) : (
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="3 11 22 2 13 21 11 13 3 11"></polygon>
+            </svg>
+          )}
         </button>
+        <style>
+          {`@keyframes spin { 100% { transform: rotate(360deg); } }`}
+        </style>
       </div>
 
       {/* HAMBURGER MENU BUTTON */}
