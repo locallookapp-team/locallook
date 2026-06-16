@@ -4,10 +4,12 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { supabase } from '../supabaseClient';
 
-const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
-mapboxgl.accessToken = MAPBOX_TOKEN;
+const MAPBOX_TOKEN = (import.meta.env && import.meta.env.VITE_MAPBOX_TOKEN) || '';
+if (MAPBOX_TOKEN) {
+  mapboxgl.accessToken = MAPBOX_TOKEN;
+}
 
-const generatePinHTML = (category, storeName, isOpen, zoom) => {
+const generatePinHTML = (category, storeName, isOpen) => {
   const getPinConfig = (cat) => {
     switch (cat) {
       case 'Food & Dining': return { color: '#ea4335', icon: 'M11 9H9V2H7v7H5V2H3v7c0 2.12 1.66 3.88 3.75 3.97V22h2.5v-9.03C11.34 12.88 13 11.12 13 9V2h-2v7zm5-3v8h2.5v8H21V2c-2.76 0-5 2.24-5 4z' }; 
@@ -22,44 +24,32 @@ const generatePinHTML = (category, storeName, isOpen, zoom) => {
 
   const config = getPinConfig(category);
   const statusColor = isOpen ? '#10b981' : '#ef4444'; 
-  const isTextVisible = zoom >= 16.5; 
-  const isIconVisible = zoom >= 14.5; 
-  const circleSize = isIconVisible ? 24 : 12; 
-  const iconSize = 14; 
 
   return `
-    <div style="display: flex; align-items: center; gap: 6px; cursor: pointer; will-change: transform;">
-      <div style="position: relative; width: ${circleSize}px; height: ${circleSize}px; background-color: ${config.color}; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; justify-content: center; align-items: center; transition: all 0.2s;">
-        ${isIconVisible ? `<svg viewBox="0 0 24 24" width="${iconSize}" height="${iconSize}" fill="white"><path d="${config.icon}" /></svg>` : ''}
-        <div style="position: absolute; top: -2px; right: -2px; width: ${isIconVisible ? '8px' : '6px'}; height: ${isIconVisible ? '8px' : '6px'}; background-color: ${statusColor}; border: 1.5px solid white; border-radius: 50%;"></div>
-      </div>
-      ${isTextVisible ? `
-        <div style="color: ${config.color}; font-weight: 800; font-size: 13.5px; white-space: nowrap; text-shadow: -1.5px -1.5px 0 #fff, 1.5px -1.5px 0 #fff, -1.5px 1.5px 0 #fff, 1.5px 1.5px 0 #fff, 0 2px 5px rgba(0,0,0,0.3);">
-          ${storeName}
+    <div class="ll-pin-visual">
+      <div class="ll-pin-circle" style="background-color: ${config.color};">
+        <div class="ll-pin-icon">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="white"><path d="${config.icon}" /></svg>
         </div>
-      ` : ''}
+        <div class="ll-pin-status" style="background-color: ${statusColor};"></div>
+      </div>
+      <div class="ll-pin-text" style="color: ${config.color};">${storeName}</div>
     </div>
   `;
 };
 
 const PULSING_DOT_HTML = `
-  <div style="position: relative; width: 22px; height: 22px; display: flex; justify-content: center; align-items: center; pointer-events: none; will-change: transform;">
-    <div style="position: absolute; width: 100%; height: 100%; background-color: #3b82f6; border-radius: 50%; opacity: 0.5; animation: pulse 2s ease-out infinite;"></div>
-    <div style="position: relative; width: 16px; height: 16px; background-color: #2563eb; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.4);"></div>
+  <div style="position: relative; width: 0; height: 0; display: flex; justify-content: center; align-items: center; pointer-events: none;">
+    <div style="position: absolute; width: 22px; height: 22px; background-color: #3b82f6; border-radius: 50%; opacity: 0.5; animation: pulse-ring 2s ease-out infinite;"></div>
+    <div style="position: absolute; width: 16px; height: 16px; background-color: #2563eb; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.4);"></div>
   </div>
-  <style>
-    @keyframes pulse {
-      0% { transform: scale(1); opacity: 0.6; }
-      100% { transform: scale(3.5); opacity: 0; }
-    }
-  </style>
 `;
 
 export default function MapPage() {
   const mapContainer = useRef(null);
   const map = useRef(null);
   const markersRef = useRef({}); 
-  const popupRef = useRef(new mapboxgl.Popup({ offset: 24, closeButton: true, closeOnClick: false }));
+  const popupRef = useRef(new mapboxgl.Popup({ offset: [0, -15], closeButton: true, closeOnClick: false }));
   const userMarkerRef = useRef(null);
 
   const [stores, setStores] = useState([]);
@@ -69,20 +59,39 @@ export default function MapPage() {
   const [activeCategory, setActiveCategory] = useState('All');
   
   const [selectedStore, setSelectedStore] = useState(null);
-  const [zoomLevel, setZoomLevel] = useState(16.5);
   const [isLocating, setIsLocating] = useState(false);
   
   const navigate = useNavigate();
   const categories = ['All', 'Food & Dining', 'Retail', 'Services', 'Groceries'];
 
-  // 1. BULLETPROOF MAP INITIALIZATION
+  // FIX: Sets the LngLat BEFORE adding to the map to prevent crashes
+  const updateUserMarker = (lng, lat) => {
+    if (!userMarkerRef.current && map.current) {
+      const el = document.createElement('div');
+      el.style.width = '0px'; el.style.height = '0px'; el.style.position = 'relative';
+      el.innerHTML = `
+        <div style="position: absolute; transform: translate(-50%, -50%); width: 22px; height: 22px; display: flex; justify-content: center; align-items: center; pointer-events: none;">
+          <div style="position: absolute; width: 100%; height: 100%; background-color: #3b82f6; border-radius: 50%; opacity: 0.5; animation: pulse-ring 2s ease-out infinite;"></div>
+          <div style="position: absolute; width: 16px; height: 16px; background-color: #2563eb; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.4);"></div>
+        </div>
+      `;
+      userMarkerRef.current = new mapboxgl.Marker({ element: el })
+        .setLngLat([lng, lat])
+        .addTo(map.current);
+    } else if (userMarkerRef.current) {
+      userMarkerRef.current.setLngLat([lng, lat]);
+    }
+  };
+
   useEffect(() => {
-    if (map.current) return; 
+    if (map.current || !mapContainer.current) return; 
+
+    mapContainer.current.classList.add('map-zoom-high');
 
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/streets-v12',
-      center: [121.9823, 12.3985], // Odiongan default
+      center: [121.9823, 12.3985], 
       zoom: 16.5,
       pitch: 55, 
       bearing: 0
@@ -90,33 +99,26 @@ export default function MapPage() {
 
     map.current.addControl(new mapboxgl.NavigationControl({ showZoom: false, visualizePitch: true }), 'bottom-left');
 
-    // FIX: Using zoomend instead of zoom to prevent CPU lag
     map.current.on('zoomend', () => {
-      setZoomLevel(map.current.getZoom());
+      const z = map.current.getZoom();
+      let zoomClass = 'map-zoom-low';
+      if (z >= 16.5) zoomClass = 'map-zoom-high';
+      else if (z >= 14.5) zoomClass = 'map-zoom-mid';
+      
+      if (mapContainer.current && !mapContainer.current.classList.contains(zoomClass)) {
+        mapContainer.current.classList.remove('map-zoom-low', 'map-zoom-mid', 'map-zoom-high');
+        mapContainer.current.classList.add(zoomClass);
+      }
     });
 
     map.current.on('load', () => {
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (position) => {
-            const { longitude, latitude } = position.coords;
-            
-            if (!userMarkerRef.current && map.current) {
-              const el = document.createElement('div');
-              el.innerHTML = PULSING_DOT_HTML;
-              userMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'center' }).addTo(map.current);
-            }
-            if (userMarkerRef.current) userMarkerRef.current.setLngLat([longitude, latitude]);
-            
-            if (map.current) {
-              map.current.easeTo({
-                center: [longitude, latitude],
-                zoom: 16.5,
-                duration: 1000
-              });
-            }
+            updateUserMarker(position.coords.longitude, position.coords.latitude);
+            map.current?.jumpTo({ center: [position.coords.longitude, position.coords.latitude], zoom: 16.5 });
           },
-          (error) => console.log("Auto-locate skipped.", error),
+          () => console.log("Silent auto-locate failed, user can click locate button."),
           { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
         );
       }
@@ -126,11 +128,12 @@ export default function MapPage() {
       if (map.current) {
         map.current.remove();
         map.current = null;
+        markersRef.current = {};
+        userMarkerRef.current = null;
       }
     };
   }, []);
 
-  // 2. FETCH DATA
   useEffect(() => {
     fetch('https://locallook-api.onrender.com/api/stores')
       .then(res => res.json())
@@ -148,7 +151,6 @@ export default function MapPage() {
     return () => { supabase.removeChannel(subscription); };
   }, []);
 
-  // 3. SEARCH LOGIC
   useEffect(() => {
     if (searchTerm.length > 1) {
       fetch(`https://locallook-api.onrender.com/api/search/items?q=${searchTerm}`)
@@ -168,15 +170,8 @@ export default function MapPage() {
     });
   }, [stores, searchTerm, activeCategory]);
 
-  // 4. SYNC MARKERS WITH MAP
   useEffect(() => {
     if (!map.current) return;
-
-    if (zoomLevel < 13) {
-      Object.values(markersRef.current).forEach(m => m.remove());
-      markersRef.current = {};
-      return;
-    }
 
     const newStoreIds = new Set(filteredStores.map(s => s.id));
 
@@ -188,33 +183,27 @@ export default function MapPage() {
     });
 
     filteredStores.forEach(store => {
-      const pinHTML = generatePinHTML(store.store_category, store.store_name, store.is_open, zoomLevel);
-
       if (!markersRef.current[store.id]) {
         const el = document.createElement('div');
-        el.innerHTML = pinHTML;
+        el.style.width = '0px'; el.style.height = '0px'; el.style.position = 'relative';
+        el.innerHTML = generatePinHTML(store.store_category, store.store_name, store.is_open);
+        
         el.addEventListener('click', (e) => {
           e.stopPropagation();
           setSelectedStore(store);
           map.current.flyTo({ center: [Number(store.lng), Number(store.lat)], zoom: 18, pitch: 60, duration: 1500 });
         });
 
-        // FIX: Changed anchor to 'left' so the pin never shifts position when text is added
-        const marker = new mapboxgl.Marker({ element: el, anchor: 'left' })
-          .setLngLat([Number(store.lng), Number(store.lat)])
-          .addTo(map.current);
-
+        const marker = new mapboxgl.Marker({ element: el }).setLngLat([Number(store.lng), Number(store.lat)]).addTo(map.current);
         markersRef.current[store.id] = marker;
       } else {
-        markersRef.current[store.id].getElement().innerHTML = pinHTML;
+        markersRef.current[store.id].getElement().innerHTML = generatePinHTML(store.store_category, store.store_name, store.is_open);
       }
     });
-  }, [filteredStores, zoomLevel]);
+  }, [filteredStores]);
 
-  // 5. MANAGE NATIVE POPUP
   useEffect(() => {
     if (!map.current) return;
-
     const onPopupClose = () => setSelectedStore(null);
 
     if (selectedStore) {
@@ -228,28 +217,16 @@ export default function MapPage() {
           </button>
         </div>
       `;
-
-      popupRef.current
-        .setLngLat([Number(selectedStore.lng), Number(selectedStore.lat)])
-        .setDOMContent(div)
-        .addTo(map.current);
-
+      popupRef.current.setLngLat([Number(selectedStore.lng), Number(selectedStore.lat)]).setDOMContent(div).addTo(map.current);
       popupRef.current.on('close', onPopupClose);
-
-      document.getElementById(`popup-btn-${selectedStore.id}`).onclick = () => {
-        navigate(`/store/${selectedStore.id}`);
-      };
+      document.getElementById(`popup-btn-${selectedStore.id}`).onclick = () => navigate(`/store/${selectedStore.id}`);
     } else {
       popupRef.current.off('close', onPopupClose);
       popupRef.current.remove();
     }
-
-    return () => {
-      popupRef.current.off('close', onPopupClose);
-    };
+    return () => popupRef.current.off('close', onPopupClose);
   }, [selectedStore, navigate]);
 
-  // 6. EXPLICIT LOCATE ME WITH HIGH ACCURACY
   const handleLocateMe = (e) => {
     e.stopPropagation();
     if (!navigator.geolocation) {
@@ -262,230 +239,129 @@ export default function MapPage() {
     navigator.geolocation.getCurrentPosition(
       (position) => {
         setIsLocating(false);
-        const { longitude, latitude } = position.coords;
-        
-        if (!userMarkerRef.current) {
-          const el = document.createElement('div');
-          el.innerHTML = PULSING_DOT_HTML;
-          userMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'center' }).addTo(map.current);
-        }
-        
-        userMarkerRef.current.setLngLat([longitude, latitude]);
-        
-        if (map.current) {
-          map.current.flyTo({ 
-            center: [longitude, latitude], 
-            zoom: 17.5, 
-            pitch: 50, 
-            duration: 2000, 
-            essential: true
-          });
-        }
+        updateUserMarker(position.coords.longitude, position.coords.latitude);
+        map.current?.flyTo({ center: [position.coords.longitude, position.coords.latitude], zoom: 17.5, pitch: 50 });
       },
       (error) => {
-        setIsLocating(false);
-        switch(error.code) {
-          case error.PERMISSION_DENIED:
-            alert("Location access denied. Please allow location access for this site.");
-            break;
-          case error.POSITION_UNAVAILABLE:
-            alert("Location information is currently unavailable.");
-            break;
-          case error.TIMEOUT:
-            alert("The request to get your location timed out.");
-            break;
-          default:
-            alert("An unknown error occurred while trying to find your location.");
-            break;
-        }
+        fetch('https://ipapi.co/json/')
+          .then(res => res.json())
+          .then(data => {
+            setIsLocating(false);
+            if (data.longitude && data.latitude) {
+              updateUserMarker(data.longitude, data.latitude);
+              map.current?.flyTo({ center: [data.longitude, data.latitude], zoom: 15, pitch: 50 });
+            } else {
+              alert("Could not detect location. Please allow permissions in your browser.");
+            }
+          })
+          .catch(() => {
+            setIsLocating(false);
+            alert("Could not detect location. Please allow permissions in your browser.");
+          });
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 } 
     );
   };
 
   return (
     <div style={{ position: 'relative', height: '100vh', width: '100vw', overflow: 'hidden', backgroundColor: '#f3f4f6', fontFamily: 'sans-serif' }}>
       
-      {/* MAPBOX CONTAINER */}
+      <style>{`
+        .mapboxgl-marker { transition: none !important; } 
+        
+        .ll-pin-visual { position: absolute; top: 0; left: 0; transform: translate(-50%, -50%); display: flex; align-items: center; cursor: pointer; pointer-events: auto; }
+        .ll-pin-circle { width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; justify-content: center; align-items: center; transition: width 0.15s ease, height 0.15s ease; }
+        .ll-pin-icon { display: none; }
+        .ll-pin-status { position: absolute; top: -2px; right: -2px; width: 6px; height: 6px; border: 1.5px solid white; border-radius: 50%; transition: width 0.15s ease, height 0.15s ease; }
+        .ll-pin-text { display: none; position: absolute; left: 14px; font-weight: 800; font-size: 13.5px; white-space: nowrap; text-shadow: -1.5px -1.5px 0 #fff, 1.5px -1.5px 0 #fff, -1.5px 1.5px 0 #fff, 1.5px 1.5px 0 #fff, 0 2px 5px rgba(0,0,0,0.3); pointer-events: none; }
+
+        .map-zoom-mid .ll-pin-circle, .map-zoom-high .ll-pin-circle { width: 24px; height: 24px; }
+        .map-zoom-mid .ll-pin-icon, .map-zoom-high .ll-pin-icon { display: block; }
+        .map-zoom-mid .ll-pin-status, .map-zoom-high .ll-pin-status { width: 8px; height: 8px; }
+        .map-zoom-mid .ll-pin-text { left: 18px; }
+        .map-zoom-high .ll-pin-text { display: block; left: 18px; }
+
+        @keyframes pulse-ring { 0% { transform: scale(1); opacity: 0.6; } 100% { transform: scale(3.5); opacity: 0; } }
+      `}</style>
+
       <div ref={mapContainer} style={{ position: 'absolute', inset: 0, zIndex: 0 }} />
 
-      {/* LOCATE ME BUTTON */}
       <div style={{ position: 'absolute', bottom: '40px', right: '15px', zIndex: 1000 }}>
-        <button 
-          onClick={handleLocateMe} 
-          disabled={isLocating}
-          style={{ width: '50px', height: '50px', backgroundColor: 'white', borderRadius: '50%', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', transition: 'transform 0.1s' }}
-          onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.95)'}
-          onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
-        >
+        <button onClick={handleLocateMe} disabled={isLocating} style={{ width: '50px', height: '50px', backgroundColor: 'white', borderRadius: '50%', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', transition: 'transform 0.1s' }} onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.95)'} onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}>
           {isLocating ? (
-             <svg style={{ animation: 'spin 1s linear infinite', width: '24px', height: '24px', color: '#2563eb' }} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-               <circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-               <path style={{ opacity: 0.75 }} fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-             </svg>
+             <svg style={{ animation: 'spin 1s linear infinite', width: '24px', height: '24px', color: '#2563eb' }} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path style={{ opacity: 0.75 }} fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
           ) : (
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polygon points="3 11 22 2 13 21 11 13 3 11"></polygon>
-            </svg>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg>
           )}
         </button>
-        <style>
-          {`@keyframes spin { 100% { transform: rotate(360deg); } }`}
-        </style>
+        <style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
       </div>
 
-      {/* HAMBURGER MENU BUTTON */}
       <div style={{ position: 'absolute', top: '15px', left: '15px', zIndex: 2000 }}>
-        <button 
-          onClick={() => setSidebarOpen(true)} 
-          style={{ width: '45px', height: '45px', backgroundColor: 'white', borderRadius: '50%', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', cursor: 'pointer', fontSize: '20px', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#1f2937', transition: 'transform 0.1s' }}
-        >
-          ☰
-        </button>
+        <button onClick={() => setSidebarOpen(true)} style={{ width: '45px', height: '45px', backgroundColor: 'white', borderRadius: '50%', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', cursor: 'pointer', fontSize: '20px', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#1f2937', transition: 'transform 0.1s' }}>☰</button>
       </div>
 
-      {/* SLIDE-OUT SIDEBAR MENU */}
       {sidebarOpen && (
         <>
           <div onClick={() => setSidebarOpen(false)} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 2999, backdropFilter: 'blur(2px)' }} />
-          
           <div style={{ position: 'fixed', top: 0, left: 0, bottom: 0, width: '280px', backgroundColor: 'white', zIndex: 3000, boxShadow: '5px 0 25px rgba(0,0,0,0.15)', display: 'flex', flexDirection: 'column', animation: 'slideIn 0.3s ease-out' }}>
             <div style={{ padding: '25px 20px', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h2 style={{ margin: 0, fontSize: '20px', color: '#2563eb', fontWeight: '900' }}>LocalLook</h2>
               <button onClick={() => setSidebarOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: '28px', cursor: 'pointer', color: '#6b7280', padding: '0 5px' }}>×</button>
             </div>
-            
             <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
               <div style={{ fontSize: '12px', color: '#9ca3af', fontWeight: 'bold', letterSpacing: '1px', marginBottom: '5px' }}>MERCHANT PORTAL</div>
-              
-              <button onClick={() => navigate('/login')} style={{ width: '100%', padding: '15px', textAlign: 'left', backgroundColor: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '12px', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '12px', color: '#374151' }}>
-                🔑 Operator Login
-              </button>
-              
-              <button onClick={() => navigate('/register')} style={{ width: '100%', padding: '15px', textAlign: 'left', backgroundColor: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '12px', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '12px', color: '#374151' }}>
-                🏪 Register a Store
-              </button>
+              <button onClick={() => navigate('/login')} style={{ width: '100%', padding: '15px', textAlign: 'left', backgroundColor: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '12px', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '12px', color: '#374151' }}>🔑 Operator Login</button>
+              <button onClick={() => navigate('/register')} style={{ width: '100%', padding: '15px', textAlign: 'left', backgroundColor: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '12px', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '12px', color: '#374151' }}>🏪 Register a Store</button>
             </div>
           </div>
         </>
       )}
 
-      {/* TOP FLOATING UI (Search Bar & Dropdown) */}
       <div style={{ position: 'absolute', top: '15px', left: '50%', transform: 'translateX(-50%)', width: 'calc(100% - 140px)', maxWidth: '500px', zIndex: 1000, display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        
         <div style={{ position: 'relative' }}>
-          
           <div style={{ backgroundColor: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(10px)', borderRadius: '16px', padding: '10px 15px', display: 'flex', alignItems: 'center', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}>
             <div style={{ display: 'flex', flexGrow: 1, alignItems: 'center', backgroundColor: '#f3f4f6', borderRadius: '20px', padding: '8px 15px' }}>
               <span style={{ fontSize: '16px', color: '#6b7280', marginRight: '10px' }}>🔍</span>
-              <input 
-                type="text" 
-                placeholder="Search places..." 
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                style={{ border: 'none', backgroundColor: 'transparent', flexGrow: 1, outline: 'none', fontSize: '15px' }} 
-              />
-              {searchTerm && (
-                <span onClick={() => setSearchTerm('')} style={{ fontSize: '14px', color: '#9ca3af', cursor: 'pointer', padding: '0 5px' }}>✖</span>
-              )}
+              <input type="text" placeholder="Search places..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ border: 'none', backgroundColor: 'transparent', flexGrow: 1, outline: 'none', fontSize: '15px' }} />
+              {searchTerm && <span onClick={() => setSearchTerm('')} style={{ fontSize: '14px', color: '#9ca3af', cursor: 'pointer', padding: '0 5px' }}>✖</span>}
             </div>
           </div>
-
           {searchTerm.length > 0 && (
             <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '8px', backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.15)', overflow: 'hidden', maxHeight: '400px', overflowY: 'auto', border: '1px solid #f3f4f6' }}>
-              
               {filteredStores.length > 0 && (
                 <div>
                   <div style={{ padding: '10px 15px', backgroundColor: '#f9fafb', fontSize: '11px', fontWeight: 'bold', color: '#6b7280', letterSpacing: '1px' }}>STORES</div>
                   {filteredStores.map(store => (
-                    <div 
-                      key={`store-${store.id}`}
-                      onClick={() => navigate(`/store/${store.id}`)}
-                      style={{ padding: '12px 15px', borderBottom: '1px solid #f3f4f6', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
-                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
-                    >
-                      <div>
-                        <h4 style={{ margin: '0 0 2px 0', color: '#1f2937', fontSize: '14px' }}>{store.store_name}</h4>
-                        <p style={{ margin: 0, fontSize: '12px', color: '#6b7280' }}>{store.store_category}</p>
-                      </div>
-                      <span style={{ fontSize: '10px', fontWeight: 'bold', padding: '4px 8px', borderRadius: '12px', backgroundColor: store.is_open ? '#d1fae5' : '#fee2e2', color: store.is_open ? '#059669' : '#dc2626' }}>
-                        {store.is_open ? 'OPEN' : 'CLOSED'}
-                      </span>
+                    <div key={`store-${store.id}`} onClick={() => navigate(`/store/${store.id}`)} style={{ padding: '12px 15px', borderBottom: '1px solid #f3f4f6', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}>
+                      <div><h4 style={{ margin: '0 0 2px 0', color: '#1f2937', fontSize: '14px' }}>{store.store_name}</h4><p style={{ margin: 0, fontSize: '12px', color: '#6b7280' }}>{store.store_category}</p></div>
+                      <span style={{ fontSize: '10px', fontWeight: 'bold', padding: '4px 8px', borderRadius: '12px', backgroundColor: store.is_open ? '#d1fae5' : '#fee2e2', color: store.is_open ? '#059669' : '#dc2626' }}>{store.is_open ? 'OPEN' : 'CLOSED'}</span>
                     </div>
                   ))}
                 </div>
               )}
-
               {itemResults.length > 0 && (
                 <div>
                   <div style={{ padding: '10px 15px', backgroundColor: '#f9fafb', fontSize: '11px', fontWeight: 'bold', color: '#6b7280', letterSpacing: '1px' }}>ITEMS</div>
                   {itemResults.map(item => (
-                    <div 
-                      key={`item-${item.item_id}`}
-                      onClick={() => navigate(`/store/${item.store_id}`)}
-                      style={{ 
-                        padding: '12px 15px', 
-                        borderBottom: '1px solid #f3f4f6', 
-                        cursor: 'pointer', 
-                        display: 'flex', 
-                        justifyContent: 'space-between', 
-                        alignItems: 'center',
-                        opacity: item.is_open ? 1 : 0.5
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'}
-                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
-                    >
-                      <div>
-                        <h4 style={{ margin: '0 0 2px 0', color: '#1f2937', fontSize: '14px' }}>
-                          {item.item_name}
-                        </h4>
-                        <p style={{ margin: 0, fontSize: '12px', color: '#6b7280' }}>
-                          at <strong style={{ color: item.is_open ? '#2563eb' : '#6b7280' }}>{item.store_name}</strong>
-                        </p>
-                      </div>
-                      <span style={{ fontSize: '13px', fontWeight: '800', color: item.is_open ? '#10b981' : '#9ca3af' }}>
-                        ₱{parseFloat(item.price).toFixed(2)}
-                      </span>
+                    <div key={`item-${item.item_id}`} onClick={() => navigate(`/store/${item.store_id}`)} style={{ padding: '12px 15px', borderBottom: '1px solid #f3f4f6', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: item.is_open ? 1 : 0.5 }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}>
+                      <div><h4 style={{ margin: '0 0 2px 0', color: '#1f2937', fontSize: '14px' }}>{item.item_name}</h4><p style={{ margin: 0, fontSize: '12px', color: '#6b7280' }}>at <strong style={{ color: item.is_open ? '#2563eb' : '#6b7280' }}>{item.store_name}</strong></p></div>
+                      <span style={{ fontSize: '13px', fontWeight: '800', color: item.is_open ? '#10b981' : '#9ca3af' }}>₱{parseFloat(item.price).toFixed(2)}</span>
                     </div>
                   ))}
-                </div>
-              )}
-
-              {filteredStores.length === 0 && itemResults.length === 0 && (
-                <div style={{ padding: '20px', textAlign: 'center', color: '#6b7280', fontSize: '14px', fontStyle: 'italic' }}>
-                  No stores or items found for "{searchTerm}"
                 </div>
               )}
             </div>
           )}
         </div>
-
         <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '5px', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
           {categories.map(category => (
-            <button 
-              key={category} 
-              onClick={() => setActiveCategory(category)}
-              style={{ 
-                padding: '8px 16px', 
-                borderRadius: '20px', 
-                border: 'none', 
-                backgroundColor: activeCategory === category ? '#2563eb' : 'white', 
-                color: activeCategory === category ? 'white' : '#4b5563', 
-                fontWeight: '600', 
-                fontSize: '12.5px',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.08)', 
-                cursor: 'pointer', 
-                whiteSpace: 'nowrap',
-                transition: 'all 0.2s'
-              }}
-            >
+            <button key={category} onClick={() => setActiveCategory(category)} style={{ padding: '8px 16px', borderRadius: '20px', border: 'none', backgroundColor: activeCategory === category ? '#2563eb' : 'white', color: activeCategory === category ? 'white' : '#4b5563', fontWeight: '600', fontSize: '12.5px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)', cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.2s' }}>
               {category}
             </button>
           ))}
         </div>
       </div>
-
     </div>
   );
 }
