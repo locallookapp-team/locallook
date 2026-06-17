@@ -9,6 +9,7 @@ if (MAPBOX_TOKEN) {
   mapboxgl.accessToken = MAPBOX_TOKEN;
 }
 
+// FIX 1: Exact Google Maps Shape (White outer teardrop, colored inner circle, sharp bottom point)
 const generatePinHTML = (category, storeName, isOpen) => {
   const getPinConfig = (cat) => {
     switch (cat) {
@@ -27,21 +28,33 @@ const generatePinHTML = (category, storeName, isOpen) => {
 
   return `
     <div class="ll-pin-visual">
-      <div class="ll-pin-circle" style="background-color: ${config.color};">
-        <div class="ll-pin-icon">
+      
+      <!-- State 1: Tiny Dot (For Zoomed Out) -->
+      <div class="ll-pin-tiny-dot" style="background-color: ${config.color};"></div>
+      
+      <!-- State 2: Round Pin with Tiny White Point -->
+      <div class="ll-pin-teardrop">
+        <svg width="28" height="36" viewBox="0 0 28 36" fill="none" style="filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.3));">
+          <path d="M14 0C6.268 0 0 6.268 0 14C0 24.5 14 36 14 36C14 36 28 24.5 28 14C28 6.268 21.732 0 14 0Z" fill="white"/>
+          <circle cx="14" cy="14" r="11" fill="${config.color}"/>
+        </svg>
+        <div class="ll-pin-icon-container">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="white"><path d="${config.icon}" /></svg>
         </div>
         <div class="ll-pin-status" style="background-color: ${statusColor};"></div>
       </div>
+
+      <!-- State 3: Clean Text with Halo (Colored to match icon, normal weight) -->
       <div class="ll-pin-text" style="color: ${config.color};">${storeName}</div>
+      
     </div>
   `;
 };
 
 const PULSING_DOT_HTML = `
-  <div style="position: relative; width: 0; height: 0; display: flex; justify-content: center; align-items: center; pointer-events: none;">
-    <div style="position: absolute; width: 22px; height: 22px; background-color: #3b82f6; border-radius: 50%; opacity: 0.5; animation: pulse-ring 2s ease-out infinite;"></div>
-    <div style="position: absolute; width: 16px; height: 16px; background-color: #2563eb; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.4);"></div>
+  <div style="position: absolute; top: 0; left: 0; pointer-events: none;">
+    <div style="position: absolute; top: 0; left: 0; transform: translate(-50%, -50%); width: 22px; height: 22px; background-color: #3b82f6; border-radius: 50%; opacity: 0.5; animation: pulse-ring 2s ease-out infinite;"></div>
+    <div style="position: absolute; top: 0; left: 0; transform: translate(-50%, -50%); width: 16px; height: 16px; background-color: #2563eb; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.4);"></div>
   </div>
 `;
 
@@ -49,7 +62,7 @@ export default function MapPage() {
   const mapContainer = useRef(null);
   const map = useRef(null);
   const markersRef = useRef({}); 
-  const popupRef = useRef(new mapboxgl.Popup({ offset: [0, -15], closeButton: true, closeOnClick: false }));
+  const popupRef = useRef(new mapboxgl.Popup({ offset: [0, -32], closeButton: true, closeOnClick: false }));
   const userMarkerRef = useRef(null);
 
   const [stores, setStores] = useState([]);
@@ -64,17 +77,11 @@ export default function MapPage() {
   const navigate = useNavigate();
   const categories = ['All', 'Food & Dining', 'Retail', 'Services', 'Groceries'];
 
-  // FIX: Sets the LngLat BEFORE adding to the map to prevent crashes
   const updateUserMarker = (lng, lat) => {
     if (!userMarkerRef.current && map.current) {
       const el = document.createElement('div');
       el.style.width = '0px'; el.style.height = '0px'; el.style.position = 'relative';
-      el.innerHTML = `
-        <div style="position: absolute; transform: translate(-50%, -50%); width: 22px; height: 22px; display: flex; justify-content: center; align-items: center; pointer-events: none;">
-          <div style="position: absolute; width: 100%; height: 100%; background-color: #3b82f6; border-radius: 50%; opacity: 0.5; animation: pulse-ring 2s ease-out infinite;"></div>
-          <div style="position: absolute; width: 16px; height: 16px; background-color: #2563eb; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.4);"></div>
-        </div>
-      `;
+      el.innerHTML = PULSING_DOT_HTML;
       userMarkerRef.current = new mapboxgl.Marker({ element: el })
         .setLngLat([lng, lat])
         .addTo(map.current);
@@ -99,17 +106,21 @@ export default function MapPage() {
 
     map.current.addControl(new mapboxgl.NavigationControl({ showZoom: false, visualizePitch: true }), 'bottom-left');
 
-    map.current.on('zoomend', () => {
+    // FIX 2: Dynamic Zoom Thresholds to perfectly manage visual clutter
+    const updateZoomClass = () => {
       const z = map.current.getZoom();
-      let zoomClass = 'map-zoom-low';
-      if (z >= 16.5) zoomClass = 'map-zoom-high';
-      else if (z >= 14.5) zoomClass = 'map-zoom-mid';
+      let zoomClass = 'map-zoom-low'; 
+      if (z >= 16.2) zoomClass = 'map-zoom-high'; // Strict threshold: Text ONLY shows when very close
+      else if (z >= 14.8) zoomClass = 'map-zoom-mid'; // Pins collapse into tiny dots much earlier
       
       if (mapContainer.current && !mapContainer.current.classList.contains(zoomClass)) {
         mapContainer.current.classList.remove('map-zoom-low', 'map-zoom-mid', 'map-zoom-high');
         mapContainer.current.classList.add(zoomClass);
       }
-    });
+    };
+
+    map.current.on('zoom', updateZoomClass);
+    updateZoomClass(); 
 
     map.current.on('load', () => {
       if (navigator.geolocation) {
@@ -118,7 +129,7 @@ export default function MapPage() {
             updateUserMarker(position.coords.longitude, position.coords.latitude);
             map.current?.jumpTo({ center: [position.coords.longitude, position.coords.latitude], zoom: 16.5 });
           },
-          () => console.log("Silent auto-locate failed, user can click locate button."),
+          () => console.log("Silent auto-locate failed."),
           { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
         );
       }
@@ -229,20 +240,16 @@ export default function MapPage() {
 
   const handleLocateMe = (e) => {
     e.stopPropagation();
-    if (!navigator.geolocation) {
-      alert("Your device doesn't support location services.");
-      return;
-    }
-
+    if (!navigator.geolocation) return alert("Your device doesn't support location services.");
+    
     setIsLocating(true);
-
     navigator.geolocation.getCurrentPosition(
       (position) => {
         setIsLocating(false);
         updateUserMarker(position.coords.longitude, position.coords.latitude);
         map.current?.flyTo({ center: [position.coords.longitude, position.coords.latitude], zoom: 17.5, pitch: 50 });
       },
-      (error) => {
+      () => {
         fetch('https://ipapi.co/json/')
           .then(res => res.json())
           .then(data => {
@@ -250,14 +257,8 @@ export default function MapPage() {
             if (data.longitude && data.latitude) {
               updateUserMarker(data.longitude, data.latitude);
               map.current?.flyTo({ center: [data.longitude, data.latitude], zoom: 15, pitch: 50 });
-            } else {
-              alert("Could not detect location. Please allow permissions in your browser.");
-            }
-          })
-          .catch(() => {
-            setIsLocating(false);
-            alert("Could not detect location. Please allow permissions in your browser.");
-          });
+            } else { alert("Could not detect location. Please allow permissions in your browser."); }
+          }).catch(() => { setIsLocating(false); alert("Could not detect location."); });
       },
       { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 } 
     );
@@ -266,20 +267,62 @@ export default function MapPage() {
   return (
     <div style={{ position: 'relative', height: '100vh', width: '100vw', overflow: 'hidden', backgroundColor: '#f3f4f6', fontFamily: 'sans-serif' }}>
       
+      {/* FIX 3: CSS Magic for Authentic Google Maps UI styling */}
       <style>{`
-        .mapboxgl-marker { transition: none !important; } 
+        .mapboxgl-marker { transition: none !important; z-index: 1; } 
+        .mapboxgl-marker:hover { z-index: 1000 !important; } /* Brings hovered pin to the absolute front */
         
-        .ll-pin-visual { position: absolute; top: 0; left: 0; transform: translate(-50%, -50%); display: flex; align-items: center; cursor: pointer; pointer-events: auto; }
-        .ll-pin-circle { width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; justify-content: center; align-items: center; transition: width 0.15s ease, height 0.15s ease; }
-        .ll-pin-icon { display: none; }
-        .ll-pin-status { position: absolute; top: -2px; right: -2px; width: 6px; height: 6px; border: 1.5px solid white; border-radius: 50%; transition: width 0.15s ease, height 0.15s ease; }
-        .ll-pin-text { display: none; position: absolute; left: 14px; font-weight: 800; font-size: 13.5px; white-space: nowrap; text-shadow: -1.5px -1.5px 0 #fff, 1.5px -1.5px 0 #fff, -1.5px 1.5px 0 #fff, 1.5px 1.5px 0 #fff, 0 2px 5px rgba(0,0,0,0.3); pointer-events: none; }
+        .ll-pin-visual { 
+          position: absolute; top: 0; left: 0; 
+          cursor: pointer; pointer-events: auto; 
+        }
+        
+        /* TINY DOT: When zoomed out */
+        .ll-pin-tiny-dot { 
+          position: absolute; top: 0; left: 0; transform: translate(-50%, -50%); 
+          width: 8px; height: 8px; border-radius: 50%; 
+          border: 1.5px solid white; box-shadow: 0 1px 2px rgba(0,0,0,0.4); 
+          display: none; 
+        }
+        
+        /* TEARDROP PIN: Beautiful white border, colored inner circle */
+        .ll-pin-teardrop { 
+          position: absolute; bottom: 0; left: -14px; /* Perfectly anchors bottom tip to coordinate */
+          width: 28px; height: 36px; display: none; 
+        }
+        
+        .ll-pin-icon-container { 
+          position: absolute; top: 14px; left: 14px; transform: translate(-50%, -50%); 
+          display: flex; justify-content: center; align-items: center;
+        }
+        
+        .ll-pin-status { 
+          position: absolute; top: 2px; right: 0px; width: 8px; height: 8px; 
+          border-radius: 50%; border: 1.5px solid white; 
+        }
 
-        .map-zoom-mid .ll-pin-circle, .map-zoom-high .ll-pin-circle { width: 24px; height: 24px; }
-        .map-zoom-mid .ll-pin-icon, .map-zoom-high .ll-pin-icon { display: block; }
-        .map-zoom-mid .ll-pin-status, .map-zoom-high .ll-pin-status { width: 8px; height: 8px; }
-        .map-zoom-mid .ll-pin-text { left: 18px; }
-        .map-zoom-high .ll-pin-text { display: block; left: 18px; }
+        /* TEXT STYLING: Medium weight, matched color, crisp white halo shadow */
+        .ll-pin-text { 
+          position: absolute; 
+          left: 18px; /* Pushes text neatly to the right of the pin */
+          bottom: 15px; /* Aligns vertically with the circular part of the pin */
+          transform: translateY(50%);
+          display: none; 
+          font-weight: 500; font-size: 13px; letter-spacing: -0.2px;
+          text-shadow: 
+            1.5px 1.5px 0 #fff, -1.5px -1.5px 0 #fff, 
+            1.5px -1.5px 0 #fff, -1.5px 1.5px 0 #fff,
+            0 1.5px 0 #fff, 0 -1.5px 0 #fff, 
+            1.5px 0 0 #fff, -1.5px 0 0 #fff,
+            0 2px 4px rgba(0,0,0,0.2); /* Classic map text outline */
+          white-space: nowrap; pointer-events: none; 
+        }
+
+        /* Responsive Zoom States */
+        .map-zoom-low .ll-pin-tiny-dot { display: block; }
+        .map-zoom-mid .ll-pin-teardrop { display: block; }
+        .map-zoom-high .ll-pin-teardrop { display: block; }
+        .map-zoom-high .ll-pin-text { display: block; }
 
         @keyframes pulse-ring { 0% { transform: scale(1); opacity: 0.6; } 100% { transform: scale(3.5); opacity: 0; } }
       `}</style>
@@ -294,7 +337,6 @@ export default function MapPage() {
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg>
           )}
         </button>
-        <style>{`@keyframes spin { 100% { transform: rotate(360deg); } }`}</style>
       </div>
 
       <div style={{ position: 'absolute', top: '15px', left: '15px', zIndex: 2000 }}>
