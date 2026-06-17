@@ -4,66 +4,74 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { supabase } from '../supabaseClient';
 
-const MAPBOX_TOKEN = (import.meta.env && import.meta.env.VITE_MAPBOX_TOKEN) || '';
+const MAPBOX_TOKEN = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_MAPBOX_TOKEN) || '';
 if (MAPBOX_TOKEN) {
   mapboxgl.accessToken = MAPBOX_TOKEN;
 }
 
-// FIX 1: Exact Google Maps Shape (White outer teardrop, colored inner circle, sharp bottom point)
-const generatePinHTML = (category, storeName, isOpen) => {
-  const getPinConfig = (cat) => {
-    switch (cat) {
-      case 'Food & Dining': return { color: '#ea4335', icon: 'M11 9H9V2H7v7H5V2H3v7c0 2.12 1.66 3.88 3.75 3.97V22h2.5v-9.03C11.34 12.88 13 11.12 13 9V2h-2v7zm5-3v8h2.5v8H21V2c-2.76 0-5 2.24-5 4z' }; 
-      case 'Retail':
-      case 'Groceries': return { color: '#4285f4', icon: 'M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42c-.14 0-.25-.11-.25-.25l.03-.12.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49A1.003 1.003 0 0 0 20 4H5.21l-.94-2H1zm16 16c-1.1 0-1.99.9-1.99 2s.89 2 1.99 2 2-.9 2-2-.9-2-2-2z' }; 
-      case 'Services': return { color: '#0f9d58', icon: 'M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.5 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z' }; 
-      case 'Health & Wellness': return { color: '#f50057', icon: 'M19 3H5c-1.1 0-1.99.9-1.99 2L3 19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-1 11h-4v4h-4v-4H6v-4h4V6h4v4h4v4z' }; 
-      case 'Tourism & Lodging': return { color: '#ab47bc', icon: 'M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z' }; 
-      default: return { color: '#5f6368', icon: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 0 1 0-5 2.5 2.5 0 0 1 0 5z' }; 
-    }
-  };
+const getPinConfig = (cat) => {
+  switch (cat) {
+    case 'Food & Dining': return { color: '#ea4335', icon: 'M11 9H9V2H7v7H5V2H3v7c0 2.12 1.66 3.88 3.75 3.97V22h2.5v-9.03C11.34 12.88 13 11.12 13 9V2h-2v7zm5-3v8h2.5v8H21V2c-2.76 0-5 2.24-5 4z' }; 
+    case 'Retail':
+    case 'Groceries': return { color: '#4285f4', icon: 'M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42c-.14 0-.25-.11-.25-.25l.03-.12.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49A1.003 1.003 0 0 0 20 4H5.21l-.94-2H1zm16 16c-1.1 0-1.99.9-1.99 2s.89 2 1.99 2 2-.9 2-2-.9-2-2-2z' }; 
+    case 'Services': return { color: '#0f9d58', icon: 'M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.5 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z' }; 
+    case 'Health & Wellness': return { color: '#f50057', icon: 'M19 3H5c-1.1 0-1.99.9-1.99 2L3 19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-1 11h-4v4h-4v-4H6v-4h4V6h4v4h4v4z' }; 
+    case 'Tourism & Lodging': return { color: '#ab47bc', icon: 'M7 13c1.66 0 3-1.34 3-3S8.66 7 7 7s-3 1.34-3 3 1.34 3 3 3zm12-6h-8v7H3V5H1v15h2v-3h18v3h2v-9c0-2.21-1.79-4-4-4z' }; 
+    default: return { color: '#5f6368', icon: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5a2.5 2.5 0 0 1 0-5 2.5 2.5 0 0 1 0 5z' }; 
+  }
+};
 
+const makeSvgString = (category, isOpen) => {
   const config = getPinConfig(category);
-  const statusColor = isOpen ? '#10b981' : '#ef4444'; 
-
+  const statusColor = isOpen ? '#10b981' : '#ef4444';
   return `
-    <div class="ll-pin-visual">
-      
-      <!-- State 1: Tiny Dot (For Zoomed Out) -->
-      <div class="ll-pin-tiny-dot" style="background-color: ${config.color};"></div>
-      
-      <!-- State 2: Round Pin with Tiny White Point -->
-      <div class="ll-pin-teardrop">
-        <svg width="28" height="36" viewBox="0 0 28 36" fill="none" style="filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.3));">
-          <path d="M14 0C6.268 0 0 6.268 0 14C0 24.5 14 36 14 36C14 36 28 24.5 28 14C28 6.268 21.732 0 14 0Z" fill="white"/>
-          <circle cx="14" cy="14" r="11" fill="${config.color}"/>
+    <svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 28 36">
+      <path d="M14 0C6.268 0 0 6.268 0 14C0 24.5 14 36 14 36C14 36 28 24.5 28 14C28 6.268 21.732 0 14 0Z" fill="white" filter="drop-shadow(0px 2px 2px rgba(0,0,0,0.3))"/>
+      <circle cx="14" cy="14" r="11" fill="${config.color}"/>
+      <g transform="translate(7, 7)">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="white">
+          <path d="${config.icon}"/>
         </svg>
-        <div class="ll-pin-icon-container">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="white"><path d="${config.icon}" /></svg>
-        </div>
-        <div class="ll-pin-status" style="background-color: ${statusColor};"></div>
-      </div>
-
-      <!-- State 3: Clean Text with Halo (Colored to match icon, normal weight) -->
-      <div class="ll-pin-text" style="color: ${config.color};">${storeName}</div>
-      
-    </div>
-  `;
+      </g>
+      <circle cx="23" cy="5" r="4" fill="white"/>
+      <circle cx="23" cy="5" r="2.5" fill="${statusColor}"/>
+    </svg>
+  `.trim();
 };
 
 const PULSING_DOT_HTML = `
-  <div style="position: absolute; top: 0; left: 0; pointer-events: none;">
-    <div style="position: absolute; top: 0; left: 0; transform: translate(-50%, -50%); width: 22px; height: 22px; background-color: #3b82f6; border-radius: 50%; opacity: 0.5; animation: pulse-ring 2s ease-out infinite;"></div>
-    <div style="position: absolute; top: 0; left: 0; transform: translate(-50%, -50%); width: 16px; height: 16px; background-color: #2563eb; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.4);"></div>
+  <div class="user-location-marker">
+    <div class="ground-layer">
+      <!-- Shadow is native WebGL now, pulse and cone remain HTML -->
+      <div class="pulse-ring"></div>
+      <div id="user-view-cone" class="view-cone"></div>
+    </div>
+
+    <!-- Interactive pin -->
+    <div class="user-pin">
+      <div class="user-pin-popup">You are here</div>
+      <svg xmlns="http://www.w3.org/2000/svg" width="36" height="45" viewBox="0 0 28 36">
+        <path d="M14 0C6.268 0 0 6.268 0 14C0 24.5 14 36 14 36C14 36 28 24.5 28 14C28 6.268 21.732 0 14 0Z" fill="white" />
+        <circle cx="14" cy="14" r="11" fill="#2563eb"/>
+        <g transform="translate(7, 7)">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="white">
+            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+          </svg>
+        </g>
+      </svg>
+    </div>
   </div>
 `;
 
 export default function MapPage() {
   const mapContainer = useRef(null);
   const map = useRef(null);
-  const markersRef = useRef({}); 
   const popupRef = useRef(new mapboxgl.Popup({ offset: [0, -32], closeButton: true, closeOnClick: false }));
+  
   const userMarkerRef = useRef(null);
+  const userHeadingRef = useRef(0); 
+  const userCoordsRef = useRef([0, 0]); 
+  const loadedIconsRef = useRef(new Set());
 
   const [stores, setStores] = useState([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -77,23 +85,83 @@ export default function MapPage() {
   const navigate = useNavigate();
   const categories = ['All', 'Food & Dining', 'Retail', 'Services', 'Groceries'];
 
-  const updateUserMarker = (lng, lat) => {
+  const updateMarkerVisuals = () => {
+    if (!map.current || !userMarkerRef.current) return;
+
+    // 1. Calculate precise map zoom scale (Models scale exponentially by power of 2)
+    const currentZoom = map.current.getZoom();
+    const zoomScale = Math.pow(2, currentZoom - 16.5);
+    
+    // 2. Scale the Ground Layer (Pulse and Cone) dynamically
+    // Prevent the pulse from becoming microscopic or absurdly huge
+    const groundScale = Math.max(0.4, Math.min(2.5, zoomScale));
+    
+    // 3. Scale the Hover Height of the Pin
+    // Matches the height of the 3D model exactly so it doesn't sink or fly away
+    let pinHeight = 55 * zoomScale;
+    pinHeight = Math.max(15, Math.min(200, pinHeight)); // Safe boundaries
+
+    // 4. Apply to DOM
+    const el = userMarkerRef.current.getElement();
+    const groundEl = el.querySelector('.ground-layer');
+    if (groundEl) groundEl.style.setProperty('--ground-scale', groundScale);
+    
+    const pinEl = el.querySelector('.user-pin');
+    if (pinEl) pinEl.style.setProperty('--hover-dist', `${pinHeight}px`);
+  };
+
+  const updateUserLocation = (lng, lat, heading = null) => {
+    if (lng === 0 && lat === 0) return; 
+    
+    userCoordsRef.current = [lng, lat];
+    if (heading !== null) userHeadingRef.current = heading;
+
+    // Handle initial marker creation
     if (!userMarkerRef.current && map.current) {
       const el = document.createElement('div');
       el.style.width = '0px'; el.style.height = '0px'; el.style.position = 'relative';
       el.innerHTML = PULSING_DOT_HTML;
-      userMarkerRef.current = new mapboxgl.Marker({ element: el })
-        .setLngLat([lng, lat])
-        .addTo(map.current);
+      
+      const pinEl = el.querySelector('.user-pin');
+      if (pinEl) {
+        pinEl.onclick = (e) => {
+          e.stopPropagation();
+          pinEl.classList.toggle('show-popup');
+        };
+      }
+
+      userMarkerRef.current = new mapboxgl.Marker({ element: el }).setLngLat([lng, lat]).addTo(map.current);
     } else if (userMarkerRef.current) {
       userMarkerRef.current.setLngLat([lng, lat]);
+    }
+
+    // Trigger visual scale recalculations
+    updateMarkerVisuals();
+
+    // Rotate View Cone relative to map camera
+    const cone = document.getElementById('user-view-cone');
+    if (cone && map.current) {
+      cone.style.display = 'block'; 
+      const mapBearing = map.current.getBearing();
+      const visualRotation = userHeadingRef.current - mapBearing;
+      cone.style.transform = `rotate(${visualRotation}deg)`;
+    }
+
+    // Update 3D Model position & rotation
+    if (map.current && map.current.getSource('user-3d-source')) {
+      map.current.getSource('user-3d-source').setData({
+        type: 'FeatureCollection',
+        features: [{
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [lng, lat] },
+          properties: { rotation: [0, 0, -userHeadingRef.current] }
+        }]
+      });
     }
   };
 
   useEffect(() => {
     if (map.current || !mapContainer.current) return; 
-
-    mapContainer.current.classList.add('map-zoom-high');
 
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
@@ -106,27 +174,73 @@ export default function MapPage() {
 
     map.current.addControl(new mapboxgl.NavigationControl({ showZoom: false, visualizePitch: true }), 'bottom-left');
 
-    // FIX 2: Dynamic Zoom Thresholds to perfectly manage visual clutter
-    const updateZoomClass = () => {
-      const z = map.current.getZoom();
-      let zoomClass = 'map-zoom-low'; 
-      if (z >= 16.2) zoomClass = 'map-zoom-high'; // Strict threshold: Text ONLY shows when very close
-      else if (z >= 14.8) zoomClass = 'map-zoom-mid'; // Pins collapse into tiny dots much earlier
-      
-      if (mapContainer.current && !mapContainer.current.classList.contains(zoomClass)) {
-        mapContainer.current.classList.remove('map-zoom-low', 'map-zoom-mid', 'map-zoom-high');
-        mapContainer.current.classList.add(zoomClass);
+    // Attach dynamic rescaling engine to camera movement
+    map.current.on('rotate', () => {
+      if(userCoordsRef.current[0] !== 0) updateUserLocation(userCoordsRef.current[0], userCoordsRef.current[1]);
+    });
+    map.current.on('zoom', updateMarkerVisuals);
+    
+    // Close CSS popup when clicking map
+    map.current.on('click', () => {
+      document.querySelectorAll('.user-pin.show-popup').forEach(el => el.classList.remove('show-popup'));
+    });
+
+    map.current.on('style.load', () => {
+      if (!map.current.getLayer('sky')) {
+        map.current.addLayer({
+          id: 'sky',
+          type: 'sky',
+          paint: { 'sky-type': 'atmosphere', 'sky-atmosphere-sun': [0.0, 0.0], 'sky-atmosphere-sun-intensity': 15 }
+        });
       }
-    };
 
-    map.current.on('zoom', updateZoomClass);
-    updateZoomClass(); 
+      map.current.addSource('user-3d-source', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] }
+      });
 
-    map.current.on('load', () => {
+      // 1. Native WebGL Ground Shadow
+      // Renders BEFORE the model so it sits flatly on the street, preventing overlaps
+      map.current.addLayer({
+        id: 'user-shadow-layer',
+        type: 'circle',
+        source: 'user-3d-source',
+        paint: {
+          'circle-color': '#000000',
+          'circle-opacity': 0.35,
+          'circle-blur': 0.9, // Nice soft shadow
+          'circle-pitch-alignment': 'map', 
+          'circle-pitch-scale': 'map', // Strictly glued to pavement
+          'circle-radius': [
+            'interpolate', ['exponential', 2], ['zoom'],
+            14, 1.5,
+            16.5, 6,    // Base size
+            19, 34,     // Scales up cleanly instead of turning into a dot
+            22, 270 
+          ]
+        }
+      });
+
+      map.current.addModel('custom-user-model', '/user-model.glb');
+
+      // 2. Native WebGL 3D Model
+      map.current.addLayer({
+        id: 'user-3d-layer',
+        type: 'model',
+        source: 'user-3d-source',
+        layout: { 'model-id': 'custom-user-model' },
+        paint: {
+          'model-color': '#2563eb',
+          'model-scale': [1, 1, 1], 
+          'model-rotation': ['get', 'rotation'],
+          'model-translation': [0, 0, 1.5] 
+        }
+      });
+
       if (navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (position) => {
-            updateUserMarker(position.coords.longitude, position.coords.latitude);
+            updateUserLocation(position.coords.longitude, position.coords.latitude);
             map.current?.jumpTo({ center: [position.coords.longitude, position.coords.latitude], zoom: 16.5 });
           },
           () => console.log("Silent auto-locate failed."),
@@ -139,7 +253,6 @@ export default function MapPage() {
       if (map.current) {
         map.current.remove();
         map.current = null;
-        markersRef.current = {};
         userMarkerRef.current = null;
       }
     };
@@ -175,42 +288,131 @@ export default function MapPage() {
 
   const filteredStores = useMemo(() => {
     return stores.filter(store => {
+      const hasCoords = store.lat && store.lng && !isNaN(Number(store.lat)) && !isNaN(Number(store.lng));
       const matchesSearch = store.store_name.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesCategory = activeCategory === 'All' || store.store_category === activeCategory;
-      return matchesSearch && matchesCategory;
+      return hasCoords && matchesSearch && matchesCategory;
     });
   }, [stores, searchTerm, activeCategory]);
 
   useEffect(() => {
     if (!map.current) return;
 
-    const newStoreIds = new Set(filteredStores.map(s => s.id));
+    const renderWebGLData = async () => {
+      if (!map.current.isStyleLoaded()) return;
 
-    Object.keys(markersRef.current).forEach(id => {
-      if (!newStoreIds.has(id)) {
-        markersRef.current[id].remove();
-        delete markersRef.current[id];
+      for (const store of filteredStores) {
+        const iconId = `sprite-${store.store_category}-${store.is_open ? 'open' : 'closed'}`;
+        if (!loadedIconsRef.current.has(iconId)) {
+          loadedIconsRef.current.add(iconId);
+          
+          const svgString = makeSvgString(store.store_category, store.is_open);
+          const img = new Image();
+          img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgString);
+          
+          await new Promise((resolve) => {
+            img.onload = () => {
+              if (map.current && !map.current.hasImage(iconId)) {
+                map.current.addImage(iconId, img);
+              }
+              resolve();
+            };
+            img.onerror = resolve; 
+          });
+        }
       }
-    });
 
-    filteredStores.forEach(store => {
-      if (!markersRef.current[store.id]) {
-        const el = document.createElement('div');
-        el.style.width = '0px'; el.style.height = '0px'; el.style.position = 'relative';
-        el.innerHTML = generatePinHTML(store.store_category, store.store_name, store.is_open);
-        
-        el.addEventListener('click', (e) => {
-          e.stopPropagation();
-          setSelectedStore(store);
-          map.current.flyTo({ center: [Number(store.lng), Number(store.lat)], zoom: 18, pitch: 60, duration: 1500 });
+      const geoJsonData = {
+        type: 'FeatureCollection',
+        features: filteredStores.map(store => ({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [Number(store.lng), Number(store.lat)] },
+          properties: {
+            id: store.id,
+            name: store.store_name,
+            category: store.store_category,
+            isOpen: store.is_open,
+            textColor: getPinConfig(store.store_category).color,
+            iconImage: `sprite-${store.store_category}-${store.is_open ? 'open' : 'closed'}`
+          }
+        }))
+      };
+
+      if (map.current.getSource('stores-source')) {
+        map.current.getSource('stores-source').setData(geoJsonData);
+      } else {
+        map.current.addSource('stores-source', { type: 'geojson', data: geoJsonData });
+
+        map.current.addLayer({
+          id: 'stores-dots-layer',
+          type: 'circle',
+          source: 'stores-source',
+          maxzoom: 14.8, 
+          paint: {
+            'circle-radius': 4.5,
+            'circle-color': ['get', 'textColor'],
+            'circle-stroke-width': 1.5,
+            'circle-stroke-color': '#ffffff'
+          }
         });
 
-        const marker = new mapboxgl.Marker({ element: el }).setLngLat([Number(store.lng), Number(store.lat)]).addTo(map.current);
-        markersRef.current[store.id] = marker;
-      } else {
-        markersRef.current[store.id].getElement().innerHTML = generatePinHTML(store.store_category, store.store_name, store.is_open);
+        map.current.addLayer({
+          id: 'stores-layer',
+          type: 'symbol',
+          source: 'stores-source',
+          minzoom: 14.8, 
+          layout: {
+            'icon-image': ['get', 'iconImage'], 
+            'icon-size': 0.85,
+            'icon-anchor': 'bottom',
+            'icon-allow-overlap': true,
+            'icon-ignore-placement': true,
+            'text-field': ['get', 'name'],
+            'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
+            'text-size': 13.5,
+            'text-anchor': 'left',
+            'text-offset': [0.8, -1.4],
+            'text-justify': 'left',
+            'text-allow-overlap': false,
+            'text-ignore-placement': false,
+            'text-optional': true 
+          },
+          paint: {
+            'text-color': ['get', 'textColor'],
+            'text-halo-color': '#ffffff',
+            'text-halo-width': 2.5,
+            'text-halo-blur': 1
+          }
+        });
+
+        const handleStoreClick = (e) => {
+          const props = e.features[0].properties;
+          const coords = e.features[0].geometry.coordinates;
+          const matchedStore = filteredStores.find(s => s.id === props.id);
+          if (matchedStore) {
+            setSelectedStore(matchedStore);
+            map.current.flyTo({ center: coords, zoom: 18, pitch: 60, duration: 1200 });
+          }
+        };
+
+        map.current.on('click', 'stores-layer', handleStoreClick);
+        map.current.on('click', 'stores-dots-layer', handleStoreClick);
+
+        const addPointer = () => { map.current.getCanvas().style.cursor = 'pointer'; };
+        const removePointer = () => { map.current.getCanvas().style.cursor = ''; };
+        
+        map.current.on('mouseenter', 'stores-layer', addPointer);
+        map.current.on('mouseleave', 'stores-layer', removePointer);
+        map.current.on('mouseenter', 'stores-dots-layer', addPointer);
+        map.current.on('mouseleave', 'stores-dots-layer', removePointer);
       }
-    });
+    };
+
+    if (map.current.isStyleLoaded()) {
+      renderWebGLData();
+    } else {
+      map.current.once('style.load', renderWebGLData);
+    }
   }, [filteredStores]);
 
   useEffect(() => {
@@ -238,6 +440,33 @@ export default function MapPage() {
     return () => popupRef.current.off('close', onPopupClose);
   }, [selectedStore, navigate]);
 
+  const startCompass = () => {
+    const handleOrientation = (e) => {
+      let heading = null;
+      if (e.webkitCompassHeading !== undefined) {
+        heading = e.webkitCompassHeading; 
+      } else if (e.alpha !== null) {
+        heading = 360 - e.alpha; 
+      }
+
+      if (heading !== null) {
+        updateUserLocation(userCoordsRef.current[0], userCoordsRef.current[1], heading);
+      }
+    };
+
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      DeviceOrientationEvent.requestPermission()
+        .then(response => {
+          if (response === 'granted') {
+            window.addEventListener('deviceorientation', handleOrientation);
+          }
+        }).catch(err => console.log("Compass permission error:", err));
+    } else {
+      window.addEventListener('deviceorientationabsolute', handleOrientation);
+      window.addEventListener('deviceorientation', handleOrientation); 
+    }
+  };
+
   const handleLocateMe = (e) => {
     e.stopPropagation();
     if (!navigator.geolocation) return alert("Your device doesn't support location services.");
@@ -246,8 +475,10 @@ export default function MapPage() {
     navigator.geolocation.getCurrentPosition(
       (position) => {
         setIsLocating(false);
-        updateUserMarker(position.coords.longitude, position.coords.latitude);
-        map.current?.flyTo({ center: [position.coords.longitude, position.coords.latitude], zoom: 17.5, pitch: 50 });
+        updateUserLocation(position.coords.longitude, position.coords.latitude);
+        map.current?.flyTo({ center: [position.coords.longitude, position.coords.latitude], zoom: 18, pitch: 60 });
+        
+        startCompass();
       },
       () => {
         fetch('https://ipapi.co/json/')
@@ -255,9 +486,9 @@ export default function MapPage() {
           .then(data => {
             setIsLocating(false);
             if (data.longitude && data.latitude) {
-              updateUserMarker(data.longitude, data.latitude);
-              map.current?.flyTo({ center: [data.longitude, data.latitude], zoom: 15, pitch: 50 });
-            } else { alert("Could not detect location. Please allow permissions in your browser."); }
+              updateUserLocation(data.longitude, data.latitude);
+              map.current?.flyTo({ center: [data.longitude, data.latitude], zoom: 16, pitch: 50 });
+            } else { alert("Could not detect location."); }
           }).catch(() => { setIsLocating(false); alert("Could not detect location."); });
       },
       { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 } 
@@ -267,68 +498,104 @@ export default function MapPage() {
   return (
     <div style={{ position: 'relative', height: '100vh', width: '100vw', overflow: 'hidden', backgroundColor: '#f3f4f6', fontFamily: 'sans-serif' }}>
       
-      {/* FIX 3: CSS Magic for Authentic Google Maps UI styling */}
       <style>{`
-        .mapboxgl-marker { transition: none !important; z-index: 1; } 
-        .mapboxgl-marker:hover { z-index: 1000 !important; } /* Brings hovered pin to the absolute front */
-        
-        .ll-pin-visual { 
-          position: absolute; top: 0; left: 0; 
-          cursor: pointer; pointer-events: auto; 
-        }
-        
-        /* TINY DOT: When zoomed out */
-        .ll-pin-tiny-dot { 
-          position: absolute; top: 0; left: 0; transform: translate(-50%, -50%); 
-          width: 8px; height: 8px; border-radius: 50%; 
-          border: 1.5px solid white; box-shadow: 0 1px 2px rgba(0,0,0,0.4); 
-          display: none; 
-        }
-        
-        /* TEARDROP PIN: Beautiful white border, colored inner circle */
-        .ll-pin-teardrop { 
-          position: absolute; bottom: 0; left: -14px; /* Perfectly anchors bottom tip to coordinate */
-          width: 28px; height: 36px; display: none; 
-        }
-        
-        .ll-pin-icon-container { 
-          position: absolute; top: 14px; left: 14px; transform: translate(-50%, -50%); 
-          display: flex; justify-content: center; align-items: center;
-        }
-        
-        .ll-pin-status { 
-          position: absolute; top: 2px; right: 0px; width: 8px; height: 8px; 
-          border-radius: 50%; border: 1.5px solid white; 
+        .user-location-marker { position: absolute; top: 0; left: 0; pointer-events: none; }
+
+        .user-pin {
+          position: absolute;
+          bottom: 0; left: 50%; 
+          cursor: pointer;
+          pointer-events: auto;
+          --hover-dist: 55px; 
+          transform: translate(-50%, calc(-1 * var(--hover-dist)));
+          animation: pin-bounce 2s infinite cubic-bezier(0.4, 0, 0.2, 1);
+          z-index: 15;
+          /* Lightning fast transition creates buttery smooth scale anchoring while zooming */
+          transition: transform 0.05s ease-out; 
         }
 
-        /* TEXT STYLING: Medium weight, matched color, crisp white halo shadow */
-        .ll-pin-text { 
+        .user-pin:hover {
+          filter: brightness(1.1);
+        }
+
+        @keyframes pin-bounce {
+          0%, 100% { transform: translate(-50%, calc(-1 * var(--hover-dist))); }
+          50% { transform: translate(-50%, calc(-1 * var(--hover-dist) - 8px)); }
+        }
+
+        /* Interactive Click Popup */
+        .user-pin-popup {
+          position: absolute;
+          bottom: 100%; 
+          left: 50%;
+          transform: translateX(-50%) translateY(0px);
+          background: white;
+          color: #1f2937;
+          font-weight: 800;
+          font-size: 13px;
+          padding: 6px 12px;
+          border-radius: 8px;
+          box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+          white-space: nowrap;
+          pointer-events: none;
+          opacity: 0;
+          visibility: hidden;
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .user-pin-popup::after {
+          content: '';
+          position: absolute;
+          top: 100%;
+          left: 50%;
+          transform: translateX(-50%);
+          border: 6px solid transparent;
+          border-top-color: white;
+        }
+
+        .user-pin.show-popup .user-pin-popup {
+          opacity: 1;
+          visibility: visible;
+          transform: translateX(-50%) translateY(-6px);
+        }
+
+        /* Dynamically Scaled Ground Layer */
+        .ground-layer {
+          position: absolute; top: 0; left: 0;
+          --ground-scale: 1;
+          transform: translate(-50%, -50%) rotateX(65deg) scale(var(--ground-scale));
+          transition: transform 0.05s ease-out;
+          z-index: 1;
+        }
+        
+        .pulse-ring { 
+          position: absolute; top: -20px; left: -20px; 
+          width: 40px; height: 40px; 
+          background-color: rgba(59, 130, 246, 0.2); 
+          border: 1.5px solid rgba(59, 130, 246, 0.6); 
+          border-radius: 50%; 
+          animation: ground-pulse 2.5s cubic-bezier(0.1, 0.7, 0.1, 1) infinite; 
+        }
+
+        .view-cone {
           position: absolute; 
-          left: 18px; /* Pushes text neatly to the right of the pin */
-          bottom: 15px; /* Aligns vertically with the circular part of the pin */
-          transform: translateY(50%);
+          top: -50px; left: -50px; 
+          width: 100px; height: 100px;
+          border-radius: 50%;
+          background: conic-gradient(from 330deg, transparent 0, rgba(37, 99, 235, 0.4) 30deg, transparent 60deg);
+          transform-origin: center center;
           display: none; 
-          font-weight: 500; font-size: 13px; letter-spacing: -0.2px;
-          text-shadow: 
-            1.5px 1.5px 0 #fff, -1.5px -1.5px 0 #fff, 
-            1.5px -1.5px 0 #fff, -1.5px 1.5px 0 #fff,
-            0 1.5px 0 #fff, 0 -1.5px 0 #fff, 
-            1.5px 0 0 #fff, -1.5px 0 0 #fff,
-            0 2px 4px rgba(0,0,0,0.2); /* Classic map text outline */
-          white-space: nowrap; pointer-events: none; 
         }
 
-        /* Responsive Zoom States */
-        .map-zoom-low .ll-pin-tiny-dot { display: block; }
-        .map-zoom-mid .ll-pin-teardrop { display: block; }
-        .map-zoom-high .ll-pin-teardrop { display: block; }
-        .map-zoom-high .ll-pin-text { display: block; }
-
-        @keyframes pulse-ring { 0% { transform: scale(1); opacity: 0.6; } 100% { transform: scale(3.5); opacity: 0; } }
+        @keyframes ground-pulse { 
+          0% { transform: scale(0.3); opacity: 1; } 
+          100% { transform: scale(3.5); opacity: 0; } 
+        }
       `}</style>
 
       <div ref={mapContainer} style={{ position: 'absolute', inset: 0, zIndex: 0 }} />
 
+      {/* Locate Me Button */}
       <div style={{ position: 'absolute', bottom: '40px', right: '15px', zIndex: 1000 }}>
         <button onClick={handleLocateMe} disabled={isLocating} style={{ width: '50px', height: '50px', backgroundColor: 'white', borderRadius: '50%', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', transition: 'transform 0.1s' }} onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.95)'} onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}>
           {isLocating ? (
@@ -339,6 +606,7 @@ export default function MapPage() {
         </button>
       </div>
 
+      {/* Hamburger Menu */}
       <div style={{ position: 'absolute', top: '15px', left: '15px', zIndex: 2000 }}>
         <button onClick={() => setSidebarOpen(true)} style={{ width: '45px', height: '45px', backgroundColor: 'white', borderRadius: '50%', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', cursor: 'pointer', fontSize: '20px', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#1f2937', transition: 'transform 0.1s' }}>☰</button>
       </div>
@@ -346,7 +614,7 @@ export default function MapPage() {
       {sidebarOpen && (
         <>
           <div onClick={() => setSidebarOpen(false)} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 2999, backdropFilter: 'blur(2px)' }} />
-          <div style={{ position: 'fixed', top: 0, left: 0, bottom: 0, width: '280px', backgroundColor: 'white', zIndex: 3000, boxShadow: '5px 0 25px rgba(0,0,0,0.15)', display: 'flex', flexDirection: 'column', animation: 'slideIn 0.3s ease-out' }}>
+          <div style={{ position: 'fixed', top: 0, left: 0, bottom: 0, width: '280px', backgroundColor: 'white', zIndex: 3000, boxShadow: '5px 0 25px rgba(0,0,0,0.15)', display: 'flex', flexDirection: 'column' }}>
             <div style={{ padding: '25px 20px', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h2 style={{ margin: 0, fontSize: '20px', color: '#2563eb', fontWeight: '900' }}>LocalLook</h2>
               <button onClick={() => setSidebarOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: '28px', cursor: 'pointer', color: '#6b7280', padding: '0 5px' }}>×</button>
@@ -360,6 +628,7 @@ export default function MapPage() {
         </>
       )}
 
+      {/* Mobile-first Search Container */}
       <div style={{ position: 'absolute', top: '15px', left: '50%', transform: 'translateX(-50%)', width: 'calc(100% - 140px)', maxWidth: '500px', zIndex: 1000, display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <div style={{ position: 'relative' }}>
           <div style={{ backgroundColor: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(10px)', borderRadius: '16px', padding: '10px 15px', display: 'flex', alignItems: 'center', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}>
@@ -378,17 +647,6 @@ export default function MapPage() {
                     <div key={`store-${store.id}`} onClick={() => navigate(`/store/${store.id}`)} style={{ padding: '12px 15px', borderBottom: '1px solid #f3f4f6', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}>
                       <div><h4 style={{ margin: '0 0 2px 0', color: '#1f2937', fontSize: '14px' }}>{store.store_name}</h4><p style={{ margin: 0, fontSize: '12px', color: '#6b7280' }}>{store.store_category}</p></div>
                       <span style={{ fontSize: '10px', fontWeight: 'bold', padding: '4px 8px', borderRadius: '12px', backgroundColor: store.is_open ? '#d1fae5' : '#fee2e2', color: store.is_open ? '#059669' : '#dc2626' }}>{store.is_open ? 'OPEN' : 'CLOSED'}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {itemResults.length > 0 && (
-                <div>
-                  <div style={{ padding: '10px 15px', backgroundColor: '#f9fafb', fontSize: '11px', fontWeight: 'bold', color: '#6b7280', letterSpacing: '1px' }}>ITEMS</div>
-                  {itemResults.map(item => (
-                    <div key={`item-${item.item_id}`} onClick={() => navigate(`/store/${item.store_id}`)} style={{ padding: '12px 15px', borderBottom: '1px solid #f3f4f6', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: item.is_open ? 1 : 0.5 }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}>
-                      <div><h4 style={{ margin: '0 0 2px 0', color: '#1f2937', fontSize: '14px' }}>{item.item_name}</h4><p style={{ margin: 0, fontSize: '12px', color: '#6b7280' }}>at <strong style={{ color: item.is_open ? '#2563eb' : '#6b7280' }}>{item.store_name}</strong></p></div>
-                      <span style={{ fontSize: '13px', fontWeight: '800', color: item.is_open ? '#10b981' : '#9ca3af' }}>₱{parseFloat(item.price).toFixed(2)}</span>
                     </div>
                   ))}
                 </div>
