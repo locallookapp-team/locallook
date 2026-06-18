@@ -4,7 +4,7 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { supabase } from '../supabaseClient';
 
-const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN;
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || '';
 if (MAPBOX_TOKEN) {
   mapboxgl.accessToken = MAPBOX_TOKEN;
 }
@@ -25,7 +25,6 @@ export default function RegisterPage() {
 
   // FETCH EXISTING STORES (for reference on the map)
   useEffect(() => { 
-    // We can now fetch directly from Supabase for better performance!
     const fetchStores = async () => {
       const { data, error } = await supabase.from('stores').select('*');
       if (data) setStores(data);
@@ -77,34 +76,32 @@ export default function RegisterPage() {
   useEffect(() => {
     if (!map.current) return;
 
-  stores.forEach(store => {
-    // SECURITY FIX: Ensure coordinates exist and are valid numbers before rendering
-    const lat = Number(store.lat);
-    const lng = Number(store.lng);
-    
-    // If the database row is missing coordinates, skip it so it doesn't crash the map
-    if (isNaN(lat) || isNaN(lng) || store.lat === null || store.lng === null || store.lat === '' || store.lng === '') {
-      return; 
-    }
-
-    if (!existingMarkersRef.current[store.id]) {
-      const el = document.createElement('div');
-      el.innerHTML = `<div style="background-color: #9ca3af; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`;
+    stores.forEach(store => {
+      const lat = Number(store.lat);
+      const lng = Number(store.lng);
       
-      const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
-        .setLngLat([lng, lat])
-        .addTo(map.current);
+      if (isNaN(lat) || isNaN(lng) || store.lat === null || store.lng === null || store.lat === '' || store.lng === '') {
+        return; 
+      }
 
-      const popup = new mapboxgl.Popup({ offset: 10, closeButton: false }).setText(store.store_name);
-      marker.setPopup(popup);
+      if (!existingMarkersRef.current[store.id]) {
+        const el = document.createElement('div');
+        el.innerHTML = `<div style="background-color: #9ca3af; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`;
+        
+        const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
+          .setLngLat([lng, lat])
+          .addTo(map.current);
 
-      existingMarkersRef.current[store.id] = marker;
-    }
-  });
+        const popup = new mapboxgl.Popup({ offset: 10, closeButton: false }).setText(store.store_name);
+        marker.setPopup(popup);
+
+        existingMarkersRef.current[store.id] = marker;
+      }
+    });
 
   }, [stores]);
 
-  // 4. NEW MULTI-TIER REGISTRATION LOGIC
+  // 4. MULTI-TIER REGISTRATION LOGIC
   const handleRegister = async (e) => {
     e.preventDefault();
     if (!formData.lat || !formData.lng) return alert("Please click on the map to set the store location!");
@@ -119,10 +116,21 @@ export default function RegisterPage() {
       });
       
       if (authError) throw new Error(authError.message);
+      if (!authData.user) throw new Error("Failed to create user account.");
       const userId = authData.user.id;
 
-      // Step B: Insert the Store into the `stores` table
-      // FIX: Removed 'email' as it is handled by Auth, and we only store business details here.
+      // Step B: INSERT USER INTO PUBLIC TABLE FIRST (Fixes Foreign Key Constraint!)
+      const { error: userError } = await supabase
+        .from('users')
+        .insert([{
+          id: userId,
+          email: formData.email,
+          role: 'merchant'
+        }]);
+
+      if (userError) throw new Error("Failed to create public user profile: " + userError.message);
+
+      // Step C: Insert the Store into the `stores` table
       const { data: storeData, error: storeError } = await supabase
         .from('stores')
         .insert([{
@@ -138,7 +146,7 @@ export default function RegisterPage() {
       if (storeError) throw new Error("Failed to create store: " + storeError.message);
       const newStoreId = storeData[0].id;
 
-      // Step C: Link the User to the Store in `store_operators` table
+      // Step D: Link the User to the Store in `store_operators` table
       const { error: operatorError } = await supabase
         .from('store_operators')
         .insert([{
