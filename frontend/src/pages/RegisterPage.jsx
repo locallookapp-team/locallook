@@ -4,7 +4,7 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { supabase } from '../supabaseClient';
 
-const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || '';
+const MAPBOX_TOKEN = (typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_MAPBOX_TOKEN : '') || '';
 if (MAPBOX_TOKEN) {
   mapboxgl.accessToken = MAPBOX_TOKEN;
 }
@@ -43,7 +43,7 @@ export default function RegisterPage() {
       map.current = new mapboxgl.Map({
         container: mapContainer.current,
         style: 'mapbox://styles/mapbox/streets-v12',
-        center: [121.9823, 12.3985], // Odiongan
+        center: [121.9823, 12.3985], 
         zoom: 15.5,
         pitch: 45, 
       });
@@ -72,7 +72,7 @@ export default function RegisterPage() {
     }
   }, []);
 
-  // 3. RENDER EXISTING STORE PINS (As gray reference dots)
+  // 3. RENDER EXISTING STORE PINS
   useEffect(() => {
     if (!map.current) return;
 
@@ -101,7 +101,7 @@ export default function RegisterPage() {
 
   }, [stores]);
 
-  // 4. MULTI-TIER REGISTRATION LOGIC
+  // 4. STRICT REGISTRATION LOGIC
   const handleRegister = async (e) => {
     e.preventDefault();
     if (!formData.lat || !formData.lng) return alert("Please click on the map to set the store location!");
@@ -119,7 +119,7 @@ export default function RegisterPage() {
       if (!authData.user) throw new Error("Failed to create user account.");
       const userId = authData.user.id;
 
-      // Step B: INSERT USER INTO PUBLIC TABLE FIRST (Fixes Foreign Key Constraint!)
+      // Step B: Strict INSERT into public users table
       const { error: userError } = await supabase
         .from('users')
         .insert([{
@@ -128,10 +128,12 @@ export default function RegisterPage() {
           role: 'merchant'
         }]);
 
-      if (userError) throw new Error("Failed to create public user profile: " + userError.message);
+      if (userError) {
+        throw new Error("Failed to create user profile. If you are testing, please use a BRAND NEW email! Error: " + userError.message);
+      }
 
-      // Step C: Insert the Store into the `stores` table
-      const { data: storeData, error: storeError } = await supabase
+      // Step C: Insert the Store directly into the `stores` table
+      const { error: storeError } = await supabase
         .from('stores')
         .insert([{
           store_name: formData.store_name,
@@ -140,22 +142,9 @@ export default function RegisterPage() {
           lng: formData.lng,
           owner_id: userId, 
           is_open: false 
-        }])
-        .select(); 
+        }]); 
 
       if (storeError) throw new Error("Failed to create store: " + storeError.message);
-      const newStoreId = storeData[0].id;
-
-      // Step D: Link the User to the Store in `store_operators` table
-      const { error: operatorError } = await supabase
-        .from('store_operators')
-        .insert([{
-          store_id: newStoreId,
-          user_id: userId,
-          role: 'merchant' // Tagging them as the highest level merchant
-        }]);
-
-      if (operatorError) throw new Error("Failed to link operator: " + operatorError.message);
 
       alert("Store successfully registered! You can now log in.");
       navigate('/login');
