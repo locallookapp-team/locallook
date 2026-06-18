@@ -2,16 +2,14 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
-const db = require('./db'); // Imports your database connection
+const db = require('./db'); 
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Middleware
-app.use(cors()); // Allows the future React frontend to talk to this API
-app.use(express.json()); // Allows the server to read JSON data
+app.use(cors()); 
+app.use(express.json()); 
 
-// A simple test route to verify the database
 app.get('/api/test', async (req, res) => {
   try {
     const result = await db.query('SELECT NOW()');
@@ -25,41 +23,57 @@ app.get('/api/test', async (req, res) => {
   }
 });
 
-// 1. ADD STORE: Updated to include email in the user table sync
+// 1. ADD STORE: Upgraded to use a Database Transaction and the new Junction Table
 app.post('/api/stores', async (req, res) => {
+  // We use a specific client from the pool to handle the Transaction (BEGIN/COMMIT)
+  const client = await db.connect();
+  
   try {
-    // Extract email along with the other form details
     const { store_name, store_category, lat, lng, owner_id, email } = req.body;
     
-    // Insert the newly authenticated user into our public.users table with their email
-    await db.query(`
+    await client.query('BEGIN'); // Start transaction
+
+    // 1. Ensure user exists
+    await client.query(`
       INSERT INTO users (id, email, role) 
       VALUES ($1, $2, 'merchant') 
       ON CONFLICT (id) DO NOTHING;
     `, [owner_id, email]);
 
-    // Insert the store data
-    const result = await db.query(`
+    // 2. Insert the store
+    // (We keep merchant_id here temporarily for backwards compatibility, but rely on operators table)
+    const storeResult = await client.query(`
       INSERT INTO stores (merchant_id, store_name, store_category, location, is_open, is_approved)
       VALUES ($1, $2, $3, ST_GeomFromText($4, 4326), true, true)
       RETURNING id, store_name;
     `, [owner_id, store_name, store_category, `POINT(${lng} ${lat})`]); 
+    
+    const newStoreId = storeResult.rows[0].id;
 
-    res.json(result.rows[0]);
+    // 3. NEW: Link the user to the store in the junction table
+    await client.query(`
+      INSERT INTO store_operators (store_id, user_id, role)
+      VALUES ($1, $2, 'merchant');
+    `, [newStoreId, owner_id]);
+
+    await client.query('COMMIT'); // Save all changes
+
+    res.json(storeResult.rows[0]);
   } catch (err) {
+    await client.query('ROLLBACK'); // Undo everything if any step failed
     console.error(err.message);
     res.status(500).send("Server Error");
+  } finally {
+    client.release(); // Return client to pool
   }
 });
 
-// ==========================================
-// STORE DATA ROUTES
-// ==========================================
-
-// 2a. GET ALL STORES: (This was missing! Feeds the public consumer map)
+// 2a. GET ALL STORES (Public Map)
 app.get('/api/stores', async (req, res) => {
   try {
-    const result = await db.query(`
+    const { minLng, minLat, maxLng, maxLat } = req.query;
+    
+    let query = `
       SELECT 
         id, 
         store_name, 
@@ -67,8 +81,17 @@ app.get('/api/stores', async (req, res) => {
         is_open, 
         ST_Y(location::geometry) AS lat, 
         ST_X(location::geometry) AS lng 
-      FROM stores;
-    `);
+      FROM stores
+    `;
+    
+    const queryParams = [];
+    
+    if (minLng && minLat && maxLng && maxLat) {
+      query += ` WHERE location && ST_MakeEnvelope($1, $2, $3, $4, 4326)`;
+      queryParams.push(minLng, minLat, maxLng, maxLat);
+    }
+
+    const result = await db.query(query, queryParams);
     res.json(result.rows);
   } catch (err) {
     console.error(err.message);
@@ -76,7 +99,7 @@ app.get('/api/stores', async (req, res) => {
   }
 });
 
-// 2b. GET A SPECIFIC STORE BY ID (For the Public Store Profile Page)
+// 2b. GET A SPECIFIC STORE BY ID 
 app.get('/api/stores/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -103,28 +126,36 @@ app.get('/api/stores/:id', async (req, res) => {
   }
 });
 
-// 3. GET SPECIFIC STORE: (For the Operator Dashboard)
+// 3. GET MERCHANT STORES: (Upgraded to handle MULTIPLE stores via JOIN)
 app.get('/api/merchant/store/:owner_id', async (req, res) => {
   try {
     const { owner_id } = req.params;
-    const result = await db.query(
-      `SELECT id, store_name, store_category, is_open, 
-       ST_Y(location::geometry) as lat, ST_X(location::geometry) as lng 
-       FROM stores WHERE merchant_id = $1 LIMIT 1`,
-      [owner_id]
-    );
     
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: "No store found for this operator." });
-    }
-    res.json(result.rows[0]);
+    // NEW: We join the tables and return an ARRAY of stores! No more LIMIT 1.
+    const result = await db.query(`
+      SELECT 
+        s.id, 
+        s.store_name, 
+        s.store_category, 
+        s.is_open, 
+        ST_Y(s.location::geometry) as lat, 
+        ST_X(s.location::geometry) as lng,
+        so.role
+      FROM stores s
+      JOIN store_operators so ON s.id = so.store_id
+      WHERE so.user_id = $1
+    `, [owner_id]);
+    
+    // Note: We now return the full array, so if they have 3 stores, they get 3 back.
+    // We will need to update the React frontend to map over an array instead of a single object.
+    res.json(result.rows);
   } catch (err) {
     console.error(err.message);
     res.status(500).send("Server Error");
   }
 });
 
-// 4. TOGGLE STORE STATUS: (Flip open/closed from the Dashboard)
+// 4. TOGGLE STORE STATUS
 app.patch('/api/stores/:id/toggle', async (req, res) => {
   try {
     const { id } = req.params;
@@ -142,13 +173,11 @@ app.patch('/api/stores/:id/toggle', async (req, res) => {
   }
 });
 
-// 5. ADD AN ITEM: (Upgraded to accept image_url)
+// 5. ADD AN ITEM
 app.post('/api/items', async (req, res) => {
   try {
-    // 1. Notice we added image_url here to catch the link from React
     const { store_id, item_name, description, price, image_url } = req.body;
     
-    // 2. Notice we added image_url and $5 to the SQL query
     const result = await db.query(`
       INSERT INTO items (store_id, item_name, description, price, image_url, is_available)
       VALUES ($1, $2, $3, $4, $5, true)
@@ -162,7 +191,7 @@ app.post('/api/items', async (req, res) => {
   }
 });
 
-// 6. GET STORE ITEMS: (For both Dashboard and Consumer Map)
+// 6. GET STORE ITEMS
 app.get('/api/stores/:store_id/items', async (req, res) => {
   try {
     const { store_id } = req.params;
@@ -178,13 +207,12 @@ app.get('/api/stores/:store_id/items', async (req, res) => {
   }
 });
 
-// 7. UNIFIED GLOBAL SEARCH: (Find items across all stores)
+// 7. UNIFIED GLOBAL SEARCH
 app.get('/api/search/items', async (req, res) => {
   try {
     const { q } = req.query;
     if (!q) return res.json([]);
 
-    // UPGRADED: Grabs is_open, and sorts OPEN stores to the top!
     const result = await db.query(`
       SELECT 
         items.id AS item_id, 

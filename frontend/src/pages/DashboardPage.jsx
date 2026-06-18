@@ -3,7 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 
 export default function DashboardPage() {
-  const [store, setStore] = useState(null);
+  const [stores, setStores] = useState([]); // NEW: Holds ALL assigned stores
+  const [activeStore, setActiveStore] = useState(null); // NEW: The currently selected store
+  
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState([]);
   
@@ -14,27 +16,41 @@ export default function DashboardPage() {
   const queryParams = new URLSearchParams(window.location.search);
   const ownerId = queryParams.get('user_id');
 
+  // 1. Fetch ALL stores the user has access to
   useEffect(() => {
     if (!ownerId) { navigate('/login'); return; }
     fetch(`https://locallook-api.onrender.com/api/merchant/store/${ownerId}`)
       .then(res => res.json())
-      .then(data => { setStore(data); setLoading(false); })
+      .then(data => { 
+        if (Array.isArray(data) && data.length > 0) {
+          setStores(data);
+          setActiveStore(data[0]); // Default to the first store in the list
+        }
+        setLoading(false); 
+      })
       .catch(() => setLoading(false));
   }, [ownerId, navigate]);
 
+  // 2. Fetch items whenever the ACTIVE store changes
   useEffect(() => {
-    if (store?.id) {
-      fetch(`https://locallook-api.onrender.com/api/stores/${store.id}/items`)
-        .then(res => res.json()).then(data => setItems(data));
+    if (activeStore?.id) {
+      fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}/items`)
+        .then(res => res.json())
+        .then(data => setItems(data));
     }
-  }, [store?.id]);
+  }, [activeStore?.id]);
 
   const toggleStoreStatus = async () => {
-    const nextStatus = !store.is_open;
-    const response = await fetch(`https://locallook-api.onrender.com/api/stores/${store.id}/toggle`, {
+    const nextStatus = !activeStore.is_open;
+    const response = await fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}/toggle`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_open: nextStatus })
     });
-    if (response.ok) setStore({ ...store, is_open: nextStatus });
+    
+    if (response.ok) {
+      // Update both the active store view AND the background array
+      setActiveStore({ ...activeStore, is_open: nextStatus });
+      setStores(stores.map(s => s.id === activeStore.id ? { ...s, is_open: nextStatus } : s));
+    }
   };
 
   const handleAddItem = async (e) => {
@@ -45,7 +61,7 @@ export default function DashboardPage() {
     if (newItem.imageFile) {
       const fileExt = newItem.imageFile.name.split('.').pop();
       const fileName = `${Math.random()}.${fileExt}`;
-      const filePath = `${store.id}/${fileName}`;
+      const filePath = `${activeStore.id}/${fileName}`;
 
       const { error: uploadError } = await supabase.storage.from('item-images').upload(filePath, newItem.imageFile);
       if (uploadError) {
@@ -59,7 +75,7 @@ export default function DashboardPage() {
 
     const response = await fetch('https://locallook-api.onrender.com/api/items', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ store_id: store.id, item_name: newItem.name, description: newItem.description, price: parseFloat(newItem.price), image_url: finalImageUrl })
+      body: JSON.stringify({ store_id: activeStore.id, item_name: newItem.name, description: newItem.description, price: parseFloat(newItem.price), image_url: finalImageUrl })
     });
     
     if (response.ok) {
@@ -71,7 +87,6 @@ export default function DashboardPage() {
     setIsUploading(false);
   };
 
-  // NEW: Secure sign out functionality
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate('/');
@@ -83,9 +98,10 @@ export default function DashboardPage() {
     </div>
   );
   
-  if (!store) return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#f3f4f6' }}>
-      <h3 style={{ color: '#ef4444' }}>No store linked to this account.</h3>
+  if (!activeStore) return (
+    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#f3f4f6', gap: '15px' }}>
+      <h3 style={{ color: '#ef4444', margin: 0 }}>No store linked to this account.</h3>
+      <button onClick={() => navigate('/register')} style={{ padding: '10px 20px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Register a Store</button>
     </div>
   );
 
@@ -122,19 +138,36 @@ export default function DashboardPage() {
           {/* Header Row: Title & Toggle */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '35px', flexWrap: 'wrap', gap: '20px' }}>
             <div>
-              <h1 style={{ margin: 0, fontSize: '32px', color: '#111827', fontWeight: '900' }}>{store.store_name}</h1>
+              {/* NEW: Store Dropdown Selector */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <select 
+                  value={activeStore.id} 
+                  onChange={(e) => setActiveStore(stores.find(s => s.id === e.target.value))}
+                  style={{ margin: 0, fontSize: '32px', color: '#111827', fontWeight: '900', border: 'none', backgroundColor: 'transparent', outline: 'none', cursor: 'pointer', padding: 0 }}
+                >
+                  {stores.map(s => (
+                    <option key={s.id} value={s.id}>{s.store_name}</option>
+                  ))}
+                </select>
+                
+                {/* Dynamic Role Badge */}
+                <span style={{ fontSize: '11px', fontWeight: '900', letterSpacing: '0.5px', padding: '4px 8px', borderRadius: '8px', backgroundColor: activeStore.role === 'merchant' ? '#dbeafe' : '#f3f4f6', color: activeStore.role === 'merchant' ? '#1d4ed8' : '#4b5563' }}>
+                  {activeStore.role === 'merchant' ? 'OWNER' : 'STAFF'}
+                </span>
+              </div>
+
               <p style={{ margin: '5px 0 0 0', color: '#6b7280', fontSize: '15px' }}>Manage your menu and store availability.</p>
             </div>
             
             {/* Smooth Animated Toggle Switch */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '15px', backgroundColor: 'white', padding: '12px 20px', borderRadius: '50px', boxShadow: '0 4px 15px rgba(0,0,0,0.05)', border: '1px solid #e5e7eb' }}>
-              <span style={{ fontWeight: '800', fontSize: '14px', color: store.is_open ? '#10b981' : '#9ca3af', transition: 'color 0.3s' }}>OPEN</span>
+              <span style={{ fontWeight: '800', fontSize: '14px', color: activeStore.is_open ? '#10b981' : '#9ca3af', transition: 'color 0.3s' }}>OPEN</span>
               
-              <div onClick={toggleStoreStatus} style={{ width: '64px', height: '32px', backgroundColor: store.is_open ? '#10b981' : '#d1d5db', borderRadius: '32px', padding: '4px', cursor: 'pointer', transition: 'background-color 0.3s', boxSizing: 'border-box' }}>
-                <div style={{ width: '24px', height: '24px', backgroundColor: 'white', borderRadius: '50%', transform: store.is_open ? 'translateX(32px)' : 'translateX(0)', transition: 'transform 0.3s cubic-bezier(0.4, 0.0, 0.2, 1)', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }} />
+              <div onClick={toggleStoreStatus} style={{ width: '64px', height: '32px', backgroundColor: activeStore.is_open ? '#10b981' : '#d1d5db', borderRadius: '32px', padding: '4px', cursor: 'pointer', transition: 'background-color 0.3s', boxSizing: 'border-box' }}>
+                <div style={{ width: '24px', height: '24px', backgroundColor: 'white', borderRadius: '50%', transform: activeStore.is_open ? 'translateX(32px)' : 'translateX(0)', transition: 'transform 0.3s cubic-bezier(0.4, 0.0, 0.2, 1)', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }} />
               </div>
               
-              <span style={{ fontWeight: '800', fontSize: '14px', color: !store.is_open ? '#ef4444' : '#9ca3af', transition: 'color 0.3s' }}>CLOSED</span>
+              <span style={{ fontWeight: '800', fontSize: '14px', color: !activeStore.is_open ? '#ef4444' : '#9ca3af', transition: 'color 0.3s' }}>CLOSED</span>
             </div>
           </div>
 

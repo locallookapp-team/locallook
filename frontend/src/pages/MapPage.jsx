@@ -4,7 +4,7 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { supabase } from '../supabaseClient';
 
-const MAPBOX_TOKEN = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_MAPBOX_TOKEN) || '';
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || '';
 if (MAPBOX_TOKEN) {
   mapboxgl.accessToken = MAPBOX_TOKEN;
 }
@@ -42,7 +42,7 @@ const makeSvgString = (category, isOpen) => {
 const PULSING_DOT_HTML = `
   <div class="user-location-marker">
     <div class="ground-layer">
-      <!-- Shadow is native WebGL now, pulse and cone remain HTML -->
+      <!-- Ground elements dynamically scale but with strict minimum and maximum limits -->
       <div class="pulse-ring"></div>
       <div id="user-view-cone" class="view-cone"></div>
     </div>
@@ -88,26 +88,29 @@ export default function MapPage() {
   const updateMarkerVisuals = () => {
     if (!map.current || !userMarkerRef.current) return;
 
-    // 1. Calculate precise map zoom scale (Models scale exponentially by power of 2)
     const currentZoom = map.current.getZoom();
+    
+    // 1. PIN HEIGHT SCALING (Using EXACT base 2 to match WebGL 3D Model scaling)
+    // This perfectly locks the pin above the head no matter how far you zoom in
     const zoomScale = Math.pow(2, currentZoom - 16.5);
     
-    // 2. Scale the Ground Layer (Pulse and Cone) dynamically
-    // Prevent the pulse from becoming microscopic or absurdly huge
-    const groundScale = Math.max(0.4, Math.min(2.5, zoomScale));
+    // Lowered the base height to 60px so it sits much closer to the head
+    let pinHeight = 60 * zoomScale;
     
-    // 3. Scale the Hover Height of the Pin
-    // Matches the height of the 3D model exactly so it doesn't sink or fly away
-    let pinHeight = 55 * zoomScale;
-    pinHeight = Math.max(15, Math.min(200, pinHeight)); // Safe boundaries
+    // Strict clamp: Min 25px so it hugs the head beautifully when zoomed out
+    pinHeight = Math.max(25, pinHeight); 
 
-    // 4. Apply to DOM
+    // 2. GROUND LAYER SCALING (Pulse & Cone)
+    // Scales dynamically, but safely locked between 0.6x and 2.5x original size
+    const groundScale = Math.max(0.6, Math.min(2.5, zoomScale));
+
     const el = userMarkerRef.current.getElement();
-    const groundEl = el.querySelector('.ground-layer');
-    if (groundEl) groundEl.style.setProperty('--ground-scale', groundScale);
     
     const pinEl = el.querySelector('.user-pin');
     if (pinEl) pinEl.style.setProperty('--hover-dist', `${pinHeight}px`);
+
+    const groundEl = el.querySelector('.ground-layer');
+    if (groundEl) groundEl.style.setProperty('--ground-scale', groundScale);
   };
 
   const updateUserLocation = (lng, lat, heading = null) => {
@@ -116,7 +119,6 @@ export default function MapPage() {
     userCoordsRef.current = [lng, lat];
     if (heading !== null) userHeadingRef.current = heading;
 
-    // Handle initial marker creation
     if (!userMarkerRef.current && map.current) {
       const el = document.createElement('div');
       el.style.width = '0px'; el.style.height = '0px'; el.style.position = 'relative';
@@ -135,10 +137,8 @@ export default function MapPage() {
       userMarkerRef.current.setLngLat([lng, lat]);
     }
 
-    // Trigger visual scale recalculations
     updateMarkerVisuals();
 
-    // Rotate View Cone relative to map camera
     const cone = document.getElementById('user-view-cone');
     if (cone && map.current) {
       cone.style.display = 'block'; 
@@ -147,7 +147,6 @@ export default function MapPage() {
       cone.style.transform = `rotate(${visualRotation}deg)`;
     }
 
-    // Update 3D Model position & rotation
     if (map.current && map.current.getSource('user-3d-source')) {
       map.current.getSource('user-3d-source').setData({
         type: 'FeatureCollection',
@@ -174,13 +173,11 @@ export default function MapPage() {
 
     map.current.addControl(new mapboxgl.NavigationControl({ showZoom: false, visualizePitch: true }), 'bottom-left');
 
-    // Attach dynamic rescaling engine to camera movement
     map.current.on('rotate', () => {
       if(userCoordsRef.current[0] !== 0) updateUserLocation(userCoordsRef.current[0], userCoordsRef.current[1]);
     });
     map.current.on('zoom', updateMarkerVisuals);
     
-    // Close CSS popup when clicking map
     map.current.on('click', () => {
       document.querySelectorAll('.user-pin.show-popup').forEach(el => el.classList.remove('show-popup'));
     });
@@ -199,8 +196,7 @@ export default function MapPage() {
         data: { type: 'FeatureCollection', features: [] }
       });
 
-      // 1. Native WebGL Ground Shadow
-      // Renders BEFORE the model so it sits flatly on the street, preventing overlaps
+      // Shadow size strictly decreased to hug the feet closely
       map.current.addLayer({
         id: 'user-shadow-layer',
         type: 'circle',
@@ -208,22 +204,21 @@ export default function MapPage() {
         paint: {
           'circle-color': '#000000',
           'circle-opacity': 0.35,
-          'circle-blur': 0.9, // Nice soft shadow
+          'circle-blur': 0.9,
           'circle-pitch-alignment': 'map', 
-          'circle-pitch-scale': 'map', // Strictly glued to pavement
+          'circle-pitch-scale': 'map', 
           'circle-radius': [
             'interpolate', ['exponential', 2], ['zoom'],
-            14, 1.5,
-            16.5, 6,    // Base size
-            19, 34,     // Scales up cleanly instead of turning into a dot
-            22, 270 
+            14, 0.1,
+            16.5, 0.6,    // Tighter base size
+            19, 3,       
+            22, 24        // Decreased max size so it doesn't sprawl out
           ]
         }
       });
 
       map.current.addModel('custom-user-model', '/user-model.glb');
 
-      // 2. Native WebGL 3D Model
       map.current.addLayer({
         id: 'user-3d-layer',
         type: 'model',
@@ -506,11 +501,10 @@ export default function MapPage() {
           bottom: 0; left: 50%; 
           cursor: pointer;
           pointer-events: auto;
-          --hover-dist: 55px; 
+          --hover-dist: 80px; 
           transform: translate(-50%, calc(-1 * var(--hover-dist)));
           animation: pin-bounce 2s infinite cubic-bezier(0.4, 0, 0.2, 1);
           z-index: 15;
-          /* Lightning fast transition creates buttery smooth scale anchoring while zooming */
           transition: transform 0.05s ease-out; 
         }
 
@@ -523,7 +517,6 @@ export default function MapPage() {
           50% { transform: translate(-50%, calc(-1 * var(--hover-dist) - 8px)); }
         }
 
-        /* Interactive Click Popup */
         .user-pin-popup {
           position: absolute;
           bottom: 100%; 
@@ -559,7 +552,6 @@ export default function MapPage() {
           transform: translateX(-50%) translateY(-6px);
         }
 
-        /* Dynamically Scaled Ground Layer */
         .ground-layer {
           position: absolute; top: 0; left: 0;
           --ground-scale: 1;
@@ -569,8 +561,8 @@ export default function MapPage() {
         }
         
         .pulse-ring { 
-          position: absolute; top: -20px; left: -20px; 
-          width: 40px; height: 40px; 
+          position: absolute; top: -60px; left: -60px; 
+          width: 120px; height: 120px; 
           background-color: rgba(59, 130, 246, 0.2); 
           border: 1.5px solid rgba(59, 130, 246, 0.6); 
           border-radius: 50%; 
@@ -579,8 +571,8 @@ export default function MapPage() {
 
         .view-cone {
           position: absolute; 
-          top: -50px; left: -50px; 
-          width: 100px; height: 100px;
+          top: -60px; left: -60px; 
+          width: 120px; height: 120px;
           border-radius: 50%;
           background: conic-gradient(from 330deg, transparent 0, rgba(37, 99, 235, 0.4) 30deg, transparent 60deg);
           transform-origin: center center;
@@ -588,14 +580,13 @@ export default function MapPage() {
         }
 
         @keyframes ground-pulse { 
-          0% { transform: scale(0.3); opacity: 1; } 
-          100% { transform: scale(3.5); opacity: 0; } 
+          0% { transform: scale(0.01); opacity: 0.8; } 
+          100% { transform: scale(1); opacity: 0; } 
         }
       `}</style>
 
       <div ref={mapContainer} style={{ position: 'absolute', inset: 0, zIndex: 0 }} />
 
-      {/* Locate Me Button */}
       <div style={{ position: 'absolute', bottom: '40px', right: '15px', zIndex: 1000 }}>
         <button onClick={handleLocateMe} disabled={isLocating} style={{ width: '50px', height: '50px', backgroundColor: 'white', borderRadius: '50%', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', transition: 'transform 0.1s' }} onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.95)'} onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}>
           {isLocating ? (
@@ -606,7 +597,6 @@ export default function MapPage() {
         </button>
       </div>
 
-      {/* Hamburger Menu */}
       <div style={{ position: 'absolute', top: '15px', left: '15px', zIndex: 2000 }}>
         <button onClick={() => setSidebarOpen(true)} style={{ width: '45px', height: '45px', backgroundColor: 'white', borderRadius: '50%', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', cursor: 'pointer', fontSize: '20px', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#1f2937', transition: 'transform 0.1s' }}>☰</button>
       </div>
@@ -628,7 +618,6 @@ export default function MapPage() {
         </>
       )}
 
-      {/* Mobile-first Search Container */}
       <div style={{ position: 'absolute', top: '15px', left: '50%', transform: 'translateX(-50%)', width: 'calc(100% - 140px)', maxWidth: '500px', zIndex: 1000, display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <div style={{ position: 'relative' }}>
           <div style={{ backgroundColor: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(10px)', borderRadius: '16px', padding: '10px 15px', display: 'flex', alignItems: 'center', boxShadow: '0 4px 20px rgba(0,0,0,0.1)' }}>
