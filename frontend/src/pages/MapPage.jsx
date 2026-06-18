@@ -42,12 +42,10 @@ const makeSvgString = (category, isOpen) => {
 const PULSING_DOT_HTML = `
   <div class="user-location-marker">
     <div class="ground-layer">
-      <!-- Ground elements dynamically scale but with strict minimum and maximum limits -->
       <div class="pulse-ring"></div>
       <div id="user-view-cone" class="view-cone"></div>
     </div>
 
-    <!-- Interactive pin -->
     <div class="user-pin">
       <div class="user-pin-popup">You are here</div>
       <svg xmlns="http://www.w3.org/2000/svg" width="36" height="45" viewBox="0 0 28 36">
@@ -239,7 +237,7 @@ export default function MapPage() {
             map.current?.jumpTo({ center: [position.coords.longitude, position.coords.latitude], zoom: 16.5 });
           },
           () => console.log("Silent auto-locate failed."),
-          { enableHighAccuracy: false, timeout: 5000, maximumAge: 60000 }
+          { enableHighAccuracy: false, timeout: 5000, maximumAge: 0 } // Changed to 0 for absolute precision
         );
       }
     });
@@ -610,9 +608,9 @@ export default function MapPage() {
               <button onClick={() => setSidebarOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: '28px', cursor: 'pointer', color: '#6b7280', padding: '0 5px' }}>×</button>
             </div>
             <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-              <div style={{ fontSize: '12px', color: '#9ca3af', fontWeight: 'bold', letterSpacing: '1px', marginBottom: '5px' }}>MERCHANT PORTAL</div>
-              <button onClick={() => navigate('/login')} style={{ width: '100%', padding: '15px', textAlign: 'left', backgroundColor: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '12px', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '12px', color: '#374151' }}>🔑 Operator Login</button>
-              <button onClick={() => navigate('/register')} style={{ width: '100%', padding: '15px', textAlign: 'left', backgroundColor: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '12px', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '12px', color: '#374151' }}>🏪 Register a Store</button>
+              <div style={{ fontSize: '12px', color: '#9ca3af', fontWeight: 'bold', letterSpacing: '1px', marginBottom: '5px' }}>BUSINESS PORTAL</div>
+              <button onClick={() => navigate('/login')} style={{ width: '100%', padding: '15px', textAlign: 'left', backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '12px', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '12px', color: '#1d4ed8' }}>🔑 Partner & Staff Login</button>
+              <button onClick={() => navigate('/register')} style={{ width: '100%', padding: '15px', textAlign: 'left', backgroundColor: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '12px', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '12px', color: '#374151' }}>🏪 Register a Business</button>
             </div>
           </div>
         </>

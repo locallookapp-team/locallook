@@ -148,28 +148,38 @@ app.get('/api/stores', async (req, res) => {
   }
 });
 
+// ==========================================
+// UPGRADED STORE AND ITEM ROUTES
+// ==========================================
+
+// UPGRADED: Get single store (Now includes theme_settings)
 app.get('/api/stores/:id', async (req, res) => {
   try {
-    const result = await db.query(`SELECT id, store_name, store_category, is_open, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng FROM stores WHERE id = $1;`, [req.params.id]);
+    const result = await db.query(`
+      SELECT id, store_name, store_category, is_open, theme_settings, 
+      ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng 
+      FROM stores WHERE id = $1;
+    `, [req.params.id]);
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).send("Server Error");
   }
 });
 
-app.patch('/api/stores/:id/toggle', async (req, res) => {
+// NEW: Endpoint specifically for merchants to save custom themes
+app.patch('/api/stores/:id/theme', async (req, res) => {
   try {
-    const result = await db.query('UPDATE stores SET is_open = $1 WHERE id = $2 RETURNING id, is_open', [req.body.is_open, req.params.id]);
-    res.json(result.rows[0]);
-  } catch (err) {
-    res.status(500).send("Server Error");
-  }
-});
+    const { theme_settings } = req.body;
+    
+    // Simple backend validation to ensure they pass an object
+    if (typeof theme_settings !== 'object') {
+      return res.status(400).json({ error: "Invalid theme format" });
+    }
 
-app.post('/api/items', async (req, res) => {
-  try {
-    const { store_id, item_name, description, price, image_url } = req.body;
-    const result = await db.query(`INSERT INTO items (store_id, item_name, description, price, image_url, is_available) VALUES ($1, $2, $3, $4, $5, true) RETURNING *;`, [store_id, item_name, description, price, image_url]); 
+    const result = await db.query(`
+      UPDATE stores SET theme_settings = $1 WHERE id = $2 RETURNING id, theme_settings
+    `, [theme_settings, req.params.id]);
+    
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).send("Server Error");
@@ -190,6 +200,33 @@ app.get('/api/search/items', async (req, res) => {
     if (!req.query.q) return res.json([]);
     const result = await db.query(`SELECT items.id AS item_id, items.item_name, items.price, stores.id AS store_id, stores.store_name, stores.is_open FROM items JOIN stores ON items.store_id = stores.id WHERE items.item_name ILIKE $1 ORDER BY stores.is_open DESC, items.item_name ASC LIMIT 10;`, [`%${req.query.q}%`]);
     res.json(result.rows);
+  } catch (err) {
+    res.status(500).send("Server Error");
+  }
+});
+
+// RESTORED: Toggle Store Open/Close
+app.patch('/api/stores/:id/toggle', async (req, res) => {
+  try {
+    const result = await db.query('UPDATE stores SET is_open = $1 WHERE id = $2 RETURNING id, is_open', [req.body.is_open, req.params.id]);
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).send("Server Error");
+  }
+});
+
+// UPGRADED: Add Item (Now accepts item_category)
+app.post('/api/items', async (req, res) => {
+  try {
+    const { store_id, item_name, description, price, image_url, item_category } = req.body;
+    
+    const result = await db.query(`
+      INSERT INTO items (store_id, item_name, description, price, image_url, item_category, is_available) 
+      VALUES ($1, $2, $3, $4, $5, COALESCE($6, 'General'), true) 
+      RETURNING *;
+    `, [store_id, item_name, description, price, image_url, item_category]); 
+    
+    res.json(result.rows[0]);
   } catch (err) {
     res.status(500).send("Server Error");
   }
