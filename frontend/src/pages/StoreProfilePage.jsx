@@ -4,6 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 export default function StoreProfilePage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  
   const [store, setStore] = useState(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -41,11 +42,24 @@ export default function StoreProfilePage() {
     </div>
   );
 
+  // --- THEME & CATEGORY LOGIC ---
+  const theme = store.theme_settings || { primaryColor: '#3b82f6', layout: 'grid' };
+  const brandColor = theme.primaryColor || '#3b82f6';
+  const isGrid = theme.layout !== 'list';
+
+  // Automatically group items by their custom categories
+  const groupedItems = items.reduce((acc, item) => {
+    const category = item.item_category || 'General';
+    if (!acc[category]) acc[category] = [];
+    acc[category].push(item);
+    return acc;
+  }, {});
+
   return (
-    <div style={{ backgroundColor: '#f3f4f6', minHeight: '100vh', fontFamily: 'sans-serif', paddingBottom: '40px' }}>
+    <div style={{ backgroundColor: '#f3f4f6', minHeight: '100vh', fontFamily: 'sans-serif', paddingBottom: '60px' }}>
       
-      {/* HEADER HERO SECTION */}
-      <div style={{ position: 'relative', height: '220px', background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+      {/* HEADER HERO SECTION (Uses custom brand color) */}
+      <div style={{ position: 'relative', height: '220px', backgroundColor: brandColor, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', transition: 'background-color 0.3s' }}>
         <div style={{ padding: '20px' }}>
           <button onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', backgroundColor: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(10px)', color: 'white', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '20px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', transition: 'background 0.2s' }}>
             ← Back to Map
@@ -70,9 +84,8 @@ export default function StoreProfilePage() {
         </div>
       </div>
 
-      {/* MENU SECTION */}
+      {/* DYNAMIC MENU SECTION */}
       <div style={{ maxWidth: '800px', margin: '40px auto 0', padding: '0 20px' }}>
-        <h2 style={{ margin: '0 0 20px 0', fontSize: '22px', color: '#1f2937', fontWeight: '800' }}>Menu & Items</h2>
         
         {items.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '50px 20px', backgroundColor: 'white', borderRadius: '20px', border: '2px dashed #e5e7eb' }}>
@@ -80,26 +93,82 @@ export default function StoreProfilePage() {
             <p style={{ margin: 0, color: '#6b7280', fontWeight: '500' }}>This store hasn't posted any items yet.</p>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '20px' }}>
-            {items.map(item => (
-              <div key={item.id} style={{ backgroundColor: 'white', borderRadius: '20px', boxShadow: '0 4px 15px rgba(0,0,0,0.04)', overflow: 'hidden', border: '1px solid rgba(0,0,0,0.04)', display: 'flex', flexDirection: 'column' }}>
+          <div>
+            {Object.keys(groupedItems).map((category, index) => (
+              <div key={category} style={{ marginBottom: '40px' }}>
                 
-                {/* NEW: THE IMAGE HERO BANNER FOR EACH ITEM */}
-                {item.image_url ? (
-                  <div style={{ width: '100%', height: '180px', backgroundImage: `url(${item.image_url})`, backgroundSize: 'cover', backgroundPosition: 'center' }} />
-                ) : null}
+                {/* Category Header (Uses brand color for accent line) */}
+                <h2 style={{ margin: '0 0 20px 0', fontSize: '22px', color: '#1f2937', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '15px' }}>
+                  {category}
+                  <div style={{ flexGrow: 1, height: '2px', backgroundColor: brandColor, opacity: 0.2, borderRadius: '2px' }}></div>
+                </h2>
 
-                {/* ITEM DETAILS */}
-                <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', flexGrow: 1, justifyContent: 'space-between' }}>
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px', gap: '10px' }}>
-                      <h3 style={{ margin: 0, fontSize: '18px', color: '#1f2937', fontWeight: '700', lineHeight: '1.2' }}>{item.item_name}</h3>
-                      <span style={{ fontSize: '16px', fontWeight: '800', color: '#2563eb', backgroundColor: '#eff6ff', padding: '6px 12px', borderRadius: '12px', whiteSpace: 'nowrap' }}>₱{parseFloat(item.price).toFixed(2)}</span>
+                {/* DYNAMIC LAYOUT: Switches based on merchant preference */}
+                <div style={{ 
+                  display: isGrid ? 'grid' : 'flex', 
+                  gridTemplateColumns: isGrid ? 'repeat(auto-fill, minmax(300px, 1fr))' : 'none', 
+                  flexDirection: isGrid ? 'row' : 'column',
+                  gap: '20px' 
+                }}>
+                  {groupedItems[category].map(item => (
+                    <div key={item.id} style={{ 
+                      backgroundColor: 'white', 
+                      borderRadius: '16px', 
+                      boxShadow: '0 4px 15px rgba(0,0,0,0.04)', 
+                      border: '1px solid rgba(0,0,0,0.04)', 
+                      display: 'flex', 
+                      flexDirection: isGrid ? 'column' : 'row', 
+                      overflow: 'hidden',
+                      alignItems: isGrid ? 'stretch' : 'center',
+                      padding: isGrid ? '0' : '15px',
+                      gap: isGrid ? '0' : '20px'
+                    }}>
+                      
+                      {/* NEW: Locked 4:3 Image Rendering for both Grid and List */}
+                      {item.image_url ? (
+                        <div style={{ 
+                          width: isGrid ? '100%' : '120px', 
+                          height: isGrid ? 'auto' : '90px', 
+                          aspectRatio: isGrid ? '4/3' : 'auto', /* Locks the grid banner perfectly to 4:3 */
+                          minWidth: isGrid ? 'auto' : '120px',
+                          backgroundImage: `url(${item.image_url})`, 
+                          backgroundSize: 'cover', 
+                          backgroundPosition: 'center',
+                          borderRadius: isGrid ? '0' : '8px'
+                        }} />
+                      ) : (
+                        /* Smart 4:3 Placeholder */
+                        <div style={{ 
+                          width: isGrid ? '100%' : '120px', 
+                          height: isGrid ? 'auto' : '90px', 
+                          aspectRatio: isGrid ? '4/3' : 'auto', 
+                          minWidth: isGrid ? 'auto' : '120px', 
+                          backgroundColor: '#f3f4f6', 
+                          borderRadius: isGrid ? '0' : '8px', 
+                          display: 'flex', 
+                          justifyContent: 'center', 
+                          alignItems: 'center', 
+                          fontSize: '30px' 
+                        }}>
+                          🍽️
+                        </div>
+                      )}
+
+                      {/* Text Content */}
+                      <div style={{ padding: isGrid ? '20px' : '0', display: 'flex', flexDirection: 'column', flexGrow: 1, justifyContent: 'center' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px', gap: '10px' }}>
+                          <h3 style={{ margin: 0, fontSize: '17px', color: '#1f2937', fontWeight: '700', lineHeight: '1.2' }}>{item.item_name}</h3>
+                          
+                          {/* Price Tag (Uses brand color) */}
+                          <span style={{ fontSize: '15px', fontWeight: '800', color: brandColor, backgroundColor: `${brandColor}15`, padding: '4px 10px', borderRadius: '10px', whiteSpace: 'nowrap' }}>
+                            ₱{parseFloat(item.price).toFixed(2)}
+                          </span>
+                        </div>
+                        {item.description && <p style={{ margin: 0, color: '#6b7280', fontSize: '14px', lineHeight: '1.5' }}>{item.description}</p>}
+                      </div>
                     </div>
-                    {item.description && <p style={{ margin: 0, color: '#6b7280', fontSize: '14px', lineHeight: '1.5' }}>{item.description}</p>}
-                  </div>
+                  ))}
                 </div>
-
               </div>
             ))}
           </div>
