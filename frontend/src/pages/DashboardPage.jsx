@@ -29,7 +29,6 @@ const getCroppedImg = async (imageSrc, pixelCrop) => {
 
   if (!ctx) return null;
 
-  // Set canvas to the exact cropped dimensions
   canvas.width = pixelCrop.width;
   canvas.height = pixelCrop.height;
 
@@ -48,7 +47,6 @@ const getCroppedImg = async (imageSrc, pixelCrop) => {
   return new Promise((resolve) => {
     canvas.toBlob((file) => {
       if (file) {
-        // Create a proper File object from the Blob
         resolve(new File([file], "cropped-image.jpg", { type: "image/jpeg" }));
       }
     }, 'image/jpeg', 0.9);
@@ -63,9 +61,11 @@ export default function DashboardPage() {
   
   // Core State
   const [user, setUser] = useState(null);
+  const [displayName, setDisplayName] = useState(''); 
   const [stores, setStores] = useState([]);
   const [activeStore, setActiveStore] = useState(null);
   const [items, setItems] = useState([]);
+  const [storeOperators, setStoreOperators] = useState([]); // NEW: Operators state
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('dashboard'); 
 
@@ -84,8 +84,11 @@ export default function DashboardPage() {
   const [storeTheme, setStoreTheme] = useState({ primaryColor: '#3b82f6', layout: 'grid' });
   const [isSavingTheme, setIsSavingTheme] = useState(false);
 
+  // Invite State
   const [inviteEmail, setInviteEmail] = useState('');
   const [isInviting, setIsInviting] = useState(false);
+  const [inviteMessage, setInviteMessage] = useState(null);
+
   const [newStoreData, setNewStoreData] = useState({ store_name: '', store_category: 'Food & Dining', lat: '', lng: '' });
 
   // Mapbox Refs
@@ -101,8 +104,17 @@ export default function DashboardPage() {
         navigate('/login');
         return;
       }
-      setUser(session.user);
-      fetchStores(session.user.id);
+      
+      const currentUser = session.user;
+      setUser(currentUser);
+      
+      const nameToDisplay = 
+        currentUser.user_metadata?.full_name || 
+        currentUser.user_metadata?.name || 
+        currentUser.email;
+      setDisplayName(nameToDisplay);
+
+      fetchStores(currentUser.id);
     };
     initDashboard();
   }, [navigate]);
@@ -122,7 +134,7 @@ export default function DashboardPage() {
     }
   };
 
-  // 2. FETCH ITEMS AND THEME WHEN ACTIVE STORE CHANGES
+  // 2. FETCH ITEMS, THEME, & OPERATORS WHEN ACTIVE STORE CHANGES
   useEffect(() => {
     if (activeStore?.id) {
       fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}`)
@@ -134,6 +146,12 @@ export default function DashboardPage() {
         .then(res => res.json())
         .then(data => setItems(data))
         .catch(err => console.error(err));
+
+      // NEW: Fetch Operators/Invites for this store
+      fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}/operators`)
+        .then(res => res.ok ? res.json() : [])
+        .then(data => setStoreOperators(data))
+        .catch(err => console.error("Failed to fetch operators", err));
     }
   }, [activeStore?.id]);
 
@@ -182,9 +200,8 @@ export default function DashboardPage() {
       const reader = new FileReader();
       reader.readAsDataURL(e.target.files[0]);
       reader.onload = () => {
-        setImageToCrop(reader.result); // This opens the modal
+        setImageToCrop(reader.result); 
       };
-      // Reset input value so the user can select the same file again if they cancel
       e.target.value = null; 
     }
   };
@@ -198,7 +215,7 @@ export default function DashboardPage() {
       const croppedFile = await getCroppedImg(imageToCrop, croppedAreaPixels);
       setNewItem({ ...newItem, imageFile: croppedFile });
       setCroppedPreview(URL.createObjectURL(croppedFile));
-      setImageToCrop(null); // Close modal
+      setImageToCrop(null); 
     } catch (e) {
       alert("Error cropping image");
       console.error(e);
@@ -275,7 +292,6 @@ export default function DashboardPage() {
     if (response.ok) {
       const addedItem = await response.json();
       setItems([addedItem, ...items]);
-      // Reset form entirely
       setNewItem({ name: '', description: '', price: '', category: 'General', imageFile: null });
       setCroppedPreview(null);
     }
@@ -285,18 +301,25 @@ export default function DashboardPage() {
   const handleInviteOperator = async (e) => {
     e.preventDefault();
     setIsInviting(true);
+    setInviteMessage(null); 
     try {
       const response = await fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}/invite`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: inviteEmail, requester_id: user.id })
       });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error);
-      alert("Invite sent securely! The operator can now log in.");
-      setInviteEmail('');
+      if (!response.ok) throw new Error(data.error || "Failed to invite operator");
+      
+      setInviteMessage({ type: 'success', text: 'Invite sent successfully!' });
+      
+      // Add the new pending operator to the list immediately for UX
+      setStoreOperators([...storeOperators, { email: inviteEmail, status: 'pending' }]);
+      setInviteEmail(''); 
+      
     } catch (err) {
-      alert("Failed to invite operator: " + err.message);
+      setInviteMessage({ type: 'error', text: err.message });
     } finally {
       setIsInviting(false);
+      setTimeout(() => setInviteMessage(null), 6000);
     }
   };
 
@@ -334,7 +357,7 @@ export default function DashboardPage() {
               image={imageToCrop}
               crop={crop}
               zoom={zoom}
-              aspect={4 / 3} // Locked exactly to 4:3 landscape!
+              aspect={4 / 3} 
               onCropChange={setCrop}
               onCropComplete={onCropComplete}
               onZoomChange={setZoom}
@@ -355,23 +378,49 @@ export default function DashboardPage() {
       {/* 1. SIDEBAR */}
       <div style={{ width: '280px', backgroundColor: '#1f2937', color: 'white', display: 'flex', flexDirection: 'column', boxShadow: '4px 0 15px rgba(0,0,0,0.1)', zIndex: 10 }}>
         <div style={{ padding: '25px 20px', borderBottom: '1px solid #374151' }}>
-          <h2 style={{ margin: 0, fontSize: '24px', color: '#3b82f6', fontWeight: '900' }}>LocalLook</h2>
+          <h2 style={{ margin: '0', fontSize: '24px', color: '#3b82f6', fontWeight: '900' }}>LocalLook</h2>
           <span style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 'bold', letterSpacing: '2px' }}>MERCHANT HUB</span>
+          
+          <div style={{ marginTop: '20px', display: 'flex', alignItems: 'center', gap: '12px', backgroundColor: '#374151', padding: '10px', borderRadius: '8px' }}>
+            <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#60a5fa', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#1e3a8a', fontWeight: '900', fontSize: '16px' }}>
+              {displayName ? displayName.charAt(0).toUpperCase() : '?'}
+            </div>
+            <div style={{ overflow: 'hidden' }}>
+              <div style={{ fontSize: '14px', color: '#f3f4f6', fontWeight: 'bold', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+                {displayName}
+              </div>
+              <div style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 'bold', letterSpacing: '0.5px' }}>
+                {activeStore ? activeStore.role.toUpperCase() : 'MERCHANT'}
+              </div>
+            </div>
+          </div>
         </div>
         
         <div style={{ flexGrow: 1, padding: '20px 15px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#6b7280', marginBottom: '5px', paddingLeft: '5px' }}>YOUR LOCATIONS</div>
+          <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#6b7280', marginBottom: '5px', paddingLeft: '5px' }}>YOUR STORES</div>
           
           {stores.map(s => (
             <button 
               key={s.id} 
               onClick={() => { setActiveStore(s); setView('dashboard'); }}
-              style={{ width: '100%', padding: '12px 15px', backgroundColor: activeStore?.id === s.id && view === 'dashboard' ? '#374151' : 'transparent', color: 'white', border: 'none', borderRadius: '8px', textAlign: 'left', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+              style={{ 
+                width: '100%', 
+                padding: '12px 15px', 
+                backgroundColor: activeStore?.id === s.id && view === 'dashboard' ? '#374151' : 'transparent', 
+                color: 'white', 
+                border: 'none', 
+                borderRadius: '8px', 
+                textAlign: 'left', 
+                fontWeight: 'bold', 
+                fontSize: '14px', 
+                cursor: 'pointer', 
+                display: 'block', 
+                whiteSpace: 'nowrap', 
+                overflow: 'hidden', 
+                textOverflow: 'ellipsis' 
+              }}
             >
-              <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px' }}>{s.store_name}</span>
-              <span style={{ fontSize: '10px', padding: '3px 6px', borderRadius: '6px', backgroundColor: s.role === 'merchant' ? '#2563eb' : '#059669' }}>
-                {s.role.toUpperCase()}
-              </span>
+              {s.store_name}
             </button>
           ))}
 
@@ -463,12 +512,51 @@ export default function DashboardPage() {
                   <div style={{ flex: 1, backgroundColor: '#eff6ff', padding: '25px', borderRadius: '16px', border: '1px dashed #93c5fd', minWidth: '300px' }}>
                     <h3 style={{ margin: '0 0 10px 0', color: '#1e3a8a', fontSize: '16px' }}>🛡️ Operator Access</h3>
                     <p style={{ margin: '0 0 15px 0', color: '#3b82f6', fontSize: '13px' }}>Invite staff to manage inventory and open/close status.</p>
-                    <form onSubmit={handleInviteOperator} style={{ display: 'flex', gap: '10px' }}>
+                    
+                    <form onSubmit={handleInviteOperator} style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
                       <input type="email" placeholder="Staff Email Address" required value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} style={{ padding: '10px 15px', borderRadius: '8px', border: '1px solid #bfdbfe', flexGrow: 1, outline: 'none' }} />
                       <button type="submit" disabled={isInviting} style={{ padding: '10px 20px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: isInviting ? 'not-allowed' : 'pointer' }}>
                         {isInviting ? 'Sending...' : 'Invite'}
                       </button>
                     </form>
+                    
+                    {inviteMessage && (
+                      <div style={{ 
+                        fontSize: '13px', 
+                        fontWeight: 'bold', 
+                        padding: '8px 12px',
+                        borderRadius: '6px',
+                        marginBottom: '10px',
+                        backgroundColor: inviteMessage.type === 'success' ? '#d1fae5' : '#fee2e2',
+                        color: inviteMessage.type === 'success' ? '#059669' : '#dc2626'
+                      }}>
+                        {inviteMessage.type === 'success' ? '✅ ' : '❌ '}
+                        {inviteMessage.text}
+                      </div>
+                    )}
+
+                    {/* NEW: STAFF/OPERATOR LIST */}
+                    {storeOperators.length > 0 && (
+                      <div style={{ marginTop: '15px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#60a5fa' }}>CURRENT STAFF</span>
+                        {storeOperators.map((op, idx) => (
+                          <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', padding: '8px 12px', borderRadius: '6px', border: '1px solid #bfdbfe' }}>
+                            <span style={{ fontSize: '13px', color: '#1e3a8a', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis' }}>{op.email}</span>
+                            <span style={{ 
+                              fontSize: '10px', 
+                              padding: '3px 8px', 
+                              borderRadius: '12px', 
+                              backgroundColor: op.status === 'pending' ? '#fef3c7' : '#d1fae5', 
+                              color: op.status === 'pending' ? '#d97706' : '#059669', 
+                              fontWeight: 'bold' 
+                            }}>
+                              {op.status === 'pending' ? 'PENDING' : 'CONFIRMED'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                   </div>
                 </div>
               )}
@@ -498,7 +586,6 @@ export default function DashboardPage() {
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', padding: '15px', backgroundColor: '#f9fafb', border: '1px dashed #d1d5db', borderRadius: '8px', flexWrap: 'wrap', gap: '15px' }}>
                     
-                    {/* Replaced simple input with Image Upload & Preview area */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                       {croppedPreview ? (
                         <div style={{ position: 'relative' }}>

@@ -80,26 +80,62 @@ export default function MapPage() {
   const [selectedStore, setSelectedStore] = useState(null);
   const [isLocating, setIsLocating] = useState(false);
   
+  // New Auth State
+  const [session, setSession] = useState(null);
+  const [managedStores, setManagedStores] = useState([]);
+
   const navigate = useNavigate();
   const categories = ['All', 'Food & Dining', 'Retail', 'Services', 'Groceries'];
+
+  // AUTH & MANAGED STORES LISTENER
+  useEffect(() => {
+    // 1. Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session?.user) fetchManagedStores(session.user.id);
+    });
+
+    // 2. Listen for login/logout events
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session?.user) {
+        fetchManagedStores(session.user.id);
+      } else {
+        setManagedStores([]); // Clear stores on logout
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const fetchManagedStores = async (userId) => {
+    try {
+      const res = await fetch(`https://locallook-api.onrender.com/api/merchant/stores/${userId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setManagedStores(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch managed stores:", err);
+    }
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    setSidebarOpen(false); // Close sidebar for a clean UI reset
+  };
 
   const updateMarkerVisuals = () => {
     if (!map.current || !userMarkerRef.current) return;
 
     const currentZoom = map.current.getZoom();
     
-    // 1. PIN HEIGHT SCALING (Using EXACT base 2 to match WebGL 3D Model scaling)
-    // This perfectly locks the pin above the head no matter how far you zoom in
+    // 1. PIN HEIGHT SCALING
     const zoomScale = Math.pow(2, currentZoom - 16.5);
-    
-    // Lowered the base height to 60px so it sits much closer to the head
     let pinHeight = 60 * zoomScale;
-    
-    // Strict clamp: Min 25px so it hugs the head beautifully when zoomed out
     pinHeight = Math.max(25, pinHeight); 
 
     // 2. GROUND LAYER SCALING (Pulse & Cone)
-    // Scales dynamically, but safely locked between 0.6x and 2.5x original size
     const groundScale = Math.max(0.6, Math.min(2.5, zoomScale));
 
     const el = userMarkerRef.current.getElement();
@@ -194,7 +230,6 @@ export default function MapPage() {
         data: { type: 'FeatureCollection', features: [] }
       });
 
-      // Shadow size strictly decreased to hug the feet closely
       map.current.addLayer({
         id: 'user-shadow-layer',
         type: 'circle',
@@ -208,9 +243,9 @@ export default function MapPage() {
           'circle-radius': [
             'interpolate', ['exponential', 2], ['zoom'],
             14, 0.1,
-            16.5, 0.6,    // Tighter base size
+            16.5, 0.6,
             19, 3,       
-            22, 24        // Decreased max size so it doesn't sprawl out
+            22, 24
           ]
         }
       });
@@ -237,7 +272,7 @@ export default function MapPage() {
             map.current?.jumpTo({ center: [position.coords.longitude, position.coords.latitude], zoom: 16.5 });
           },
           () => console.log("Silent auto-locate failed."),
-          { enableHighAccuracy: false, timeout: 5000, maximumAge: 0 } // Changed to 0 for absolute precision
+          { enableHighAccuracy: false, timeout: 5000, maximumAge: 0 } 
         );
       }
     });
@@ -506,9 +541,7 @@ export default function MapPage() {
           transition: transform 0.05s ease-out; 
         }
 
-        .user-pin:hover {
-          filter: brightness(1.1);
-        }
+        .user-pin:hover { filter: brightness(1.1); }
 
         @keyframes pin-bounce {
           0%, 100% { transform: translate(-50%, calc(-1 * var(--hover-dist))); }
@@ -607,10 +640,51 @@ export default function MapPage() {
               <h2 style={{ margin: 0, fontSize: '20px', color: '#2563eb', fontWeight: '900' }}>LocalLook</h2>
               <button onClick={() => setSidebarOpen(false)} style={{ background: 'transparent', border: 'none', fontSize: '28px', cursor: 'pointer', color: '#6b7280', padding: '0 5px' }}>×</button>
             </div>
+            
             <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
               <div style={{ fontSize: '12px', color: '#9ca3af', fontWeight: 'bold', letterSpacing: '1px', marginBottom: '5px' }}>BUSINESS PORTAL</div>
-              <button onClick={() => navigate('/login')} style={{ width: '100%', padding: '15px', textAlign: 'left', backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '12px', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '12px', color: '#1d4ed8' }}>🔑 Partner & Staff Login</button>
-              <button onClick={() => navigate('/register')} style={{ width: '100%', padding: '15px', textAlign: 'left', backgroundColor: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '12px', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '12px', color: '#374151' }}>🏪 Register a Business</button>
+              
+              {session ? (
+                // LOGGED IN VIEW
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                  <div style={{ backgroundColor: '#f3f4f6', padding: '15px', borderRadius: '12px' }}>
+                    <div style={{ fontSize: '11px', color: '#6b7280', fontWeight: 'bold', marginBottom: '4px' }}>SIGNED IN AS</div>
+                    <div style={{ fontSize: '15px', color: '#1f2937', fontWeight: '900', wordBreak: 'break-word', textTransform: 'capitalize' }}>
+                      {session.user.user_metadata?.full_name || session.user.user_metadata?.name || 'Partner Account'}
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600', marginTop: '2px', wordBreak: 'break-all' }}>
+                      {session.user.email}
+                    </div>
+                  </div>
+
+                  {managedStores.length > 0 && (
+                    <div>
+                      <div style={{ fontSize: '11px', color: '#6b7280', fontWeight: 'bold', marginBottom: '8px' }}>YOUR LOCATIONS</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                        {managedStores.map(store => (
+                          <div key={`managed-${store.id}`} onClick={() => navigate(`/store/${store.id}`)} style={{ padding: '10px', backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '13px', fontWeight: 'bold', color: '#374151', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '120px' }}>{store.store_name}</span>
+                            <span style={{ fontSize: '10px', padding: '2px 6px', backgroundColor: '#e5e7eb', borderRadius: '4px' }}>{store.role.toUpperCase()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <button onClick={() => navigate('/dashboard')} style={{ width: '100%', padding: '15px', textAlign: 'center', backgroundColor: '#2563eb', border: 'none', borderRadius: '12px', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold', color: 'white' }}>
+                    Go to Merchant Hub →
+                  </button>
+                  <button onClick={handleSignOut} style={{ width: '100%', padding: '10px', textAlign: 'center', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold', color: '#ef4444' }}>
+                    Sign Out
+                  </button>
+                </div>
+              ) : (
+                // LOGGED OUT VIEW
+                <>
+                  <button onClick={() => navigate('/login')} style={{ width: '100%', padding: '15px', textAlign: 'left', backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '12px', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '12px', color: '#1d4ed8' }}>🔑 Partner & Staff Login</button>
+                  <button onClick={() => navigate('/register')} style={{ width: '100%', padding: '15px', textAlign: 'left', backgroundColor: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '12px', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '12px', color: '#374151' }}>🏪 Register a Business</button>
+                </>
+              )}
             </div>
           </div>
         </>

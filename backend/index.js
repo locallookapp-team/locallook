@@ -109,12 +109,18 @@ app.post('/api/stores/:store_id/invite', async (req, res) => {
       ON CONFLICT (id) DO NOTHING;
     `, [newOperatorId, email]);
 
-    // D. Link the newly invited user to the store as an 'operator'
-    await client.query(`
-      INSERT INTO store_operators (store_id, user_id, role)
-      VALUES ($1, $2, 'operator')
-      ON CONFLICT (store_id, user_id) DO NOTHING;
-    `, [store_id, newOperatorId]);
+    // D. Check if they are already in the store, if not, link them as an 'operator'
+    const existingOp = await client.query(
+      `SELECT 1 FROM store_operators WHERE store_id = $1 AND user_id = $2`,
+      [store_id, newOperatorId]
+    );
+
+    if (existingOp.rows.length === 0) {
+      await client.query(`
+        INSERT INTO store_operators (store_id, user_id, role)
+        VALUES ($1, $2, 'operator');
+      `, [store_id, newOperatorId]);
+    }
 
     await client.query('COMMIT');
     res.json({ message: "Invite sent successfully!", operator_id: newOperatorId });
@@ -125,6 +131,33 @@ app.post('/api/stores/:store_id/invite', async (req, res) => {
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
+  }
+});
+
+// 4. GET OPERATORS FOR A SPECIFIC STORE
+app.get('/api/stores/:store_id/operators', async (req, res) => {
+  try {
+    const { store_id } = req.params;
+    
+    // Join the store_operators table with the users table to get their emails
+    const result = await db.query(`
+      SELECT u.email, so.role
+      FROM store_operators so
+      JOIN users u ON so.user_id = u.id
+      WHERE so.store_id = $1 AND so.role = 'operator'
+    `, [store_id]);
+    
+    // Map the data to match what the React frontend expects
+    const operatorsList = result.rows.map(row => ({
+      email: row.email,
+      // Defaulting to confirmed for now since Supabase Auth handles the identity
+      status: 'confirmed' 
+    }));
+    
+    res.json(operatorsList);
+  } catch (err) {
+    console.error("Fetch Operators Error:", err.message);
+    res.status(500).send("Server Error");
   }
 });
 
