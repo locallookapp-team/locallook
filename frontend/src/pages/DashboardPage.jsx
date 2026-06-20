@@ -65,7 +65,7 @@ export default function DashboardPage() {
   const [stores, setStores] = useState([]);
   const [activeStore, setActiveStore] = useState(null);
   const [items, setItems] = useState([]);
-  const [storeOperators, setStoreOperators] = useState([]); // NEW: Operators state
+  const [storeOperators, setStoreOperators] = useState([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('dashboard'); 
 
@@ -84,10 +84,11 @@ export default function DashboardPage() {
   const [storeTheme, setStoreTheme] = useState({ primaryColor: '#3b82f6', layout: 'grid' });
   const [isSavingTheme, setIsSavingTheme] = useState(false);
 
-  // Invite State
+  // Invite & Operator Management State
   const [inviteEmail, setInviteEmail] = useState('');
   const [isInviting, setIsInviting] = useState(false);
   const [inviteMessage, setInviteMessage] = useState(null);
+  const [openMenuId, setOpenMenuId] = useState(null); // NEW: Tracks open 3-dot menu
 
   const [newStoreData, setNewStoreData] = useState({ store_name: '', store_category: 'Food & Dining', lat: '', lng: '' });
 
@@ -147,7 +148,6 @@ export default function DashboardPage() {
         .then(data => setItems(data))
         .catch(err => console.error(err));
 
-      // NEW: Fetch Operators/Invites for this store
       fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}/operators`)
         .then(res => res.ok ? res.json() : [])
         .then(data => setStoreOperators(data))
@@ -311,8 +311,7 @@ export default function DashboardPage() {
       
       setInviteMessage({ type: 'success', text: 'Invite sent successfully!' });
       
-      // Add the new pending operator to the list immediately for UX
-      setStoreOperators([...storeOperators, { email: inviteEmail, status: 'pending' }]);
+      setStoreOperators([...storeOperators, { email: inviteEmail, status: 'pending', role: 'operator' }]);
       setInviteEmail(''); 
       
     } catch (err) {
@@ -339,6 +338,45 @@ export default function DashboardPage() {
       alert(err.message);
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  // NEW: Operator Management Handlers
+  const toggleMenu = (staffId) => {
+    setOpenMenuId(openMenuId === staffId ? null : staffId);
+  };
+
+  const handleRemoveStaff = async (staffId, staffEmail) => {
+    if (!window.confirm(`Are you sure you want to remove ${staffEmail} from this store?`)) return;
+    try {
+      // Calls your backend to delete the user-store relationship
+      const response = await fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}/staff/${staffId}`, {
+        method: 'DELETE'
+      });
+      if (!response.ok) throw new Error("Failed to remove staff");
+      
+      alert(`${staffEmail} has been removed.`);
+      setStoreOperators(storeOperators.filter(op => op.id !== staffId));
+      setOpenMenuId(null);
+    } catch (error) {
+      alert("Error: " + error.message);
+    }
+  };
+
+  const handlePromoteStaff = async (staffId, staffEmail) => {
+    if (!window.confirm(`Are you sure you want to promote ${staffEmail} to Admin? They will have management rights.`)) return;
+    try {
+      // Calls your backend to update the user's role to 'admin'
+      const response = await fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}/staff/${staffId}/promote`, {
+        method: 'PATCH'
+      });
+      if (!response.ok) throw new Error("Failed to promote staff");
+      
+      alert(`${staffEmail} is now an Admin!`);
+      setStoreOperators(storeOperators.map(op => op.id === staffId ? { ...op, role: 'admin' } : op));
+      setOpenMenuId(null);
+    } catch (error) {
+      alert("Error: " + error.message);
     }
   };
 
@@ -535,23 +573,68 @@ export default function DashboardPage() {
                       </div>
                     )}
 
-                    {/* NEW: STAFF/OPERATOR LIST */}
+                    {/* NEW: UPDATED STAFF/OPERATOR LIST */}
                     {storeOperators.length > 0 && (
                       <div style={{ marginTop: '15px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#60a5fa' }}>CURRENT STAFF</span>
+                        
                         {storeOperators.map((op, idx) => (
-                          <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', padding: '8px 12px', borderRadius: '6px', border: '1px solid #bfdbfe' }}>
-                            <span style={{ fontSize: '13px', color: '#1e3a8a', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis' }}>{op.email}</span>
-                            <span style={{ 
-                              fontSize: '10px', 
-                              padding: '3px 8px', 
-                              borderRadius: '12px', 
-                              backgroundColor: op.status === 'pending' ? '#fef3c7' : '#d1fae5', 
-                              color: op.status === 'pending' ? '#d97706' : '#059669', 
-                              fontWeight: 'bold' 
-                            }}>
-                              {op.status === 'pending' ? 'PENDING' : 'CONFIRMED'}
+                          <div key={op.id || idx} style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', padding: '8px 12px', borderRadius: '6px', border: '1px solid #bfdbfe' }}>
+                            
+                            <span style={{ fontSize: '13px', color: '#1e3a8a', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {op.email}
                             </span>
+                            
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                              {/* Dynamic Role/Status Badge */}
+                              <span style={{ 
+                                fontSize: '10px', 
+                                padding: '3px 8px', 
+                                borderRadius: '12px', 
+                                backgroundColor: op.status === 'pending' ? '#fef3c7' : (op.role === 'admin' ? '#e0e7ff' : '#d1fae5'), 
+                                color: op.status === 'pending' ? '#d97706' : (op.role === 'admin' ? '#4f46e5' : '#059669'), 
+                                fontWeight: 'bold' 
+                              }}>
+                                {op.status === 'pending' ? 'PENDING' : (op.role === 'admin' ? 'ADMIN' : 'STAFF')}
+                              </span>
+
+                              {/* 3-Dot Menu Button */}
+                              {op.status !== 'pending' && (
+                                <button 
+                                  onClick={() => toggleMenu(op.id)} 
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#60a5fa', padding: '0', fontSize: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', height: '24px', borderRadius: '50%', transition: 'background-color 0.2s' }}
+                                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#eff6ff'}
+                                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                                >
+                                  ⋮
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Dropdown Menu Box */}
+                            {openMenuId === op.id && (
+                              <div style={{ position: 'absolute', right: '10px', top: '40px', backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', zIndex: 50, width: '160px', overflow: 'hidden' }}>
+                                {op.role !== 'admin' && (
+                                  <button 
+                                    onClick={() => handlePromoteStaff(op.id, op.email)} 
+                                    style={{ display: 'block', width: '100%', padding: '10px 15px', border: 'none', background: 'white', textAlign: 'left', cursor: 'pointer', fontSize: '13px', color: '#4f46e5', fontWeight: '600', borderBottom: '1px solid #f3f4f6', transition: 'background-color 0.2s' }}
+                                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#e0e7ff'}
+                                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'white'}
+                                  >
+                                    Promote to Admin
+                                  </button>
+                                )}
+                                <button 
+                                  onClick={() => handleRemoveStaff(op.id, op.email)} 
+                                  style={{ display: 'block', width: '100%', padding: '10px 15px', border: 'none', background: 'white', textAlign: 'left', cursor: 'pointer', fontSize: '13px', color: '#ef4444', fontWeight: '600', transition: 'background-color 0.2s' }}
+                                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#fef2f2'}
+                                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'white'}
+                                >
+                                  Remove Staff
+                                </button>
+                              </div>
+                            )}
+
                           </div>
                         ))}
                       </div>

@@ -60,7 +60,7 @@ app.get('/api/merchant/stores/:user_id', async (req, res) => {
   try {
     const { user_id } = req.params;
     
-    // Finds every store the user has a role in (Merchant OR Operator)
+    // Finds every store the user has a role in
     const result = await db.query(`
       SELECT 
         s.id, s.store_name, s.store_category, s.is_open, 
@@ -85,14 +85,14 @@ app.post('/api/stores/:store_id/invite', async (req, res) => {
     const { store_id } = req.params;
     const { email, requester_id } = req.body;
 
-    // A. Verify the person requesting the invite is actually the 'merchant' of this store
+    // A. Verify the person requesting the invite is actually the 'merchant' or 'admin'
     const authCheck = await client.query(
       `SELECT role FROM store_operators WHERE store_id = $1 AND user_id = $2`, 
       [store_id, requester_id]
     );
 
-    if (authCheck.rows.length === 0 || authCheck.rows[0].role !== 'merchant') {
-      return res.status(403).json({ error: "Only the primary merchant can invite operators." });
+    if (authCheck.rows.length === 0 || (authCheck.rows[0].role !== 'merchant' && authCheck.rows[0].role !== 'admin')) {
+      return res.status(403).json({ error: "You do not have permission to invite staff." });
     }
 
     // B. Send the email invite via Supabase Auth
@@ -139,18 +139,18 @@ app.get('/api/stores/:store_id/operators', async (req, res) => {
   try {
     const { store_id } = req.params;
     
-    // Join the store_operators table with the users table to get their emails
+    // UPDATED: Grabs user ID, email, and role for everyone who IS NOT the primary merchant
     const result = await db.query(`
-      SELECT u.email, so.role
+      SELECT u.id, u.email, so.role
       FROM store_operators so
       JOIN users u ON so.user_id = u.id
-      WHERE so.store_id = $1 AND so.role = 'operator'
+      WHERE so.store_id = $1 AND so.role != 'merchant'
     `, [store_id]);
     
-    // Map the data to match what the React frontend expects
     const operatorsList = result.rows.map(row => ({
+      id: row.id,
       email: row.email,
-      // Defaulting to confirmed for now since Supabase Auth handles the identity
+      role: row.role,
       status: 'confirmed' 
     }));
     
@@ -158,6 +158,55 @@ app.get('/api/stores/:store_id/operators', async (req, res) => {
   } catch (err) {
     console.error("Fetch Operators Error:", err.message);
     res.status(500).send("Server Error");
+  }
+});
+
+// ==========================================
+// NEW: STAFF MANAGEMENT ROUTES (Promote & Remove)
+// ==========================================
+
+// Promote Staff to Admin
+app.patch('/api/stores/:store_id/staff/:staff_id/promote', async (req, res) => {
+  try {
+    const { store_id, staff_id } = req.params;
+
+    const result = await db.query(`
+      UPDATE store_operators 
+      SET role = 'admin' 
+      WHERE store_id = $1 AND user_id = $2 
+      RETURNING *
+    `, [store_id, staff_id]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Staff member not found in this store." });
+    }
+    
+    res.status(200).json({ message: "Staff successfully promoted to Admin" });
+  } catch (error) {
+    console.error("Promote Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Remove Staff from Store
+app.delete('/api/stores/:store_id/staff/:staff_id', async (req, res) => {
+  try {
+    const { store_id, staff_id } = req.params;
+
+    const result = await db.query(`
+      DELETE FROM store_operators 
+      WHERE store_id = $1 AND user_id = $2 
+      RETURNING *
+    `, [store_id, staff_id]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Staff member not found in this store." });
+    }
+
+    res.status(200).json({ message: "Staff successfully removed from store" });
+  } catch (error) {
+    console.error("Remove Staff Error:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -182,10 +231,9 @@ app.get('/api/stores', async (req, res) => {
 });
 
 // ==========================================
-// UPGRADED STORE AND ITEM ROUTES
+// STORE AND ITEM ROUTES
 // ==========================================
 
-// UPGRADED: Get single store (Now includes theme_settings)
 app.get('/api/stores/:id', async (req, res) => {
   try {
     const result = await db.query(`
@@ -199,12 +247,10 @@ app.get('/api/stores/:id', async (req, res) => {
   }
 });
 
-// NEW: Endpoint specifically for merchants to save custom themes
 app.patch('/api/stores/:id/theme', async (req, res) => {
   try {
     const { theme_settings } = req.body;
     
-    // Simple backend validation to ensure they pass an object
     if (typeof theme_settings !== 'object') {
       return res.status(400).json({ error: "Invalid theme format" });
     }
@@ -238,7 +284,6 @@ app.get('/api/search/items', async (req, res) => {
   }
 });
 
-// RESTORED: Toggle Store Open/Close
 app.patch('/api/stores/:id/toggle', async (req, res) => {
   try {
     const result = await db.query('UPDATE stores SET is_open = $1 WHERE id = $2 RETURNING id, is_open', [req.body.is_open, req.params.id]);
@@ -248,7 +293,6 @@ app.patch('/api/stores/:id/toggle', async (req, res) => {
   }
 });
 
-// UPGRADED: Add Item (Now accepts item_category)
 app.post('/api/items', async (req, res) => {
   try {
     const { store_id, item_name, description, price, image_url, item_category } = req.body;

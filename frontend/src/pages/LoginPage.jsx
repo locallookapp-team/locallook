@@ -19,7 +19,6 @@ export default function LoginPage() {
     if (error) alert("Google Sign-In Error: " + error.message);
   };
 
-  // NEW: Facebook Sign-In Handler
   const handleFacebookSignIn = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'facebook',
@@ -90,10 +89,21 @@ export default function LoginPage() {
             <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#4b5563', marginBottom: '5px' }}>EMAIL ADDRESS</label>
             <input type="email" name="email" required value={formData.email} onChange={handleChange} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '14px', boxSizing: 'border-box', outline: 'none' }} />
           </div>
+          
           <div>
-            <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#4b5563', marginBottom: '5px' }}>PASSWORD</label>
+            {/* UPDATED PASSWORD HEADER WITH FORGOT PASSWORD LINK */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px' }}>
+              <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#4b5563' }}>PASSWORD</label>
+              <span 
+                onClick={() => navigate('/forgot-password')} 
+                style={{ fontSize: '12px', color: '#2563eb', fontWeight: 'bold', cursor: 'pointer', textDecoration: 'none' }}
+              >
+                Forgot password?
+              </span>
+            </div>
             <input type="password" name="password" required value={formData.password} onChange={handleChange} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '14px', boxSizing: 'border-box', outline: 'none' }} />
           </div>
+
           <button type="submit" disabled={isLoading} style={{ padding: '14px', backgroundColor: isLoading ? '#9ca3af' : '#2563eb', color: 'white', border: 'none', borderRadius: '8px', cursor: isLoading ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '15px', marginTop: '10px', transition: 'background-color 0.2s' }}>
             {isLoading ? 'Verifying...' : 'Log In'}
           </button>
