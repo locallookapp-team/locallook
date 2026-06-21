@@ -8,7 +8,6 @@ const db = require('./db');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Initialize Supabase Admin for secure backend operations (like sending invites)
 const supabaseAdmin = createClient(
   process.env.SUPABASE_URL, 
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -17,19 +16,13 @@ const supabaseAdmin = createClient(
 app.use(cors()); 
 app.use(express.json()); 
 
-// ==========================================
-// STORE CREATION & RBAC ASSIGNMENT
-// ==========================================
-
-// 1. CREATE STORE & ASSIGN MERCHANT ROLE
+// 1. CREATE STORE
 app.post('/api/stores', async (req, res) => {
   const client = await db.connect();
   try {
     const { store_name, store_category, lat, lng, user_id } = req.body;
-    
     await client.query('BEGIN');
 
-    // Insert the store
     const storeResult = await client.query(`
       INSERT INTO stores (store_name, store_category, location, is_open, is_approved)
       VALUES ($1, $2, ST_GeomFromText($3, 4326), false, true)
@@ -38,7 +31,6 @@ app.post('/api/stores', async (req, res) => {
     
     const newStoreId = storeResult.rows[0].id;
 
-    // Grant the creator the 'merchant' role in the junction table
     await client.query(`
       INSERT INTO store_operators (store_id, user_id, role)
       VALUES ($1, $2, 'merchant');
@@ -55,12 +47,10 @@ app.post('/api/stores', async (req, res) => {
   }
 });
 
-// 2. GET ALL STORES FOR A SPECIFIC USER (Sidebar Navigation)
+// 2. GET ALL STORES FOR USER
 app.get('/api/merchant/stores/:user_id', async (req, res) => {
   try {
     const { user_id } = req.params;
-    
-    // Finds every store the user has a role in
     const result = await db.query(`
       SELECT 
         s.id, s.store_name, s.store_category, s.is_open, 
@@ -70,7 +60,6 @@ app.get('/api/merchant/stores/:user_id', async (req, res) => {
       JOIN store_operators so ON s.id = so.store_id
       WHERE so.user_id = $1
     `, [user_id]);
-    
     res.json(result.rows);
   } catch (err) {
     console.error(err.message);
@@ -78,52 +67,81 @@ app.get('/api/merchant/stores/:user_id', async (req, res) => {
   }
 });
 
-// 3. SECURE OPERATOR EMAIL INVITE SYSTEM
+// 3. SECURE INVITE (Upgraded with Existing User Check)
 app.post('/api/stores/:store_id/invite', async (req, res) => {
   const client = await db.connect();
   try {
     const { store_id } = req.params;
     const { email, requester_id } = req.body;
 
-    // A. Verify the person requesting the invite is actually the 'merchant' or 'admin'
+    // A. Verify the person requesting the invite is the 'merchant'
     const authCheck = await client.query(
       `SELECT role FROM store_operators WHERE store_id = $1 AND user_id = $2`, 
       [store_id, requester_id]
     );
 
-    if (authCheck.rows.length === 0 || (authCheck.rows[0].role !== 'merchant' && authCheck.rows[0].role !== 'admin')) {
-      return res.status(403).json({ error: "You do not have permission to invite staff." });
+    if (authCheck.rows.length === 0 || authCheck.rows[0].role !== 'merchant') {
+      return res.status(403).json({ error: "Only the primary merchant can invite operators." });
     }
 
-    // B. Send the email invite via Supabase Auth
-    const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email);
-    if (inviteError) throw new Error(inviteError.message);
-    
-    const newOperatorId = inviteData.user.id;
+    let targetUserId;
+
+    // B. Check if the user ALREADY exists in our database
+    const existingUserCheck = await client.query(
+      `SELECT id FROM users WHERE email = $1`,
+      [email]
+    );
 
     await client.query('BEGIN');
 
-    // C. Prep the public users table to prevent Foreign Key errors
-    await client.query(`
-      INSERT INTO users (id, email, role) VALUES ($1, $2, 'operator')
-      ON CONFLICT (id) DO NOTHING;
-    `, [newOperatorId, email]);
+    if (existingUserCheck.rows.length > 0) {
+      // THE FIX: User already exists! Grab their ID and skip the Supabase invite
+      targetUserId = existingUserCheck.rows[0].id;
+    } else {
+      // NEW USER: Ask Supabase to create them and send an invite link
+      const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email);
+      
+      if (inviteError) {
+        if (inviteError.message.includes('already been registered')) {
+          throw new Error("This user already has an account but is missing from the public directory.");
+        }
+        throw new Error(inviteError.message);
+      }
+      
+      targetUserId = inviteData.user.id;
 
-    // D. Check if they are already in the store, if not, link them as an 'operator'
+      // Add the brand new user to our public table
+      await client.query(`
+        INSERT INTO users (id, email, role) VALUES ($1, $2, 'operator')
+        ON CONFLICT (id) DO NOTHING;
+      `, [targetUserId, email]);
+    }
+
+    // C. Check if they are somehow already assigned to this store
     const existingOp = await client.query(
       `SELECT 1 FROM store_operators WHERE store_id = $1 AND user_id = $2`,
-      [store_id, newOperatorId]
+      [store_id, targetUserId]
     );
 
     if (existingOp.rows.length === 0) {
+      // D. Link them to the store as an operator!
       await client.query(`
         INSERT INTO store_operators (store_id, user_id, role)
         VALUES ($1, $2, 'operator');
-      `, [store_id, newOperatorId]);
+      `, [store_id, targetUserId]);
+    } else {
+      throw new Error("This user is already an operator for this store.");
     }
 
     await client.query('COMMIT');
-    res.json({ message: "Invite sent successfully!", operator_id: newOperatorId });
+    
+    // Send a dynamic success message
+    res.json({ 
+      message: existingUserCheck.rows.length > 0 
+        ? "Existing staff member re-added successfully!" 
+        : "Invite sent successfully!", 
+      operator_id: targetUserId 
+    });
 
   } catch (err) {
     await client.query('ROLLBACK');
@@ -134,24 +152,19 @@ app.post('/api/stores/:store_id/invite', async (req, res) => {
   }
 });
 
-// 4. GET OPERATORS FOR A SPECIFIC STORE
+// 4. GET OPERATORS FOR STORE
 app.get('/api/stores/:store_id/operators', async (req, res) => {
   try {
     const { store_id } = req.params;
-    
-    // UPDATED: Grabs user ID, email, and role for everyone who IS NOT the primary merchant
     const result = await db.query(`
       SELECT u.id, u.email, so.role
       FROM store_operators so
       JOIN users u ON so.user_id = u.id
-      WHERE so.store_id = $1 AND so.role != 'merchant'
+      WHERE so.store_id = $1 AND so.role = 'operator'
     `, [store_id]);
     
     const operatorsList = result.rows.map(row => ({
-      id: row.id,
-      email: row.email,
-      role: row.role,
-      status: 'confirmed' 
+      id: row.id, email: row.email, role: row.role, status: 'confirmed' 
     }));
     
     res.json(operatorsList);
@@ -161,34 +174,7 @@ app.get('/api/stores/:store_id/operators', async (req, res) => {
   }
 });
 
-// ==========================================
-// NEW: STAFF MANAGEMENT ROUTES (Promote & Remove)
-// ==========================================
-
-// Promote Staff to Admin
-app.patch('/api/stores/:store_id/staff/:staff_id/promote', async (req, res) => {
-  try {
-    const { store_id, staff_id } = req.params;
-
-    const result = await db.query(`
-      UPDATE store_operators 
-      SET role = 'admin' 
-      WHERE store_id = $1 AND user_id = $2 
-      RETURNING *
-    `, [store_id, staff_id]);
-
-    if (result.rowCount === 0) {
-      return res.status(404).json({ error: "Staff member not found in this store." });
-    }
-    
-    res.status(200).json({ message: "Staff successfully promoted to Admin" });
-  } catch (error) {
-    console.error("Promote Error:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Remove Staff from Store
+// 5. REMOVE STAFF FROM STORE
 app.delete('/api/stores/:store_id/staff/:staff_id', async (req, res) => {
   try {
     const { store_id, staff_id } = req.params;
@@ -211,7 +197,7 @@ app.delete('/api/stores/:store_id/staff/:staff_id', async (req, res) => {
 });
 
 // ==========================================
-// STANDARD ROUTES (Items, Toggles, Public Map)
+// STANDARD STORE & ITEM ROUTES
 // ==========================================
 
 app.get('/api/stores', async (req, res) => {
@@ -230,10 +216,6 @@ app.get('/api/stores', async (req, res) => {
   }
 });
 
-// ==========================================
-// STORE AND ITEM ROUTES
-// ==========================================
-
 app.get('/api/stores/:id', async (req, res) => {
   try {
     const result = await db.query(`
@@ -250,15 +232,8 @@ app.get('/api/stores/:id', async (req, res) => {
 app.patch('/api/stores/:id/theme', async (req, res) => {
   try {
     const { theme_settings } = req.body;
-    
-    if (typeof theme_settings !== 'object') {
-      return res.status(400).json({ error: "Invalid theme format" });
-    }
-
-    const result = await db.query(`
-      UPDATE stores SET theme_settings = $1 WHERE id = $2 RETURNING id, theme_settings
-    `, [theme_settings, req.params.id]);
-    
+    if (typeof theme_settings !== 'object') return res.status(400).json({ error: "Invalid theme format" });
+    const result = await db.query(`UPDATE stores SET theme_settings = $1 WHERE id = $2 RETURNING id, theme_settings`, [theme_settings, req.params.id]);
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).send("Server Error");
@@ -296,13 +271,11 @@ app.patch('/api/stores/:id/toggle', async (req, res) => {
 app.post('/api/items', async (req, res) => {
   try {
     const { store_id, item_name, description, price, image_url, item_category } = req.body;
-    
     const result = await db.query(`
       INSERT INTO items (store_id, item_name, description, price, image_url, item_category, is_available) 
       VALUES ($1, $2, $3, $4, $5, COALESCE($6, 'General'), true) 
       RETURNING *;
     `, [store_id, item_name, description, price, image_url, item_category]); 
-    
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).send("Server Error");

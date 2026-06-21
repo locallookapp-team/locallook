@@ -10,9 +10,6 @@ if (MAPBOX_TOKEN) {
   mapboxgl.accessToken = MAPBOX_TOKEN;
 }
 
-// ==========================================
-// CROP UTILITY FUNCTIONS
-// ==========================================
 const createImage = (url) =>
   new Promise((resolve, reject) => {
     const image = new Image();
@@ -32,34 +29,18 @@ const getCroppedImg = async (imageSrc, pixelCrop) => {
   canvas.width = pixelCrop.width;
   canvas.height = pixelCrop.height;
 
-  ctx.drawImage(
-    image,
-    pixelCrop.x,
-    pixelCrop.y,
-    pixelCrop.width,
-    pixelCrop.height,
-    0,
-    0,
-    pixelCrop.width,
-    pixelCrop.height
-  );
+  ctx.drawImage(image, pixelCrop.x, pixelCrop.y, pixelCrop.width, pixelCrop.height, 0, 0, pixelCrop.width, pixelCrop.height);
 
   return new Promise((resolve) => {
     canvas.toBlob((file) => {
-      if (file) {
-        resolve(new File([file], "cropped-image.jpg", { type: "image/jpeg" }));
-      }
+      if (file) resolve(new File([file], "cropped-image.jpg", { type: "image/jpeg" }));
     }, 'image/jpeg', 0.9);
   });
 };
 
-// ==========================================
-// MAIN DASHBOARD COMPONENT
-// ==========================================
 export default function DashboardPage() {
   const navigate = useNavigate();
   
-  // Core State
   const [user, setUser] = useState(null);
   const [displayName, setDisplayName] = useState(''); 
   const [stores, setStores] = useState([]);
@@ -69,35 +50,29 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('dashboard'); 
 
-  // Forms State
   const [newItem, setNewItem] = useState({ name: '', description: '', price: '', category: 'General', imageFile: null });
   const [isUploading, setIsUploading] = useState(false);
   
-  // Cropper State
   const [imageToCrop, setImageToCrop] = useState(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
   const [croppedPreview, setCroppedPreview] = useState(null);
 
-  // Theme State
   const [storeTheme, setStoreTheme] = useState({ primaryColor: '#3b82f6', layout: 'grid' });
   const [isSavingTheme, setIsSavingTheme] = useState(false);
 
-  // Invite & Operator Management State
   const [inviteEmail, setInviteEmail] = useState('');
   const [isInviting, setIsInviting] = useState(false);
   const [inviteMessage, setInviteMessage] = useState(null);
-  const [openMenuId, setOpenMenuId] = useState(null); // NEW: Tracks open 3-dot menu
+  const [openMenuId, setOpenMenuId] = useState(null); 
 
   const [newStoreData, setNewStoreData] = useState({ store_name: '', store_category: 'Food & Dining', lat: '', lng: '' });
 
-  // Mapbox Refs
   const mapContainer = useRef(null);
   const map = useRef(null);
   const newPinRef = useRef(null);
 
-  // 1. AUTH & FETCH STORES
   useEffect(() => {
     const initDashboard = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -105,14 +80,10 @@ export default function DashboardPage() {
         navigate('/login');
         return;
       }
-      
       const currentUser = session.user;
       setUser(currentUser);
       
-      const nameToDisplay = 
-        currentUser.user_metadata?.full_name || 
-        currentUser.user_metadata?.name || 
-        currentUser.email;
+      const nameToDisplay = currentUser.user_metadata?.full_name || currentUser.user_metadata?.name || currentUser.email;
       setDisplayName(nameToDisplay);
 
       fetchStores(currentUser.id);
@@ -135,7 +106,6 @@ export default function DashboardPage() {
     }
   };
 
-  // 2. FETCH ITEMS, THEME, & OPERATORS WHEN ACTIVE STORE CHANGES
   useEffect(() => {
     if (activeStore?.id) {
       fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}`)
@@ -155,7 +125,6 @@ export default function DashboardPage() {
     }
   }, [activeStore?.id]);
 
-  // 3. MAPBOX LOGIC
   useEffect(() => {
     if (view === 'add_store' && mapContainer.current && !map.current) {
       map.current = new mapboxgl.Map({
@@ -192,23 +161,16 @@ export default function DashboardPage() {
     };
   }, [view]);
 
-  // ==========================================
-  // IMAGE CROPPER LOGIC
-  // ==========================================
   const onFileSelect = (e) => {
     if (e.target.files && e.target.files.length > 0) {
       const reader = new FileReader();
       reader.readAsDataURL(e.target.files[0]);
-      reader.onload = () => {
-        setImageToCrop(reader.result); 
-      };
+      reader.onload = () => setImageToCrop(reader.result); 
       e.target.value = null; 
     }
   };
 
-  const onCropComplete = (croppedArea, croppedAreaPixels) => {
-    setCroppedAreaPixels(croppedAreaPixels);
-  };
+  const onCropComplete = (croppedArea, croppedAreaPixels) => setCroppedAreaPixels(croppedAreaPixels);
 
   const handleSaveCrop = async () => {
     try {
@@ -222,9 +184,6 @@ export default function DashboardPage() {
     }
   };
 
-  // ==========================================
-  // ACTIONS & HANDLERS
-  // ==========================================
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate('/');
@@ -245,9 +204,7 @@ export default function DashboardPage() {
     setIsSavingTheme(true);
     try {
       const response = await fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}/theme`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ theme_settings: storeTheme })
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme_settings: storeTheme })
       });
       if (!response.ok) throw new Error("Failed to save theme");
       alert("Storefront theme updated successfully!");
@@ -280,12 +237,8 @@ export default function DashboardPage() {
     const response = await fetch('https://locallook-api.onrender.com/api/items', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
-        store_id: activeStore.id, 
-        item_name: newItem.name, 
-        description: newItem.description, 
-        price: parseFloat(newItem.price), 
-        image_url: finalImageUrl,
-        item_category: newItem.category
+        store_id: activeStore.id, item_name: newItem.name, description: newItem.description, 
+        price: parseFloat(newItem.price), image_url: finalImageUrl, item_category: newItem.category
       })
     });
     
@@ -310,10 +263,8 @@ export default function DashboardPage() {
       if (!response.ok) throw new Error(data.error || "Failed to invite operator");
       
       setInviteMessage({ type: 'success', text: 'Invite sent successfully!' });
-      
       setStoreOperators([...storeOperators, { email: inviteEmail, status: 'pending', role: 'operator' }]);
       setInviteEmail(''); 
-      
     } catch (err) {
       setInviteMessage({ type: 'error', text: err.message });
     } finally {
@@ -341,39 +292,16 @@ export default function DashboardPage() {
     }
   };
 
-  // NEW: Operator Management Handlers
-  const toggleMenu = (staffId) => {
-    setOpenMenuId(openMenuId === staffId ? null : staffId);
-  };
+  const toggleMenu = (staffId) => setOpenMenuId(openMenuId === staffId ? null : staffId);
 
   const handleRemoveStaff = async (staffId, staffEmail) => {
     if (!window.confirm(`Are you sure you want to remove ${staffEmail} from this store?`)) return;
     try {
-      // Calls your backend to delete the user-store relationship
-      const response = await fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}/staff/${staffId}`, {
-        method: 'DELETE'
-      });
+      const response = await fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}/staff/${staffId}`, { method: 'DELETE' });
       if (!response.ok) throw new Error("Failed to remove staff");
       
       alert(`${staffEmail} has been removed.`);
       setStoreOperators(storeOperators.filter(op => op.id !== staffId));
-      setOpenMenuId(null);
-    } catch (error) {
-      alert("Error: " + error.message);
-    }
-  };
-
-  const handlePromoteStaff = async (staffId, staffEmail) => {
-    if (!window.confirm(`Are you sure you want to promote ${staffEmail} to Admin? They will have management rights.`)) return;
-    try {
-      // Calls your backend to update the user's role to 'admin'
-      const response = await fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}/staff/${staffId}/promote`, {
-        method: 'PATCH'
-      });
-      if (!response.ok) throw new Error("Failed to promote staff");
-      
-      alert(`${staffEmail} is now an Admin!`);
-      setStoreOperators(storeOperators.map(op => op.id === staffId ? { ...op, role: 'admin' } : op));
       setOpenMenuId(null);
     } catch (error) {
       alert("Error: " + error.message);
@@ -385,30 +313,15 @@ export default function DashboardPage() {
   return (
     <div style={{ display: 'flex', height: '100vh', width: '100vw', backgroundColor: '#f3f4f6', fontFamily: 'sans-serif', overflow: 'hidden' }}>
       
-      {/* ========================================= */}
-      {/* CROPPER MODAL (Overlays everything else)  */}
-      {/* ========================================= */}
       {imageToCrop && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', flexDirection: 'column' }}>
           <div style={{ position: 'relative', flexGrow: 1 }}>
-            <Cropper
-              image={imageToCrop}
-              crop={crop}
-              zoom={zoom}
-              aspect={4 / 3} 
-              onCropChange={setCrop}
-              onCropComplete={onCropComplete}
-              onZoomChange={setZoom}
-            />
+            <Cropper image={imageToCrop} crop={crop} zoom={zoom} aspect={4 / 3} onCropChange={setCrop} onCropComplete={onCropComplete} onZoomChange={setZoom} />
           </div>
           <div style={{ padding: '20px', backgroundColor: 'white', display: 'flex', justifyContent: 'center', gap: '20px', alignItems: 'center' }}>
-            <button onClick={() => setImageToCrop(null)} style={{ padding: '10px 20px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
-              Cancel
-            </button>
+            <button onClick={() => setImageToCrop(null)} style={{ padding: '10px 20px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
             <input type="range" value={zoom} min={1} max={3} step={0.1} aria-labelledby="Zoom" onChange={(e) => setZoom(e.target.value)} style={{ width: '200px' }} />
-            <button onClick={handleSaveCrop} style={{ padding: '10px 20px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
-              Save 4:3 Crop
-            </button>
+            <button onClick={handleSaveCrop} style={{ padding: '10px 20px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Save 4:3 Crop</button>
           </div>
         </div>
       )}
@@ -418,53 +331,28 @@ export default function DashboardPage() {
         <div style={{ padding: '25px 20px', borderBottom: '1px solid #374151' }}>
           <h2 style={{ margin: '0', fontSize: '24px', color: '#3b82f6', fontWeight: '900' }}>LocalLook</h2>
           <span style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 'bold', letterSpacing: '2px' }}>MERCHANT HUB</span>
-          
           <div style={{ marginTop: '20px', display: 'flex', alignItems: 'center', gap: '12px', backgroundColor: '#374151', padding: '10px', borderRadius: '8px' }}>
             <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#60a5fa', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#1e3a8a', fontWeight: '900', fontSize: '16px' }}>
               {displayName ? displayName.charAt(0).toUpperCase() : '?'}
             </div>
             <div style={{ overflow: 'hidden' }}>
-              <div style={{ fontSize: '14px', color: '#f3f4f6', fontWeight: 'bold', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-                {displayName}
-              </div>
-              <div style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 'bold', letterSpacing: '0.5px' }}>
-                {activeStore ? activeStore.role.toUpperCase() : 'MERCHANT'}
-              </div>
+              <div style={{ fontSize: '14px', color: '#f3f4f6', fontWeight: 'bold', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{displayName}</div>
+              <div style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 'bold', letterSpacing: '0.5px' }}>{activeStore ? activeStore.role.toUpperCase() : 'MERCHANT'}</div>
             </div>
           </div>
         </div>
         
         <div style={{ flexGrow: 1, padding: '20px 15px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#6b7280', marginBottom: '5px', paddingLeft: '5px' }}>YOUR STORES</div>
-          
           {stores.map(s => (
             <button 
-              key={s.id} 
-              onClick={() => { setActiveStore(s); setView('dashboard'); }}
-              style={{ 
-                width: '100%', 
-                padding: '12px 15px', 
-                backgroundColor: activeStore?.id === s.id && view === 'dashboard' ? '#374151' : 'transparent', 
-                color: 'white', 
-                border: 'none', 
-                borderRadius: '8px', 
-                textAlign: 'left', 
-                fontWeight: 'bold', 
-                fontSize: '14px', 
-                cursor: 'pointer', 
-                display: 'block', 
-                whiteSpace: 'nowrap', 
-                overflow: 'hidden', 
-                textOverflow: 'ellipsis' 
-              }}
+              key={s.id} onClick={() => { setActiveStore(s); setView('dashboard'); }}
+              style={{ width: '100%', padding: '12px 15px', backgroundColor: activeStore?.id === s.id && view === 'dashboard' ? '#374151' : 'transparent', color: 'white', border: 'none', borderRadius: '8px', textAlign: 'left', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
             >
               {s.store_name}
             </button>
           ))}
-
-          <button onClick={() => setView('add_store')} style={{ width: '100%', padding: '12px 15px', marginTop: '10px', backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#60a5fa', border: '1px dashed #3b82f6', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
-            + Add a Store
-          </button>
+          <button onClick={() => setView('add_store')} style={{ width: '100%', padding: '12px 15px', marginTop: '10px', backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#60a5fa', border: '1px dashed #3b82f6', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>+ Add a Store</button>
         </div>
 
         <div style={{ padding: '20px', borderTop: '1px solid #374151' }}>
@@ -474,7 +362,6 @@ export default function DashboardPage() {
 
       {/* 2. MAIN CONTENT AREA */}
       <div style={{ flexGrow: 1, overflowY: 'auto', position: 'relative' }}>
-        
         {view === 'add_store' && (
           <div style={{ display: 'flex', height: '100%' }}>
             <div style={{ width: '350px', padding: '40px 30px', backgroundColor: 'white', boxShadow: '5px 0 15px rgba(0,0,0,0.05)', zIndex: 2 }}>
@@ -559,87 +446,43 @@ export default function DashboardPage() {
                     </form>
                     
                     {inviteMessage && (
-                      <div style={{ 
-                        fontSize: '13px', 
-                        fontWeight: 'bold', 
-                        padding: '8px 12px',
-                        borderRadius: '6px',
-                        marginBottom: '10px',
-                        backgroundColor: inviteMessage.type === 'success' ? '#d1fae5' : '#fee2e2',
-                        color: inviteMessage.type === 'success' ? '#059669' : '#dc2626'
-                      }}>
-                        {inviteMessage.type === 'success' ? '✅ ' : '❌ '}
-                        {inviteMessage.text}
+                      <div style={{ fontSize: '13px', fontWeight: 'bold', padding: '8px 12px', borderRadius: '6px', marginBottom: '10px', backgroundColor: inviteMessage.type === 'success' ? '#d1fae5' : '#fee2e2', color: inviteMessage.type === 'success' ? '#059669' : '#dc2626' }}>
+                        {inviteMessage.type === 'success' ? '✅ ' : '❌ '} {inviteMessage.text}
                       </div>
                     )}
 
-                    {/* NEW: UPDATED STAFF/OPERATOR LIST */}
+                    {/* STAFF/OPERATOR LIST (Simplified) */}
                     {storeOperators.length > 0 && (
                       <div style={{ marginTop: '15px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#60a5fa' }}>CURRENT STAFF</span>
                         
                         {storeOperators.map((op, idx) => (
                           <div key={op.id || idx} style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', padding: '8px 12px', borderRadius: '6px', border: '1px solid #bfdbfe' }}>
-                            
-                            <span style={{ fontSize: '13px', color: '#1e3a8a', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {op.email}
-                            </span>
+                            <span style={{ fontSize: '13px', color: '#1e3a8a', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis' }}>{op.email}</span>
                             
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              {/* Dynamic Role/Status Badge */}
-                              <span style={{ 
-                                fontSize: '10px', 
-                                padding: '3px 8px', 
-                                borderRadius: '12px', 
-                                backgroundColor: op.status === 'pending' ? '#fef3c7' : (op.role === 'admin' ? '#e0e7ff' : '#d1fae5'), 
-                                color: op.status === 'pending' ? '#d97706' : (op.role === 'admin' ? '#4f46e5' : '#059669'), 
-                                fontWeight: 'bold' 
-                              }}>
-                                {op.status === 'pending' ? 'PENDING' : (op.role === 'admin' ? 'ADMIN' : 'STAFF')}
+                              <span style={{ fontSize: '10px', padding: '3px 8px', borderRadius: '12px', backgroundColor: op.status === 'pending' ? '#fef3c7' : '#d1fae5', color: op.status === 'pending' ? '#d97706' : '#059669', fontWeight: 'bold' }}>
+                                {op.status === 'pending' ? 'PENDING' : 'STAFF'}
                               </span>
 
-                              {/* 3-Dot Menu Button */}
                               {op.status !== 'pending' && (
-                                <button 
-                                  onClick={() => toggleMenu(op.id)} 
-                                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#60a5fa', padding: '0', fontSize: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', height: '24px', borderRadius: '50%', transition: 'background-color 0.2s' }}
-                                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#eff6ff'}
-                                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                                >
+                                <button onClick={() => toggleMenu(op.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#60a5fa', padding: '0', fontSize: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center', width: '24px', height: '24px', borderRadius: '50%', transition: 'background-color 0.2s' }}>
                                   ⋮
                                 </button>
                               )}
                             </div>
 
-                            {/* Dropdown Menu Box */}
                             {openMenuId === op.id && (
                               <div style={{ position: 'absolute', right: '10px', top: '40px', backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', zIndex: 50, width: '160px', overflow: 'hidden' }}>
-                                {op.role !== 'admin' && (
-                                  <button 
-                                    onClick={() => handlePromoteStaff(op.id, op.email)} 
-                                    style={{ display: 'block', width: '100%', padding: '10px 15px', border: 'none', background: 'white', textAlign: 'left', cursor: 'pointer', fontSize: '13px', color: '#4f46e5', fontWeight: '600', borderBottom: '1px solid #f3f4f6', transition: 'background-color 0.2s' }}
-                                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#e0e7ff'}
-                                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'white'}
-                                  >
-                                    Promote to Admin
-                                  </button>
-                                )}
-                                <button 
-                                  onClick={() => handleRemoveStaff(op.id, op.email)} 
-                                  style={{ display: 'block', width: '100%', padding: '10px 15px', border: 'none', background: 'white', textAlign: 'left', cursor: 'pointer', fontSize: '13px', color: '#ef4444', fontWeight: '600', transition: 'background-color 0.2s' }}
-                                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#fef2f2'}
-                                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'white'}
-                                >
+                                <button onClick={() => handleRemoveStaff(op.id, op.email)} style={{ display: 'block', width: '100%', padding: '10px 15px', border: 'none', background: 'white', textAlign: 'left', cursor: 'pointer', fontSize: '13px', color: '#ef4444', fontWeight: '600', transition: 'background-color 0.2s' }}>
                                   Remove Staff
                                 </button>
                               </div>
                             )}
-
                           </div>
                         ))}
                       </div>
                     )}
-
                   </div>
                 </div>
               )}
@@ -658,17 +501,12 @@ export default function DashboardPage() {
                     <div style={{ flex: '1 1 150px' }}>
                       <input type="text" list="category-suggestions" placeholder="Category (e.g., Coffee)" required value={newItem.category} onChange={(e) => setNewItem({...newItem, category: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', boxSizing: 'border-box' }} />
                       <datalist id="category-suggestions">
-                        <option value="General" />
-                        <option value="Hot Drinks" />
-                        <option value="Cold Drinks" />
-                        <option value="Desserts" />
-                        <option value="Main Course" />
+                        <option value="General" /><option value="Hot Drinks" /><option value="Cold Drinks" /><option value="Desserts" /><option value="Main Course" />
                       </datalist>
                     </div>
                   </div>
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', padding: '15px', backgroundColor: '#f9fafb', border: '1px dashed #d1d5db', borderRadius: '8px', flexWrap: 'wrap', gap: '15px' }}>
-                    
                     <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                       {croppedPreview ? (
                         <div style={{ position: 'relative' }}>
@@ -677,15 +515,12 @@ export default function DashboardPage() {
                         </div>
                       ) : (
                         <div>
-                          <label htmlFor="image-upload" style={{ display: 'inline-block', padding: '8px 16px', backgroundColor: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', color: '#4b5563' }}>
-                            📸 Choose Image
-                          </label>
+                          <label htmlFor="image-upload" style={{ display: 'inline-block', padding: '8px 16px', backgroundColor: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', color: '#4b5563' }}>📸 Choose Image</label>
                           <input id="image-upload" type="file" accept="image/*" onChange={onFileSelect} style={{ display: 'none' }} />
                         </div>
                       )}
                       {!croppedPreview && <span style={{ fontSize: '12px', color: '#9ca3af' }}>Formats to 4:3 Landscape</span>}
                     </div>
-
                     <button type="submit" disabled={isUploading} style={{ padding: '10px 20px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: isUploading ? 'not-allowed' : 'pointer' }}>
                       {isUploading ? 'Uploading...' : '+ Save Item'}
                     </button>
