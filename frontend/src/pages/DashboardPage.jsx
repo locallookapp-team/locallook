@@ -50,10 +50,11 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('dashboard'); 
 
-  // Item Form State
-  const [newItem, setNewItem] = useState({ name: '', description: '', price: '', category: 'General', imageFile: null });
+  // Item Form & Modal State
+  const [isItemModalOpen, setIsItemModalOpen] = useState(false);
+  const [newItem, setNewItem] = useState({ name: '', description: '', price: '', category: '', imageFile: null });
   const [isUploading, setIsUploading] = useState(false);
-  const [editingItemId, setEditingItemId] = useState(null); // NEW: Tracks if we are editing
+  const [editingItemId, setEditingItemId] = useState(null); 
   
   const [imageToCrop, setImageToCrop] = useState(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
@@ -125,10 +126,7 @@ export default function DashboardPage() {
         .then(data => setStoreOperators(data))
         .catch(err => console.error("Failed to fetch operators", err));
         
-      // Reset form if switching stores
-      setEditingItemId(null);
-      setNewItem({ name: '', description: '', price: '', category: 'General', imageFile: null });
-      setCroppedPreview(null);
+      closeItemModal();
     }
   }, [activeStore?.id]);
 
@@ -222,6 +220,33 @@ export default function DashboardPage() {
     }
   };
 
+  const openAddModal = () => {
+    setEditingItemId(null);
+    setNewItem({ name: '', description: '', price: '', category: '', imageFile: null });
+    setCroppedPreview(null);
+    setIsItemModalOpen(true);
+  };
+
+  const closeItemModal = () => {
+    setIsItemModalOpen(false);
+    setEditingItemId(null);
+    setNewItem({ name: '', description: '', price: '', category: '', imageFile: null });
+    setCroppedPreview(null);
+  };
+
+  const startEditItem = (item) => {
+    setEditingItemId(item.id);
+    setNewItem({
+      name: item.item_name,
+      description: item.description || '',
+      price: item.price,
+      category: item.item_category,
+      imageFile: null
+    });
+    setCroppedPreview(item.image_url || null);
+    setIsItemModalOpen(true);
+  };
+
   const handleAddItem = async (e) => {
     e.preventDefault();
     setIsUploading(true);
@@ -242,7 +267,6 @@ export default function DashboardPage() {
     }
 
     if (editingItemId) {
-      // UPDATE EXISTING ITEM
       const response = await fetch(`https://locallook-api.onrender.com/api/items/${editingItemId}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ item_name: newItem.name, description: newItem.description, price: parseFloat(newItem.price), image_url: finalImageUrl, item_category: newItem.category })
@@ -250,12 +274,9 @@ export default function DashboardPage() {
       if (response.ok) {
         const updatedItem = await response.json();
         setItems(items.map(i => i.id === editingItemId ? updatedItem : i));
-        setEditingItemId(null);
-        setNewItem({ name: '', description: '', price: '', category: 'General', imageFile: null });
-        setCroppedPreview(null);
+        closeItemModal();
       }
     } else {
-      // ADD NEW ITEM
       const response = await fetch('https://locallook-api.onrender.com/api/items', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ store_id: activeStore.id, item_name: newItem.name, description: newItem.description, price: parseFloat(newItem.price), image_url: finalImageUrl, item_category: newItem.category })
@@ -263,32 +284,10 @@ export default function DashboardPage() {
       if (response.ok) {
         const addedItem = await response.json();
         setItems([addedItem, ...items]);
-        setNewItem({ name: '', description: '', price: '', category: 'General', imageFile: null });
-        setCroppedPreview(null);
+        closeItemModal();
       }
     }
     setIsUploading(false);
-  };
-
-  const startEditItem = (item) => {
-    setEditingItemId(item.id);
-    setNewItem({
-      name: item.item_name,
-      description: item.description || '',
-      price: item.price,
-      category: item.item_category,
-      imageFile: null
-    });
-    setCroppedPreview(item.image_url || null);
-    
-    // Scroll to top to see the form
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const cancelEdit = () => {
-    setEditingItemId(null);
-    setNewItem({ name: '', description: '', price: '', category: 'General', imageFile: null });
-    setCroppedPreview(null);
   };
 
   const handleDeleteItem = async (itemId, itemName) => {
@@ -297,7 +296,7 @@ export default function DashboardPage() {
       const response = await fetch(`https://locallook-api.onrender.com/api/items/${itemId}`, { method: 'DELETE' });
       if (response.ok) {
         setItems(items.filter(item => item.id !== itemId));
-        if (editingItemId === itemId) cancelEdit();
+        if (editingItemId === itemId) closeItemModal();
       }
     } catch (err) {
       alert("Failed to delete item.");
@@ -367,6 +366,7 @@ export default function DashboardPage() {
   return (
     <div style={{ display: 'flex', height: '100vh', width: '100vw', backgroundColor: '#f3f4f6', fontFamily: 'sans-serif', overflow: 'hidden' }}>
       
+      {/* CROPPER OVERLAY */}
       {imageToCrop && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', flexDirection: 'column' }}>
           <div style={{ position: 'relative', flexGrow: 1 }}>
@@ -376,6 +376,88 @@ export default function DashboardPage() {
             <button onClick={() => setImageToCrop(null)} style={{ padding: '10px 20px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
             <input type="range" value={zoom} min={1} max={3} step={0.1} aria-labelledby="Zoom" onChange={(e) => setZoom(e.target.value)} style={{ width: '200px' }} />
             <button onClick={handleSaveCrop} style={{ padding: '10px 20px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Save 4:3 Crop</button>
+          </div>
+        </div>
+      )}
+
+      {/* FORM MODAL OVERLAY (ADD/EDIT ITEM) */}
+      {isItemModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
+          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '16px', width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h2 style={{ margin: 0, fontSize: '20px', color: '#111827', fontWeight: '800' }}>
+                {editingItemId ? '✏️ Edit Item' : '✨ Add New Item'}
+              </h2>
+              <button onClick={closeItemModal} style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: '24px', cursor: 'pointer', lineHeight: '1' }}>&times;</button>
+            </div>
+
+            <form onSubmit={handleAddItem} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+                <div style={{ flex: '2 1 200px' }}><input type="text" placeholder="Item Name" required value={newItem.name} onChange={(e) => setNewItem({...newItem, name: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', boxSizing: 'border-box' }} /></div>
+                <div style={{ flex: '1 1 100px' }}><input type="number" step="0.01" placeholder="Price (₱)" required value={newItem.price} onChange={(e) => setNewItem({...newItem, price: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', boxSizing: 'border-box' }} /></div>
+              </div>
+              
+              <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+                <div style={{ flex: '2 1 200px' }}><input type="text" placeholder="Description (Optional)" value={newItem.description} onChange={(e) => setNewItem({...newItem, description: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', boxSizing: 'border-box' }} /></div>
+                <div style={{ flex: '1 1 150px' }}>
+                  <input type="text" list="category-suggestions" placeholder="Category" required value={newItem.category} onChange={(e) => setNewItem({...newItem, category: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', boxSizing: 'border-box' }} />
+                  {/* EXPANDED CATEGORY DATALIST */}
+                  <datalist id="category-suggestions">
+                    <option value="General" />
+                    <option value="Appetizers" />
+                    <option value="Main Course" />
+                    <option value="Desserts" />
+                    <option value="Snacks" />
+                    <option value="Hot Drinks" />
+                    <option value="Cold Drinks" />
+                    <option value="Bakery & Pastries" />
+                    <option value="Vegan/Vegetarian" />
+                    <option value="Fresh Produce" />
+                    <option value="Meat & Seafood" />
+                    <option value="Dairy & Eggs" />
+                    <option value="Pantry Staples" />
+                    <option value="Personal Care" />
+                    <option value="Household" />
+                    <option value="Clothing & Apparel" />
+                    <option value="Electronics" />
+                    <option value="Beauty & Cosmetics" />
+                    <option value="Toys & Games" />
+                    <option value="Services" />
+                  </datalist>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', padding: '15px', backgroundColor: '#f9fafb', border: '1px dashed #d1d5db', borderRadius: '8px', flexWrap: 'wrap', gap: '15px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  {croppedPreview ? (
+                    <div style={{ position: 'relative' }}>
+                      <img src={croppedPreview} alt="Preview" style={{ width: '120px', height: '90px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #d1d5db' }} />
+                      <button type="button" onClick={() => { setCroppedPreview(null); setNewItem({...newItem, imageFile: null}) }} style={{ position: 'absolute', top: '-8px', right: '-8px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '50%', width: '20px', height: '20px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>×</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      {/* BUTTON 1: UPLOAD FROM DEVICE */}
+                      <div>
+                        <label htmlFor="image-upload" style={{ display: 'inline-block', padding: '8px 12px', backgroundColor: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', color: '#4b5563' }}>
+                          🖼️ {editingItemId ? 'Change Image' : 'Upload Image'}
+                        </label>
+                        <input id="image-upload" type="file" accept="image/*" onChange={onFileSelect} style={{ display: 'none' }} />
+                      </div>
+                      {/* BUTTON 2: TAKE PHOTO (Mobile Camera) */}
+                      <div>
+                        <label htmlFor="camera-upload" style={{ display: 'inline-block', padding: '8px 12px', backgroundColor: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', color: '#4b5563' }}>
+                          📸 Take Photo
+                        </label>
+                        <input id="camera-upload" type="file" accept="image/*" capture="environment" onChange={onFileSelect} style={{ display: 'none' }} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <button type="submit" disabled={isUploading} style={{ padding: '10px 24px', backgroundColor: editingItemId ? '#f59e0b' : '#2563eb', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: isUploading ? 'not-allowed' : 'pointer' }}>
+                  {isUploading ? 'Saving...' : (editingItemId ? 'Update Item' : 'Save New Item')}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -540,60 +622,22 @@ export default function DashboardPage() {
                 </div>
               )}
 
-              {/* Add/Edit Item Card */}
-              <div style={{ backgroundColor: editingItemId ? '#fef3c7' : 'white', padding: '30px', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.03)', border: editingItemId ? '2px solid #f59e0b' : '1px solid #f3f4f6', marginBottom: '30px', transition: 'all 0.3s' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                  <h2 style={{ margin: 0, fontSize: '18px', color: '#111827', fontWeight: '800' }}>
-                    {editingItemId ? '✏️ Edit Item' : 'Add New Item'}
-                  </h2>
-                  {editingItemId && (
-                    <button onClick={cancelEdit} style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: '13px', cursor: 'pointer', fontWeight: 'bold' }}>Cancel Edit</button>
-                  )}
-                </div>
-
-                <form onSubmit={handleAddItem} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                  <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-                    <div style={{ flex: '2 1 200px' }}><input type="text" placeholder="Item Name" required value={newItem.name} onChange={(e) => setNewItem({...newItem, name: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', boxSizing: 'border-box', backgroundColor: 'white' }} /></div>
-                    <div style={{ flex: '1 1 100px' }}><input type="number" step="0.01" placeholder="Price (₱)" required value={newItem.price} onChange={(e) => setNewItem({...newItem, price: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', boxSizing: 'border-box', backgroundColor: 'white' }} /></div>
-                  </div>
-                  
-                  <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-                    <div style={{ flex: '2 1 200px' }}><input type="text" placeholder="Description (Optional)" value={newItem.description} onChange={(e) => setNewItem({...newItem, description: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', boxSizing: 'border-box', backgroundColor: 'white' }} /></div>
-                    <div style={{ flex: '1 1 150px' }}>
-                      <input type="text" list="category-suggestions" placeholder="Category (e.g., Coffee)" required value={newItem.category} onChange={(e) => setNewItem({...newItem, category: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', boxSizing: 'border-box', backgroundColor: 'white' }} />
-                      <datalist id="category-suggestions">
-                        <option value="General" /><option value="Hot Drinks" /><option value="Cold Drinks" /><option value="Desserts" /><option value="Main Course" />
-                      </datalist>
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', padding: '15px', backgroundColor: 'rgba(255,255,255,0.5)', border: '1px dashed #d1d5db', borderRadius: '8px', flexWrap: 'wrap', gap: '15px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                      {croppedPreview ? (
-                        <div style={{ position: 'relative' }}>
-                          <img src={croppedPreview} alt="Preview" style={{ width: '120px', height: '90px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #d1d5db' }} />
-                          <button type="button" onClick={() => { setCroppedPreview(null); setNewItem({...newItem, imageFile: null}) }} style={{ position: 'absolute', top: '-8px', right: '-8px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '50%', width: '20px', height: '20px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>×</button>
-                        </div>
-                      ) : (
-                        <div>
-                          <label htmlFor="image-upload" style={{ display: 'inline-block', padding: '8px 16px', backgroundColor: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', color: '#4b5563' }}>📸 {editingItemId ? 'Change Image' : 'Choose Image'}</label>
-                          <input id="image-upload" type="file" accept="image/*" onChange={onFileSelect} style={{ display: 'none' }} />
-                        </div>
-                      )}
-                    </div>
-                    <button type="submit" disabled={isUploading} style={{ padding: '10px 20px', backgroundColor: editingItemId ? '#f59e0b' : '#10b981', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: isUploading ? 'not-allowed' : 'pointer' }}>
-                      {isUploading ? 'Saving...' : (editingItemId ? 'Update Item' : '+ Save Item')}
-                    </button>
-                  </div>
-                </form>
+              {/* Inventory Header & Add Button */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <h2 style={{ margin: 0, fontSize: '20px', color: '#111827', fontWeight: '800' }}>Menu & Inventory</h2>
+                <button onClick={openAddModal} style={{ padding: '10px 20px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '16px' }}>+</span> Add Item
+                </button>
               </div>
 
-              {/* Inventory List Card (UPDATED WITH EDIT/DELETE BUTTONS) */}
+              {/* Inventory List Card */}
               <div style={{ backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.03)', border: '1px solid #f3f4f6', overflow: 'hidden' }}>
-                <div style={{ padding: '20px 30px', backgroundColor: '#f9fafb', borderBottom: '1px solid #f3f4f6' }}><h2 style={{ margin: 0, fontSize: '18px', color: '#111827', fontWeight: '800' }}>Current Inventory</h2></div>
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   {items.length === 0 ? (
-                    <div style={{ padding: '40px', textAlign: 'center', color: '#9ca3af', fontStyle: 'italic' }}>Menu is empty.</div>
+                    <div style={{ padding: '60px 40px', textAlign: 'center', color: '#9ca3af', fontStyle: 'italic' }}>
+                      <p style={{ margin: '0 0 10px 0', fontSize: '24px' }}>🍽️</p>
+                      Your menu is currently empty.
+                    </div>
                   ) : (
                     items.map(item => (
                       <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 30px', borderBottom: '1px solid #f3f4f6' }}>
@@ -611,7 +655,6 @@ export default function DashboardPage() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                           <div style={{ fontSize: '18px', fontWeight: '900', color: '#10b981', backgroundColor: '#ecfdf5', padding: '8px 16px', borderRadius: '20px' }}>₱{parseFloat(item.price).toFixed(2)}</div>
                           
-                          {/* ACTION BUTTONS */}
                           <div style={{ display: 'flex', gap: '5px' }}>
                             <button onClick={() => startEditItem(item)} style={{ background: '#eff6ff', color: '#3b82f6', border: 'none', padding: '8px', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Edit Item">
                               ✏️
