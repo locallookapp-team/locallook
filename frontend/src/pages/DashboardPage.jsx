@@ -4,6 +4,12 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import Cropper from 'react-easy-crop';
 import { supabase } from '../supabaseClient';
+import { MdDragIndicator, MdMoreVert } from "react-icons/md";
+
+import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { arrayMove, SortableContext, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
+import { restrictToHorizontalAxis } from '@dnd-kit/modifiers';
+import { CSS } from '@dnd-kit/utilities';
 
 const MAPBOX_TOKEN = (typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_MAPBOX_TOKEN : '') || '';
 if (MAPBOX_TOKEN) {
@@ -38,6 +44,42 @@ const getCroppedImg = async (imageSrc, pixelCrop) => {
   });
 };
 
+function SortableCategory({ id, activeCategory, brandColor, onClick }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 50 : 1,
+    position: 'relative'
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+      <button
+        onClick={() => onClick(id)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: '4px', 
+          padding: '8px 16px', borderRadius: '20px', whiteSpace: 'nowrap', border: 'none',
+          fontWeight: 'bold', fontSize: '13px', 
+          transition: isDragging ? 'none' : 'background-color 0.2s, color 0.2s, box-shadow 0.2s',
+          backgroundColor: activeCategory === id ? brandColor : 'white',
+          color: activeCategory === id ? 'white' : '#4b5563',
+          boxShadow: isDragging 
+            ? '0 10px 25px rgba(0,0,0,0.15)' 
+            : (activeCategory === id ? `0 4px 10px ${brandColor}40` : '0 1px 3px rgba(0,0,0,0.1)'),
+          cursor: isDragging ? 'grabbing' : 'grab',
+          opacity: isDragging ? 0.95 : 1,
+          touchAction: 'none' 
+        }}
+      >
+        <MdDragIndicator size={18} style={{ opacity: 0.7, marginLeft: '-4px' }} />
+        {id}
+      </button>
+    </div>
+  );
+}
+
 export default function DashboardPage() {
   const navigate = useNavigate();
   
@@ -50,11 +92,28 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('dashboard'); 
 
+  // Store Management State
+  const [openStoreMenuId, setOpenStoreMenuId] = useState(null);
+  const [isEditStoreModalOpen, setIsEditStoreModalOpen] = useState(false);
+  const [editStoreData, setEditStoreData] = useState({ id: '', store_name: '', store_category: '', description: '', lat: '', lng: '' });
+  
+  const [isDeleteStoreModalOpen, setIsDeleteStoreModalOpen] = useState(false);
+  const [storeToDelete, setStoreToDelete] = useState(null);
+  const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
+
   // Item Form & Modal State
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
   const [newItem, setNewItem] = useState({ name: '', description: '', price: '', category: '', imageFile: null });
   const [isUploading, setIsUploading] = useState(false);
   const [editingItemId, setEditingItemId] = useState(null); 
+  
+  // Drag, Drop, and Scroll State
+  const [categoryOrder, setCategoryOrder] = useState([]);
+  const [activeCategory, setActiveCategory] = useState('');
+  
+  const scrollContainerRef = useRef(null);
+  const sectionRefs = useRef({});
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   
   const [imageToCrop, setImageToCrop] = useState(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
@@ -70,11 +129,15 @@ export default function DashboardPage() {
   const [inviteMessage, setInviteMessage] = useState(null);
   const [openMenuId, setOpenMenuId] = useState(null); 
 
-  const [newStoreData, setNewStoreData] = useState({ store_name: '', store_category: 'Food & Dining', lat: '', lng: '' });
+  const [newStoreData, setNewStoreData] = useState({ store_name: '', store_category: 'Food & Dining', description: '', lat: '', lng: '' });
 
   const mapContainer = useRef(null);
   const map = useRef(null);
   const newPinRef = useRef(null);
+
+  const editMapContainer = useRef(null);
+  const editMap = useRef(null);
+  const editPinRef = useRef(null);
 
   useEffect(() => {
     const initDashboard = async () => {
@@ -113,7 +176,12 @@ export default function DashboardPage() {
     if (activeStore?.id) {
       fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}`)
         .then(res => res.json())
-        .then(data => { if (data.theme_settings) setStoreTheme(data.theme_settings); })
+        .then(data => { 
+          if (data.theme_settings) {
+            setStoreTheme(data.theme_settings); 
+            if (data.theme_settings.categoryOrder) setCategoryOrder(data.theme_settings.categoryOrder);
+          }
+        })
         .catch(err => console.error(err));
 
       fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}/items`)
@@ -131,6 +199,16 @@ export default function DashboardPage() {
   }, [activeStore?.id]);
 
   useEffect(() => {
+    const uniqueCats = [...new Set(items.map(i => i.item_category || 'Uncategorized'))];
+    setCategoryOrder(prevOrder => {
+      const newOrder = [...prevOrder];
+      uniqueCats.forEach(c => { if (!newOrder.includes(c)) newOrder.push(c); });
+      return newOrder.filter(c => uniqueCats.includes(c)); 
+    });
+  }, [items]);
+
+  // MAP: ADD STORE
+  useEffect(() => {
     if (view === 'add_store' && mapContainer.current && !map.current) {
       map.current = new mapboxgl.Map({
         container: mapContainer.current,
@@ -139,14 +217,11 @@ export default function DashboardPage() {
         zoom: 15.5,
         pitch: 45,
       });
-
       map.current.addControl(new mapboxgl.NavigationControl({ showZoom: false, visualizePitch: true }), 'bottom-right');
-
       map.current.on('click', (e) => {
         const lng = e.lngLat.lng.toFixed(6);
         const lat = e.lngLat.lat.toFixed(6);
         setNewStoreData(prev => ({ ...prev, lat, lng }));
-
         if (!newPinRef.current) {
           const el = document.createElement('div');
           el.innerHTML = `<div style="background-color: #2563eb; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); transform: translateY(-12px);"></div>`;
@@ -156,7 +231,6 @@ export default function DashboardPage() {
         }
       });
     }
-    
     return () => {
       if (view !== 'add_store' && map.current) {
         map.current.remove();
@@ -165,6 +239,92 @@ export default function DashboardPage() {
       }
     };
   }, [view]);
+
+  // MAP: EDIT STORE MODAL
+  useEffect(() => {
+    if (isEditStoreModalOpen && editMapContainer.current && !editMap.current) {
+      editMap.current = new mapboxgl.Map({
+        container: editMapContainer.current,
+        style: 'mapbox://styles/mapbox/streets-v12',
+        center: [editStoreData.lng || 121.9823, editStoreData.lat || 12.3985],
+        zoom: 15.5,
+        pitch: 45,
+      });
+      
+      if (editStoreData.lng && editStoreData.lat) {
+        const el = document.createElement('div');
+        el.innerHTML = `<div style="background-color: #f59e0b; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); transform: translateY(-12px);"></div>`;
+        editPinRef.current = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+          .setLngLat([editStoreData.lng, editStoreData.lat])
+          .addTo(editMap.current);
+      }
+
+      editMap.current.on('click', (e) => {
+        const lng = e.lngLat.lng.toFixed(6);
+        const lat = e.lngLat.lat.toFixed(6);
+        setEditStoreData(prev => ({ ...prev, lat, lng }));
+
+        if (!editPinRef.current) {
+          const el = document.createElement('div');
+          el.innerHTML = `<div style="background-color: #f59e0b; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); transform: translateY(-12px);"></div>`;
+          editPinRef.current = new mapboxgl.Marker({ element: el, anchor: 'bottom' }).setLngLat([lng, lat]).addTo(editMap.current);
+        } else {
+          editPinRef.current.setLngLat([lng, lat]);
+        }
+      });
+    }
+
+    return () => {
+      if (!isEditStoreModalOpen && editMap.current) {
+        editMap.current.remove();
+        editMap.current = null;
+        editPinRef.current = null;
+      }
+    };
+  }, [isEditStoreModalOpen]);
+
+
+  const handleScroll = () => {
+    if (!scrollContainerRef.current) return;
+    const containerTop = scrollContainerRef.current.getBoundingClientRect().top;
+    
+    let currentActive = activeCategory;
+    let minDistance = Infinity;
+
+    categoryOrder.forEach(cat => {
+      const el = sectionRefs.current[cat];
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        const distance = Math.abs(rect.top - containerTop - 100); 
+        if (distance < minDistance) {
+          minDistance = distance;
+          currentActive = cat;
+        }
+      }
+    });
+
+    if (currentActive !== activeCategory) setActiveCategory(currentActive);
+  };
+
+  const scrollToCategory = (cat) => {
+    const el = sectionRefs.current[cat];
+    const container = scrollContainerRef.current;
+    if (el && container) {
+      const topPos = el.offsetTop - 120;
+      container.scrollTo({ top: topPos, behavior: 'smooth' });
+    }
+  };
+
+  const handleDragEnd = (event) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setCategoryOrder((items) => {
+        const oldIndex = items.indexOf(active.id);
+        const newIndex = items.indexOf(over.id);
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
+  };
 
   const onFileSelect = (e) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -209,14 +369,71 @@ export default function DashboardPage() {
     setIsSavingTheme(true);
     try {
       const response = await fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}/theme`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme_settings: storeTheme })
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ theme_settings: { ...storeTheme, categoryOrder } }) 
       });
       if (!response.ok) throw new Error("Failed to save theme");
-      alert("Storefront theme updated successfully!");
+      alert("Storefront branding and category layout saved successfully!");
     } catch (err) {
       alert(err.message);
     } finally {
       setIsSavingTheme(false);
+    }
+  };
+
+  const handleOpenEditStore = (store) => {
+    setEditStoreData({ id: store.id, store_name: store.store_name, store_category: store.store_category, description: store.description || '', lat: store.lat, lng: store.lng });
+    setIsEditStoreModalOpen(true);
+    setOpenStoreMenuId(null);
+  };
+
+  const handleUpdateStore = async (e) => {
+    e.preventDefault();
+    if (!editStoreData.lat || !editStoreData.lng) return alert("Please drop a pin on the map!");
+    setIsUploading(true);
+    try {
+      const response = await fetch(`https://locallook-api.onrender.com/api/stores/${editStoreData.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_name: editStoreData.store_name, store_category: editStoreData.store_category, description: editStoreData.description, lat: editStoreData.lat, lng: editStoreData.lng })
+      });
+      if (response.ok) {
+        const updatedStore = await response.json();
+        setStores(stores.map(s => s.id === updatedStore.id ? { ...s, ...updatedStore } : s));
+        if (activeStore?.id === updatedStore.id) setActiveStore({ ...activeStore, ...updatedStore });
+        setIsEditStoreModalOpen(false);
+      }
+    } catch (err) {
+      alert("Failed to update store.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleOpenDeleteStore = (store) => {
+    setStoreToDelete(store);
+    setDeleteConfirmationText('');
+    setIsDeleteStoreModalOpen(true);
+    setOpenStoreMenuId(null);
+  };
+
+  const handleDeleteStore = async () => {
+    if (deleteConfirmationText !== storeToDelete.store_name) return;
+    setIsUploading(true);
+    try {
+      const response = await fetch(`https://locallook-api.onrender.com/api/stores/${storeToDelete.id}`, { method: 'DELETE' });
+      if (response.ok) {
+        const updatedStores = stores.filter(s => s.id !== storeToDelete.id);
+        setStores(updatedStores);
+        if (activeStore?.id === storeToDelete.id) {
+          setActiveStore(updatedStores.length > 0 ? updatedStores[0] : null);
+          if (updatedStores.length === 0) setView('add_store');
+        }
+        setIsDeleteStoreModalOpen(false);
+      }
+    } catch (err) {
+      alert("Failed to delete store.");
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -236,13 +453,7 @@ export default function DashboardPage() {
 
   const startEditItem = (item) => {
     setEditingItemId(item.id);
-    setNewItem({
-      name: item.item_name,
-      description: item.description || '',
-      price: item.price,
-      category: item.item_category,
-      imageFile: null
-    });
+    setNewItem({ name: item.item_name, description: item.description || '', price: item.price, category: item.item_category, imageFile: null });
     setCroppedPreview(item.image_url || null);
     setIsItemModalOpen(true);
   };
@@ -337,7 +548,7 @@ export default function DashboardPage() {
       if (!response.ok) throw new Error("Failed to create store");
       await fetchStores(user.id);
       setView('dashboard');
-      setNewStoreData({ store_name: '', store_category: 'Food & Dining', lat: '', lng: '' });
+      setNewStoreData({ store_name: '', store_category: 'Food & Dining', description: '', lat: '', lng: '' });
     } catch (err) {
       alert(err.message);
     } finally {
@@ -361,12 +572,18 @@ export default function DashboardPage() {
     }
   };
 
+  const groupedItems = items.reduce((groups, item) => {
+    const category = item.item_category || 'Uncategorized';
+    if (!groups[category]) groups[category] = [];
+    groups[category].push(item);
+    return groups;
+  }, {});
+
   if (loading) return <div style={{ display: 'flex', height: '100vh', justifyContent: 'center', alignItems: 'center' }}>Loading...</div>;
 
   return (
     <div style={{ display: 'flex', height: '100vh', width: '100vw', backgroundColor: '#f3f4f6', fontFamily: 'sans-serif', overflow: 'hidden' }}>
       
-      {/* CROPPER OVERLAY */}
       {imageToCrop && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', flexDirection: 'column' }}>
           <div style={{ position: 'relative', flexGrow: 1 }}>
@@ -380,7 +597,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* FORM MODAL OVERLAY (ADD/EDIT ITEM) */}
       {isItemModalOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
           <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '16px', width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
@@ -401,28 +617,8 @@ export default function DashboardPage() {
                 <div style={{ flex: '2 1 200px' }}><input type="text" placeholder="Description (Optional)" value={newItem.description} onChange={(e) => setNewItem({...newItem, description: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', boxSizing: 'border-box' }} /></div>
                 <div style={{ flex: '1 1 150px' }}>
                   <input type="text" list="category-suggestions" placeholder="Category" required value={newItem.category} onChange={(e) => setNewItem({...newItem, category: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', boxSizing: 'border-box' }} />
-                  {/* EXPANDED CATEGORY DATALIST */}
                   <datalist id="category-suggestions">
-                    <option value="General" />
-                    <option value="Appetizers" />
-                    <option value="Main Course" />
-                    <option value="Desserts" />
-                    <option value="Snacks" />
-                    <option value="Hot Drinks" />
-                    <option value="Cold Drinks" />
-                    <option value="Bakery & Pastries" />
-                    <option value="Vegan/Vegetarian" />
-                    <option value="Fresh Produce" />
-                    <option value="Meat & Seafood" />
-                    <option value="Dairy & Eggs" />
-                    <option value="Pantry Staples" />
-                    <option value="Personal Care" />
-                    <option value="Household" />
-                    <option value="Clothing & Apparel" />
-                    <option value="Electronics" />
-                    <option value="Beauty & Cosmetics" />
-                    <option value="Toys & Games" />
-                    <option value="Services" />
+                    <option value="General" /><option value="Appetizers" /><option value="Main Course" /><option value="Desserts" /><option value="Snacks" /><option value="Hot Drinks" /><option value="Cold Drinks" /><option value="Bakery & Pastries" /><option value="Vegan/Vegetarian" /><option value="Fresh Produce" /><option value="Meat & Seafood" /><option value="Dairy & Eggs" /><option value="Pantry Staples" /><option value="Personal Care" /><option value="Household" /><option value="Clothing & Apparel" /><option value="Electronics" /><option value="Beauty & Cosmetics" /><option value="Toys & Games" /><option value="Services" />
                   </datalist>
                 </div>
               </div>
@@ -436,18 +632,12 @@ export default function DashboardPage() {
                     </div>
                   ) : (
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      {/* BUTTON 1: UPLOAD FROM DEVICE */}
                       <div>
-                        <label htmlFor="image-upload" style={{ display: 'inline-block', padding: '8px 12px', backgroundColor: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', color: '#4b5563' }}>
-                          🖼️ {editingItemId ? 'Change Image' : 'Upload Image'}
-                        </label>
+                        <label htmlFor="image-upload" style={{ display: 'inline-block', padding: '8px 12px', backgroundColor: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', color: '#4b5563' }}>🖼️ {editingItemId ? 'Change Image' : 'Upload Image'}</label>
                         <input id="image-upload" type="file" accept="image/*" onChange={onFileSelect} style={{ display: 'none' }} />
                       </div>
-                      {/* BUTTON 2: TAKE PHOTO (Mobile Camera) */}
                       <div>
-                        <label htmlFor="camera-upload" style={{ display: 'inline-block', padding: '8px 12px', backgroundColor: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', color: '#4b5563' }}>
-                          📸 Take Photo
-                        </label>
+                        <label htmlFor="camera-upload" style={{ display: 'inline-block', padding: '8px 12px', backgroundColor: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', color: '#4b5563' }}>📸 Take Photo</label>
                         <input id="camera-upload" type="file" accept="image/*" capture="environment" onChange={onFileSelect} style={{ display: 'none' }} />
                       </div>
                     </div>
@@ -458,6 +648,75 @@ export default function DashboardPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT STORE MODAL */}
+      {isEditStoreModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
+          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '16px', width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h2 style={{ margin: 0, fontSize: '20px', color: '#111827', fontWeight: '800' }}>Edit Store Info</h2>
+              <button onClick={() => setIsEditStoreModalOpen(false)} style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: '24px', cursor: 'pointer', lineHeight: '1' }}>&times;</button>
+            </div>
+            
+            <form onSubmit={handleUpdateStore} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              <input type="text" placeholder="Store Name" required value={editStoreData.store_name} onChange={(e) => setEditStoreData({...editStoreData, store_name: e.target.value})} style={{ padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', width: '100%', boxSizing: 'border-box' }} />
+              
+              <select value={editStoreData.store_category} onChange={(e) => setEditStoreData({...editStoreData, store_category: e.target.value})} style={{ padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', width: '100%', boxSizing: 'border-box', backgroundColor: 'white' }}>
+                <option value="Food & Dining">Food & Dining</option>
+                <option value="Retail">Retail</option>
+                <option value="Services">Services</option>
+                <option value="Groceries">Groceries</option>
+              </select>
+
+              <textarea placeholder="Store Description (Optional)" value={editStoreData.description} onChange={(e) => setEditStoreData({...editStoreData, description: e.target.value})} style={{ padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', width: '100%', boxSizing: 'border-box', minHeight: '80px', fontFamily: 'inherit' }} />
+              
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#6b7280', marginBottom: '8px' }}>Update Location (Drag map to move pin)</label>
+                <div style={{ position: 'relative', width: '100%', height: '200px', borderRadius: '8px', overflow: 'hidden', border: '1px solid #d1d5db' }}>
+                  <div ref={editMapContainer} style={{ position: 'absolute', inset: 0 }} />
+                </div>
+              </div>
+
+              <button type="submit" disabled={isUploading} style={{ padding: '14px', backgroundColor: '#f59e0b', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: isUploading ? 'not-allowed' : 'pointer', marginTop: '10px' }}>
+                {isUploading ? 'Updating...' : 'Save Changes'}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE STORE CONFIRMATION MODAL */}
+      {isDeleteStoreModalOpen && storeToDelete && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
+          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '16px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+            <h2 style={{ margin: '0 0 15px 0', fontSize: '20px', color: '#dc2626', fontWeight: '800' }}>⚠️ Delete Store</h2>
+            <p style={{ margin: '0 0 20px 0', color: '#4b5563', fontSize: '14px', lineHeight: '1.5' }}>
+              This action cannot be undone. This will permanently delete <strong>{storeToDelete.store_name}</strong> and all of its items.
+            </p>
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#6b7280', marginBottom: '8px' }}>
+                Type <strong style={{ color: '#111827' }}>{storeToDelete.store_name}</strong> to confirm:
+              </label>
+              <input 
+                type="text" 
+                value={deleteConfirmationText} 
+                onChange={(e) => setDeleteConfirmationText(e.target.value)} 
+                style={{ padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', width: '100%', boxSizing: 'border-box' }} 
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button onClick={() => setIsDeleteStoreModalOpen(false)} style={{ flex: 1, padding: '12px', backgroundColor: '#f3f4f6', color: '#4b5563', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
+              <button 
+                onClick={handleDeleteStore} 
+                disabled={deleteConfirmationText !== storeToDelete.store_name || isUploading} 
+                style={{ flex: 1, padding: '12px', backgroundColor: '#dc2626', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: deleteConfirmationText !== storeToDelete.store_name || isUploading ? 'not-allowed' : 'pointer', opacity: deleteConfirmationText !== storeToDelete.store_name ? 0.5 : 1 }}
+              >
+                {isUploading ? 'Deleting...' : 'Delete Store'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -481,12 +740,32 @@ export default function DashboardPage() {
         <div style={{ flexGrow: 1, padding: '20px 15px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#6b7280', marginBottom: '5px', paddingLeft: '5px' }}>YOUR STORES</div>
           {stores.map(s => (
-            <button 
-              key={s.id} onClick={() => { setActiveStore(s); setView('dashboard'); }}
-              style={{ width: '100%', padding: '12px 15px', backgroundColor: activeStore?.id === s.id && view === 'dashboard' ? '#374151' : 'transparent', color: 'white', border: 'none', borderRadius: '8px', textAlign: 'left', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
-            >
-              {s.store_name}
-            </button>
+            <div key={s.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <button 
+                onClick={() => { setActiveStore(s); setView('dashboard'); }}
+                style={{ width: '100%', padding: '12px 35px 12px 15px', backgroundColor: activeStore?.id === s.id && view === 'dashboard' ? '#374151' : 'transparent', color: 'white', border: 'none', borderRadius: '8px', textAlign: 'left', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+              >
+                {s.store_name}
+              </button>
+              
+              <button 
+                onClick={() => setOpenStoreMenuId(openStoreMenuId === s.id ? null : s.id)}
+                style={{ position: 'absolute', right: '5px', background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', padding: '5px', display: 'flex', alignItems: 'center', borderRadius: '50%' }}
+              >
+                <MdMoreVert size={18} />
+              </button>
+
+              {openStoreMenuId === s.id && (
+                <div style={{ position: 'absolute', right: '10px', top: '40px', backgroundColor: 'white', borderRadius: '8px', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', zIndex: 100, overflow: 'hidden', width: '130px' }}>
+                  <button onClick={() => handleOpenEditStore(s)} style={{ width: '100%', padding: '10px 15px', border: 'none', borderBottom: '1px solid #f3f4f6', background: 'white', textAlign: 'left', cursor: 'pointer', fontSize: '13px', color: '#374151', fontWeight: 'bold' }}>
+                    Edit Store
+                  </button>
+                  <button onClick={() => handleOpenDeleteStore(s)} style={{ width: '100%', padding: '10px 15px', border: 'none', background: 'white', textAlign: 'left', cursor: 'pointer', fontSize: '13px', color: '#dc2626', fontWeight: 'bold' }}>
+                    Delete Store
+                  </button>
+                </div>
+              )}
+            </div>
           ))}
           <button onClick={() => setView('add_store')} style={{ width: '100%', padding: '12px 15px', marginTop: '10px', backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#60a5fa', border: '1px dashed #3b82f6', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>+ Add a Store</button>
         </div>
@@ -496,20 +775,28 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* 2. MAIN CONTENT AREA */}
-      <div style={{ flexGrow: 1, overflowY: 'auto', position: 'relative' }}>
+      {/* 2. MAIN CONTENT AREA (SCROLL CONTAINER) */}
+      <div 
+        ref={scrollContainerRef} 
+        onScroll={handleScroll} 
+        style={{ flexGrow: 1, overflowY: 'auto', position: 'relative' }}
+      >
         {view === 'add_store' && (
           <div style={{ display: 'flex', height: '100%' }}>
             <div style={{ width: '350px', padding: '40px 30px', backgroundColor: 'white', boxShadow: '5px 0 15px rgba(0,0,0,0.05)', zIndex: 2 }}>
               <h2 style={{ marginTop: 0, color: '#1f2937' }}>Register Location</h2>
               <form onSubmit={handleCreateStore} style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' }}>
                 <input type="text" placeholder="Store Name" required value={newStoreData.store_name} onChange={e => setNewStoreData({...newStoreData, store_name: e.target.value})} style={{ padding: '12px', borderRadius: '8px', border: '1px solid #d1d5db' }} />
+                
                 <select value={newStoreData.store_category} onChange={e => setNewStoreData({...newStoreData, store_category: e.target.value})} style={{ padding: '12px', borderRadius: '8px', border: '1px solid #d1d5db', backgroundColor: 'white' }}>
                   <option value="Food & Dining">Food & Dining</option>
                   <option value="Retail">Retail</option>
                   <option value="Services">Services</option>
                   <option value="Groceries">Groceries</option>
                 </select>
+
+                <textarea placeholder="Store Description (Optional)" value={newStoreData.description} onChange={(e) => setNewStoreData({...newStoreData, description: e.target.value})} style={{ padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', width: '100%', boxSizing: 'border-box', minHeight: '80px', fontFamily: 'inherit' }} />
+
                 <div style={{ display: 'flex', gap: '10px' }}>
                   <input type="text" readOnly placeholder="Lat" value={newStoreData.lat} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #e5e7eb', flex: 1, backgroundColor: '#f3f4f6', fontSize: '12px' }} />
                   <input type="text" readOnly placeholder="Lng" value={newStoreData.lng} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #e5e7eb', flex: 1, backgroundColor: '#f3f4f6', fontSize: '12px' }} />
@@ -533,7 +820,9 @@ export default function DashboardPage() {
                     <h1 style={{ margin: 0, fontSize: '32px', color: '#111827', fontWeight: '900' }}>{activeStore.store_name}</h1>
                     {activeStore.role === 'operator' && <span style={{ padding: '4px 8px', backgroundColor: '#ecfdf5', color: '#059669', fontSize: '12px', fontWeight: 'bold', borderRadius: '6px' }}>STAFF MODE</span>}
                   </div>
-                  <p style={{ margin: '5px 0 0 0', color: '#6b7280', fontSize: '15px' }}>{activeStore.store_category} • Manage your menu and availability.</p>
+                  <p style={{ margin: '5px 0 2px 0', color: '#6b7280', fontSize: '15px', fontWeight: 'bold' }}>{activeStore.store_category}</p>
+                  {/* NEW: Store Description Display */}
+                  {activeStore.description && <p style={{ margin: 0, color: '#4b5563', fontSize: '14px' }}>{activeStore.description}</p>}
                 </div>
                 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '15px', backgroundColor: 'white', padding: '12px 20px', borderRadius: '50px', boxShadow: '0 4px 15px rgba(0,0,0,0.05)', border: '1px solid #e5e7eb' }}>
@@ -549,6 +838,7 @@ export default function DashboardPage() {
                 <div style={{ display: 'flex', gap: '20px', marginBottom: '30px', flexWrap: 'wrap' }}>
                   <div style={{ flex: 1, backgroundColor: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.03)', border: '1px solid #f3f4f6', minWidth: '300px' }}>
                     <h3 style={{ margin: '0 0 15px 0', color: '#111827', fontSize: '16px' }}>🎨 Storefront Branding</h3>
+                    <p style={{ margin: '0 0 15px 0', color: '#6b7280', fontSize: '12px' }}>Tip: Drag and drop categories below to set custom sorting, then click save!</p>
                     <div style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}>
                       <div style={{ flex: 1 }}>
                         <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#6b7280', marginBottom: '5px' }}>BRAND COLOR</label>
@@ -566,7 +856,7 @@ export default function DashboardPage() {
                       </div>
                     </div>
                     <button onClick={handleSaveTheme} disabled={isSavingTheme} style={{ width: '100%', padding: '10px', backgroundColor: '#111827', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: isSavingTheme ? 'not-allowed' : 'pointer' }}>
-                      {isSavingTheme ? 'Saving...' : 'Save Theme'}
+                      {isSavingTheme ? 'Saving...' : 'Save Theme & Sorting'}
                     </button>
                   </div>
 
@@ -630,42 +920,85 @@ export default function DashboardPage() {
                 </button>
               </div>
 
-              {/* Inventory List Card */}
-              <div style={{ backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.03)', border: '1px solid #f3f4f6', overflow: 'hidden' }}>
+              {/* PREMIUM DND KIT DRAGGABLE NAV BAR */}
+              {categoryOrder.length > 0 && (
+                <DndContext 
+                  sensors={sensors} 
+                  collisionDetection={closestCenter} 
+                  onDragEnd={handleDragEnd}
+                  modifiers={[restrictToHorizontalAxis]}
+                >
+                  <div style={{ 
+                    display: 'flex', gap: '10px', padding: '10px', marginBottom: '20px', 
+                    overflowX: 'auto', backgroundColor: '#e5e7eb', borderRadius: '12px',
+                    position: 'sticky', top: '0px', zIndex: 5, boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                    scrollbarWidth: 'none', msOverflowStyle: 'none'
+                  }}>
+                    <SortableContext items={categoryOrder} strategy={horizontalListSortingStrategy}>
+                      {categoryOrder.map(cat => (
+                        <SortableCategory 
+                          key={cat} 
+                          id={cat} 
+                          activeCategory={activeCategory} 
+                          brandColor={storeTheme.primaryColor}
+                          onClick={scrollToCategory} 
+                        />
+                      ))}
+                    </SortableContext>
+                  </div>
+                </DndContext>
+              )}
+
+              {/* Inventory List Card with Categorized Grouping */}
+              <div style={{ backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.03)', border: '1px solid #f3f4f6', overflow: 'hidden', paddingBottom: '100px' }}>
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  {items.length === 0 ? (
+                  {Object.keys(groupedItems).length === 0 ? (
                     <div style={{ padding: '60px 40px', textAlign: 'center', color: '#9ca3af', fontStyle: 'italic' }}>
                       <p style={{ margin: '0 0 10px 0', fontSize: '24px' }}>🍽️</p>
                       Your menu is currently empty.
                     </div>
                   ) : (
-                    items.map(item => (
-                      <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 30px', borderBottom: '1px solid #f3f4f6' }}>
-                        <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
-                          {item.image_url ? <img src={item.image_url} alt={item.item_name} style={{ width: '80px', height: '60px', objectFit: 'cover', borderRadius: '8px' }} /> : <div style={{ width: '80px', height: '60px', backgroundColor: '#f3f4f6', borderRadius: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '20px' }}>🍽️</div>}
-                          <div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <h4 style={{ margin: '0 0 4px 0', fontSize: '16px', color: '#1f2937' }}>{item.item_name}</h4>
-                              <span style={{ fontSize: '10px', padding: '2px 6px', backgroundColor: '#e5e7eb', color: '#4b5563', borderRadius: '4px', fontWeight: 'bold' }}>{item.item_category}</span>
-                            </div>
-                            <p style={{ margin: 0, color: '#6b7280', fontSize: '13px' }}>{item.description}</p>
+                    categoryOrder.map(category => {
+                      if (!groupedItems[category]) return null;
+                      return (
+                        <div key={category} ref={(el) => (sectionRefs.current[category] = el)}>
+                          <div style={{ padding: '12px 30px', backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb', borderTop: '1px solid #e5e7eb' }}>
+                            <h3 style={{ margin: 0, fontSize: '13px', color: '#6b7280', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>
+                              {category}
+                            </h3>
                           </div>
-                        </div>
-                        
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                          <div style={{ fontSize: '18px', fontWeight: '900', color: '#10b981', backgroundColor: '#ecfdf5', padding: '8px 16px', borderRadius: '20px' }}>₱{parseFloat(item.price).toFixed(2)}</div>
                           
-                          <div style={{ display: 'flex', gap: '5px' }}>
-                            <button onClick={() => startEditItem(item)} style={{ background: '#eff6ff', color: '#3b82f6', border: 'none', padding: '8px', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Edit Item">
-                              ✏️
-                            </button>
-                            <button onClick={() => handleDeleteItem(item.id, item.item_name)} style={{ background: '#fef2f2', color: '#ef4444', border: 'none', padding: '8px', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Delete Item">
-                              🗑️
-                            </button>
-                          </div>
+                          {groupedItems[category].map(item => (
+                            <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 30px', borderBottom: '1px solid #f3f4f6' }}>
+                              <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+                                {item.image_url ? <img src={item.image_url} alt={item.item_name} style={{ width: '80px', height: '60px', objectFit: 'cover', borderRadius: '8px' }} /> : <div style={{ width: '80px', height: '60px', backgroundColor: '#f3f4f6', borderRadius: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '20px' }}>🍽️</div>}
+                                <div>
+                                  <h4 style={{ margin: '0 0 4px 0', fontSize: '16px', color: '#1f2937' }}>{item.item_name}</h4>
+                                  <p style={{ margin: 0, color: '#6b7280', fontSize: '13px' }}>{item.description}</p>
+                                </div>
+                              </div>
+                              
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                                
+                                {/* --- BOLD MATCHING PRICE TYPOGRAPHY --- */}
+                                <div style={{ fontSize: '18px', fontWeight: '800', color: '#111827', letterSpacing: '-0.5px', whiteSpace: 'nowrap' }}>
+                                  ₱{parseFloat(item.price).toFixed(2)}
+                                </div>
+                                
+                                <div style={{ display: 'flex', gap: '5px', marginLeft: '10px' }}>
+                                  <button onClick={() => startEditItem(item)} style={{ background: '#eff6ff', color: '#3b82f6', border: 'none', padding: '8px', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Edit Item">
+                                    ✏️
+                                  </button>
+                                  <button onClick={() => handleDeleteItem(item.id, item.item_name)} style={{ background: '#fef2f2', color: '#ef4444', border: 'none', padding: '8px', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Delete Item">
+                                    🗑️
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      </div>
-                    ))
+                      )
+                    })
                   )}
                 </div>
               </div>
