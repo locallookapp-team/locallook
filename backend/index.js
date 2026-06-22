@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
+const { Resend } = require('resend');
 require('dotenv').config();
 
 const db = require('./db'); 
@@ -8,13 +9,21 @@ const db = require('./db');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Initialize Supabase Admin for secure backend operations
 const supabaseAdmin = createClient(
   process.env.SUPABASE_URL, 
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+// Initialize Resend for existing user notifications
+const resend = new Resend(process.env.RESEND_API_KEY);
+
 app.use(cors()); 
 app.use(express.json()); 
+
+// ==========================================
+// STORE CREATION & RBAC ASSIGNMENT
+// ==========================================
 
 // 1. CREATE STORE
 app.post('/api/stores', async (req, res) => {
@@ -67,7 +76,7 @@ app.get('/api/merchant/stores/:user_id', async (req, res) => {
   }
 });
 
-// 3. SECURE INVITE (Upgraded with Existing User Check)
+// 3. SECURE HYBRID INVITE (Supabase for New, Resend for Existing)
 app.post('/api/stores/:store_id/invite', async (req, res) => {
   const client = await db.connect();
   try {
@@ -97,8 +106,26 @@ app.post('/api/stores/:store_id/invite', async (req, res) => {
     if (existingUserCheck.rows.length > 0) {
       // THE FIX: User already exists! Grab their ID and skip the Supabase invite
       targetUserId = existingUserCheck.rows[0].id;
+      
+      // Send them a standard email via Resend to tell them they've been granted access
+      await resend.emails.send({
+        from: 'LocalLook <locallookapp@gmail.com>', // Update this if/when you verify a custom domain
+        to: email,
+        subject: "You've been added to a store on LocalLook!",
+        html: `
+          <div style="font-family: 'Segoe UI', sans-serif; padding: 30px; border: 1px solid #e5e7eb; border-radius: 12px; max-width: 500px; margin: 0 auto;">
+            <h2 style="color: #2563eb; margin-top: 0;">Store Access Granted</h2>
+            <p style="color: #4b5563; line-height: 1.6;">A merchant has granted you Operator access to their store on LocalLook.</p>
+            <p style="color: #4b5563; line-height: 1.6;">You can now manage their menu and availability directly from your Merchant Hub.</p>
+            <div style="text-align: center; margin-top: 30px;">
+              <a href="https://locallook.netlify.app/dashboard" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold;">Go to Dashboard</a>
+            </div>
+          </div>
+        `
+      });
+
     } else {
-      // NEW USER: Ask Supabase to create them and send an invite link
+      // NEW USER: Ask Supabase to create them and send the setup invite link
       const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email);
       
       if (inviteError) {
@@ -135,10 +162,10 @@ app.post('/api/stores/:store_id/invite', async (req, res) => {
 
     await client.query('COMMIT');
     
-    // Send a dynamic success message
+    // Send a dynamic success message based on what happened
     res.json({ 
       message: existingUserCheck.rows.length > 0 
-        ? "Existing staff member re-added successfully!" 
+        ? "Existing staff member re-added and notified!" 
         : "Invite sent successfully!", 
       operator_id: targetUserId 
     });
