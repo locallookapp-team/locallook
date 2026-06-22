@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
 const { Resend } = require('resend');
+const rateLimit = require('express-rate-limit'); // NEW: Security package
 require('dotenv').config();
 
 const db = require('./db'); 
@@ -9,23 +10,37 @@ const db = require('./db');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Initialize Supabase Admin for secure backend operations
-const supabaseAdmin = createClient(
-  process.env.SUPABASE_URL, 
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
-
-// Initialize Resend for existing user notifications
+// Initialize clients
+const supabaseAdmin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 app.use(cors()); 
 app.use(express.json()); 
 
 // ==========================================
+// SECURITY: API RATE LIMITING
+// ==========================================
+
+// Standard limit for all API routes (100 requests per 15 minutes per IP)
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, 
+  max: 100, 
+  message: { error: "Too many requests from this IP, please try again after 15 minutes." }
+});
+
+// Strict limit for the invite route to prevent email spam/quota exhaustion (5 invites per hour)
+const inviteLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, 
+  max: 10, 
+  message: { error: "Security restriction: You can only send 10 invites per hour." }
+});
+
+app.use('/api/', apiLimiter); // Apply general limiter globally
+
+// ==========================================
 // STORE CREATION & RBAC ASSIGNMENT
 // ==========================================
 
-// 1. CREATE STORE
 app.post('/api/stores', async (req, res) => {
   const client = await db.connect();
   try {
@@ -40,7 +55,6 @@ app.post('/api/stores', async (req, res) => {
     
     const newStoreId = storeResult.rows[0].id;
 
-    // Add explicit 'confirmed' status for the merchant
     await client.query(`
       INSERT INTO store_operators (store_id, user_id, role, status)
       VALUES ($1, $2, 'merchant', 'confirmed');
@@ -50,60 +64,40 @@ app.post('/api/stores', async (req, res) => {
     res.json(storeResult.rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error(err.message);
     res.status(500).send("Server Error");
   } finally {
     client.release();
   }
 });
 
-// 2. GET ALL STORES FOR USER (WITH AUTO-CONFIRM LOGIC)
 app.get('/api/merchant/stores/:user_id', async (req, res) => {
   try {
     const { user_id } = req.params;
 
-    // THE MAGIC FIX: If this route is called, it means the user has successfully logged into the app.
-    // Automatically flip any 'pending' invites to 'confirmed' for this user!
-    await db.query(`
-      UPDATE store_operators 
-      SET status = 'confirmed' 
-      WHERE user_id = $1 AND status = 'pending'
-    `, [user_id]);
+    await db.query(`UPDATE store_operators SET status = 'confirmed' WHERE user_id = $1 AND status = 'pending'`, [user_id]);
 
     const result = await db.query(`
-      SELECT 
-        s.id, s.store_name, s.store_category, s.is_open, 
-        ST_Y(s.location::geometry) as lat, ST_X(s.location::geometry) as lng,
-        so.role
-      FROM stores s
-      JOIN store_operators so ON s.id = so.store_id
-      WHERE so.user_id = $1
+      SELECT s.id, s.store_name, s.store_category, s.is_open, ST_Y(s.location::geometry) as lat, ST_X(s.location::geometry) as lng, so.role
+      FROM stores s JOIN store_operators so ON s.id = so.store_id WHERE so.user_id = $1
     `, [user_id]);
     res.json(result.rows);
   } catch (err) {
-    console.error(err.message);
     res.status(500).send("Server Error");
   }
 });
 
-// 3. SECURE HYBRID INVITE (Supabase for New, Resend for Existing)
-app.post('/api/stores/:store_id/invite', async (req, res) => {
+// Notice we added the specific inviteLimiter middleware here!
+app.post('/api/stores/:store_id/invite', inviteLimiter, async (req, res) => {
   const client = await db.connect();
   try {
     const { store_id } = req.params;
     const { email, requester_id } = req.body;
 
-    const authCheck = await client.query(
-      `SELECT role FROM store_operators WHERE store_id = $1 AND user_id = $2`, 
-      [store_id, requester_id]
-    );
-
-    if (authCheck.rows.length === 0 || authCheck.rows[0].role !== 'merchant') {
-      return res.status(403).json({ error: "Only the primary merchant can invite operators." });
-    }
+    const authCheck = await client.query(`SELECT role FROM store_operators WHERE store_id = $1 AND user_id = $2`, [store_id, requester_id]);
+    if (authCheck.rows.length === 0 || authCheck.rows[0].role !== 'merchant') return res.status(403).json({ error: "Only merchants can invite." });
 
     let targetUserId;
-    let inviteStatus = 'pending'; // Default to pending so the merchant knows they haven't logged in yet
+    let inviteStatus = 'pending'; 
 
     const existingUserCheck = await client.query(`SELECT id FROM users WHERE email = $1`, [email]);
 
@@ -111,110 +105,63 @@ app.post('/api/stores/:store_id/invite', async (req, res) => {
 
     if (existingUserCheck.rows.length > 0) {
       targetUserId = existingUserCheck.rows[0].id;
-      inviteStatus = 'confirmed'; // Auto-confirm because they are already an active LocalLook user
+      inviteStatus = 'confirmed'; 
       
       await resend.emails.send({
         from: 'onboarding@resend.dev', 
         to: email,
         subject: "You've been added to a store on LocalLook!",
-        html: `
-          <div style="font-family: 'Segoe UI', sans-serif; padding: 30px; border: 1px solid #e5e7eb; border-radius: 12px; max-width: 500px; margin: 0 auto;">
-            <h2 style="color: #2563eb; margin-top: 0;">Store Access Granted</h2>
-            <p style="color: #4b5563; line-height: 1.6;">A merchant has granted you Operator access to their store on LocalLook.</p>
-            <p style="color: #4b5563; line-height: 1.6;">You can now manage their menu and availability directly from your Merchant Hub.</p>
-            <div style="text-align: center; margin-top: 30px;">
-              <a href="https://locallook.netlify.app/dashboard" style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: bold;">Go to Dashboard</a>
-            </div>
-          </div>
-        `
+        html: `<div style="font-family: sans-serif; padding: 20px;"><h2>Store Access Granted</h2><a href="https://locallook.netlify.app/dashboard">Go to Dashboard</a></div>`
       });
-
     } else {
       const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email);
-      
-      if (inviteError) {
-        if (inviteError.message.includes('already been registered')) throw new Error("This user already has an account but is missing from the public directory.");
-        throw new Error(inviteError.message);
-      }
-      
+      if (inviteError) throw new Error(inviteError.message);
       targetUserId = inviteData.user.id;
-
-      await client.query(`
-        INSERT INTO users (id, email, role) VALUES ($1, $2, 'operator')
-        ON CONFLICT (id) DO NOTHING;
-      `, [targetUserId, email]);
+      await client.query(`INSERT INTO users (id, email, role) VALUES ($1, $2, 'operator') ON CONFLICT (id) DO NOTHING;`, [targetUserId, email]);
     }
 
-    const existingOp = await client.query(
-      `SELECT 1 FROM store_operators WHERE store_id = $1 AND user_id = $2`, [store_id, targetUserId]
-    );
-
+    const existingOp = await client.query(`SELECT 1 FROM store_operators WHERE store_id = $1 AND user_id = $2`, [store_id, targetUserId]);
     if (existingOp.rows.length === 0) {
-      // Insert with the dynamic status (Pending for new, Confirmed for existing)
-      await client.query(`
-        INSERT INTO store_operators (store_id, user_id, role, status)
-        VALUES ($1, $2, 'operator', $3);
-      `, [store_id, targetUserId, inviteStatus]);
+      await client.query(`INSERT INTO store_operators (store_id, user_id, role, status) VALUES ($1, $2, 'operator', $3);`, [store_id, targetUserId, inviteStatus]);
     } else {
-      throw new Error("This user is already an operator for this store.");
+      throw new Error("This user is already an operator.");
     }
 
     await client.query('COMMIT');
-    
-    res.json({ 
-      message: existingUserCheck.rows.length > 0 ? "Existing staff member re-added and notified!" : "Invite sent successfully!", 
-      operator_id: targetUserId 
-    });
-
+    res.json({ message: existingUserCheck.rows.length > 0 ? "Existing staff member re-added and notified!" : "Invite sent successfully!", operator_id: targetUserId });
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error("Invite Error:", err.message);
     res.status(500).json({ error: err.message });
   } finally {
     client.release();
   }
 });
 
-// 4. GET OPERATORS FOR STORE (Now fetches actual status)
 app.get('/api/stores/:store_id/operators', async (req, res) => {
   try {
     const { store_id } = req.params;
     const result = await db.query(`
-      SELECT u.id, u.email, so.role, so.status
-      FROM store_operators so
-      JOIN users u ON so.user_id = u.id
-      WHERE so.store_id = $1 AND so.role != 'merchant'
+      SELECT u.id, u.email, so.role, so.status FROM store_operators so JOIN users u ON so.user_id = u.id WHERE so.store_id = $1 AND so.role != 'merchant'
     `, [store_id]);
-    
-    const operatorsList = result.rows.map(row => ({
-      id: row.id, 
-      email: row.email, 
-      role: row.role, 
-      status: row.status || 'confirmed' // Uses the database status!
-    }));
-    
-    res.json(operatorsList);
+    res.json(result.rows);
   } catch (err) {
-    console.error("Fetch Operators Error:", err.message);
     res.status(500).send("Server Error");
   }
 });
 
-// 5. REMOVE STAFF FROM STORE
 app.delete('/api/stores/:store_id/staff/:staff_id', async (req, res) => {
   try {
     const { store_id, staff_id } = req.params;
     const result = await db.query(`DELETE FROM store_operators WHERE store_id = $1 AND user_id = $2 RETURNING *`, [store_id, staff_id]);
-    if (result.rowCount === 0) return res.status(404).json({ error: "Staff member not found in this store." });
-    res.status(200).json({ message: "Staff successfully removed from store" });
+    if (result.rowCount === 0) return res.status(404).json({ error: "Staff member not found." });
+    res.status(200).json({ message: "Staff removed." });
   } catch (error) {
-    console.error("Remove Staff Error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
 // ==========================================
-// STANDARD STORE & ITEM ROUTES
+// STANDARD STORE & ITEM ROUTES (UPDATED WITH UD)
 // ==========================================
 
 app.get('/api/stores', async (req, res) => {
@@ -235,11 +182,7 @@ app.get('/api/stores', async (req, res) => {
 
 app.get('/api/stores/:id', async (req, res) => {
   try {
-    const result = await db.query(`
-      SELECT id, store_name, store_category, is_open, theme_settings, 
-      ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng 
-      FROM stores WHERE id = $1;
-    `, [req.params.id]);
+    const result = await db.query(`SELECT id, store_name, store_category, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng FROM stores WHERE id = $1;`, [req.params.id]);
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).send("Server Error");
@@ -249,7 +192,6 @@ app.get('/api/stores/:id', async (req, res) => {
 app.patch('/api/stores/:id/theme', async (req, res) => {
   try {
     const { theme_settings } = req.body;
-    if (typeof theme_settings !== 'object') return res.status(400).json({ error: "Invalid theme format" });
     const result = await db.query(`UPDATE stores SET theme_settings = $1 WHERE id = $2 RETURNING id, theme_settings`, [theme_settings, req.params.id]);
     res.json(result.rows[0]);
   } catch (err) {
@@ -260,16 +202,6 @@ app.patch('/api/stores/:id/theme', async (req, res) => {
 app.get('/api/stores/:store_id/items', async (req, res) => {
   try {
     const result = await db.query('SELECT * FROM items WHERE store_id = $1 ORDER BY created_at DESC', [req.params.store_id]);
-    res.json(result.rows);
-  } catch (err) {
-    res.status(500).send("Server Error");
-  }
-});
-
-app.get('/api/search/items', async (req, res) => {
-  try {
-    if (!req.query.q) return res.json([]);
-    const result = await db.query(`SELECT items.id AS item_id, items.item_name, items.price, stores.id AS store_id, stores.store_name, stores.is_open FROM items JOIN stores ON items.store_id = stores.id WHERE items.item_name ILIKE $1 ORDER BY stores.is_open DESC, items.item_name ASC LIMIT 10;`, [`%${req.query.q}%`]);
     res.json(result.rows);
   } catch (err) {
     res.status(500).send("Server Error");
@@ -290,10 +222,43 @@ app.post('/api/items', async (req, res) => {
     const { store_id, item_name, description, price, image_url, item_category } = req.body;
     const result = await db.query(`
       INSERT INTO items (store_id, item_name, description, price, image_url, item_category, is_available) 
-      VALUES ($1, $2, $3, $4, $5, COALESCE($6, 'General'), true) 
-      RETURNING *;
+      VALUES ($1, $2, $3, $4, $5, COALESCE($6, 'General'), true) RETURNING *;
     `, [store_id, item_name, description, price, image_url, item_category]); 
     res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).send("Server Error");
+  }
+});
+
+// NEW: UPDATE ITEM
+app.patch('/api/items/:id', async (req, res) => {
+  try {
+    const { item_name, description, price, item_category, image_url } = req.body;
+    let query = `UPDATE items SET item_name = $1, description = $2, price = $3, item_category = $4`;
+    let values = [item_name, description, price, item_category];
+    
+    // Only update image if a new one was provided
+    if (image_url) {
+      query += `, image_url = $5 WHERE id = $6 RETURNING *`;
+      values.push(image_url, req.params.id);
+    } else {
+      query += ` WHERE id = $5 RETURNING *`;
+      values.push(req.params.id);
+    }
+
+    const result = await db.query(query, values);
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).send("Server Error");
+  }
+});
+
+// NEW: DELETE ITEM
+app.delete('/api/items/:id', async (req, res) => {
+  try {
+    const result = await db.query('DELETE FROM items WHERE id = $1 RETURNING *', [req.params.id]);
+    if (result.rowCount === 0) return res.status(404).json({ error: "Item not found" });
+    res.json({ message: "Item deleted successfully" });
   } catch (err) {
     res.status(500).send("Server Error");
   }

@@ -50,8 +50,10 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('dashboard'); 
 
+  // Item Form State
   const [newItem, setNewItem] = useState({ name: '', description: '', price: '', category: 'General', imageFile: null });
   const [isUploading, setIsUploading] = useState(false);
+  const [editingItemId, setEditingItemId] = useState(null); // NEW: Tracks if we are editing
   
   const [imageToCrop, setImageToCrop] = useState(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
@@ -122,6 +124,11 @@ export default function DashboardPage() {
         .then(res => res.ok ? res.json() : [])
         .then(data => setStoreOperators(data))
         .catch(err => console.error("Failed to fetch operators", err));
+        
+      // Reset form if switching stores
+      setEditingItemId(null);
+      setNewItem({ name: '', description: '', price: '', category: 'General', imageFile: null });
+      setCroppedPreview(null);
     }
   }, [activeStore?.id]);
 
@@ -234,21 +241,67 @@ export default function DashboardPage() {
       finalImageUrl = publicUrlData.publicUrl;
     }
 
-    const response = await fetch('https://locallook-api.onrender.com/api/items', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        store_id: activeStore.id, item_name: newItem.name, description: newItem.description, 
-        price: parseFloat(newItem.price), image_url: finalImageUrl, item_category: newItem.category
-      })
-    });
-    
-    if (response.ok) {
-      const addedItem = await response.json();
-      setItems([addedItem, ...items]);
-      setNewItem({ name: '', description: '', price: '', category: 'General', imageFile: null });
-      setCroppedPreview(null);
+    if (editingItemId) {
+      // UPDATE EXISTING ITEM
+      const response = await fetch(`https://locallook-api.onrender.com/api/items/${editingItemId}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ item_name: newItem.name, description: newItem.description, price: parseFloat(newItem.price), image_url: finalImageUrl, item_category: newItem.category })
+      });
+      if (response.ok) {
+        const updatedItem = await response.json();
+        setItems(items.map(i => i.id === editingItemId ? updatedItem : i));
+        setEditingItemId(null);
+        setNewItem({ name: '', description: '', price: '', category: 'General', imageFile: null });
+        setCroppedPreview(null);
+      }
+    } else {
+      // ADD NEW ITEM
+      const response = await fetch('https://locallook-api.onrender.com/api/items', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: activeStore.id, item_name: newItem.name, description: newItem.description, price: parseFloat(newItem.price), image_url: finalImageUrl, item_category: newItem.category })
+      });
+      if (response.ok) {
+        const addedItem = await response.json();
+        setItems([addedItem, ...items]);
+        setNewItem({ name: '', description: '', price: '', category: 'General', imageFile: null });
+        setCroppedPreview(null);
+      }
     }
     setIsUploading(false);
+  };
+
+  const startEditItem = (item) => {
+    setEditingItemId(item.id);
+    setNewItem({
+      name: item.item_name,
+      description: item.description || '',
+      price: item.price,
+      category: item.item_category,
+      imageFile: null
+    });
+    setCroppedPreview(item.image_url || null);
+    
+    // Scroll to top to see the form
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const cancelEdit = () => {
+    setEditingItemId(null);
+    setNewItem({ name: '', description: '', price: '', category: 'General', imageFile: null });
+    setCroppedPreview(null);
+  };
+
+  const handleDeleteItem = async (itemId, itemName) => {
+    if (!window.confirm(`Delete "${itemName}" from the menu permanently?`)) return;
+    try {
+      const response = await fetch(`https://locallook-api.onrender.com/api/items/${itemId}`, { method: 'DELETE' });
+      if (response.ok) {
+        setItems(items.filter(item => item.id !== itemId));
+        if (editingItemId === itemId) cancelEdit();
+      }
+    } catch (err) {
+      alert("Failed to delete item.");
+    }
   };
 
   const handleInviteOperator = async (e) => {
@@ -262,8 +315,9 @@ export default function DashboardPage() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Failed to invite operator");
       
-      setInviteMessage({ type: 'success', text: 'Invite sent successfully!' });
-      setStoreOperators([...storeOperators, { email: inviteEmail, status: 'pending', role: 'operator' }]);
+      setInviteMessage({ type: 'success', text: data.message });
+      const newStatus = data.message.includes('Existing') ? 'confirmed' : 'pending';
+      setStoreOperators([...storeOperators, { email: inviteEmail, status: newStatus, role: 'operator' }]);
       setInviteEmail(''); 
     } catch (err) {
       setInviteMessage({ type: 'error', text: err.message });
@@ -451,7 +505,6 @@ export default function DashboardPage() {
                       </div>
                     )}
 
-                    {/* STAFF/OPERATOR LIST (Simplified) */}
                     {storeOperators.length > 0 && (
                       <div style={{ marginTop: '15px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                         <span style={{ fontSize: '11px', fontWeight: 'bold', color: '#60a5fa' }}>CURRENT STAFF</span>
@@ -487,26 +540,34 @@ export default function DashboardPage() {
                 </div>
               )}
 
-              {/* Add New Item Card */}
-              <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.03)', border: '1px solid #f3f4f6', marginBottom: '30px' }}>
-                <h2 style={{ margin: '0 0 20px 0', fontSize: '18px', color: '#111827', fontWeight: '800' }}>Add New Item</h2>
+              {/* Add/Edit Item Card */}
+              <div style={{ backgroundColor: editingItemId ? '#fef3c7' : 'white', padding: '30px', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.03)', border: editingItemId ? '2px solid #f59e0b' : '1px solid #f3f4f6', marginBottom: '30px', transition: 'all 0.3s' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                  <h2 style={{ margin: 0, fontSize: '18px', color: '#111827', fontWeight: '800' }}>
+                    {editingItemId ? '✏️ Edit Item' : 'Add New Item'}
+                  </h2>
+                  {editingItemId && (
+                    <button onClick={cancelEdit} style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: '13px', cursor: 'pointer', fontWeight: 'bold' }}>Cancel Edit</button>
+                  )}
+                </div>
+
                 <form onSubmit={handleAddItem} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                   <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-                    <div style={{ flex: '2 1 200px' }}><input type="text" placeholder="Item Name" required value={newItem.name} onChange={(e) => setNewItem({...newItem, name: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', boxSizing: 'border-box' }} /></div>
-                    <div style={{ flex: '1 1 100px' }}><input type="number" step="0.01" placeholder="Price (₱)" required value={newItem.price} onChange={(e) => setNewItem({...newItem, price: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', boxSizing: 'border-box' }} /></div>
+                    <div style={{ flex: '2 1 200px' }}><input type="text" placeholder="Item Name" required value={newItem.name} onChange={(e) => setNewItem({...newItem, name: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', boxSizing: 'border-box', backgroundColor: 'white' }} /></div>
+                    <div style={{ flex: '1 1 100px' }}><input type="number" step="0.01" placeholder="Price (₱)" required value={newItem.price} onChange={(e) => setNewItem({...newItem, price: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', boxSizing: 'border-box', backgroundColor: 'white' }} /></div>
                   </div>
                   
                   <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-                    <div style={{ flex: '2 1 200px' }}><input type="text" placeholder="Description (Optional)" value={newItem.description} onChange={(e) => setNewItem({...newItem, description: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', boxSizing: 'border-box' }} /></div>
+                    <div style={{ flex: '2 1 200px' }}><input type="text" placeholder="Description (Optional)" value={newItem.description} onChange={(e) => setNewItem({...newItem, description: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', boxSizing: 'border-box', backgroundColor: 'white' }} /></div>
                     <div style={{ flex: '1 1 150px' }}>
-                      <input type="text" list="category-suggestions" placeholder="Category (e.g., Coffee)" required value={newItem.category} onChange={(e) => setNewItem({...newItem, category: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', boxSizing: 'border-box' }} />
+                      <input type="text" list="category-suggestions" placeholder="Category (e.g., Coffee)" required value={newItem.category} onChange={(e) => setNewItem({...newItem, category: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', boxSizing: 'border-box', backgroundColor: 'white' }} />
                       <datalist id="category-suggestions">
                         <option value="General" /><option value="Hot Drinks" /><option value="Cold Drinks" /><option value="Desserts" /><option value="Main Course" />
                       </datalist>
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', padding: '15px', backgroundColor: '#f9fafb', border: '1px dashed #d1d5db', borderRadius: '8px', flexWrap: 'wrap', gap: '15px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', padding: '15px', backgroundColor: 'rgba(255,255,255,0.5)', border: '1px dashed #d1d5db', borderRadius: '8px', flexWrap: 'wrap', gap: '15px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                       {croppedPreview ? (
                         <div style={{ position: 'relative' }}>
@@ -515,20 +576,19 @@ export default function DashboardPage() {
                         </div>
                       ) : (
                         <div>
-                          <label htmlFor="image-upload" style={{ display: 'inline-block', padding: '8px 16px', backgroundColor: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', color: '#4b5563' }}>📸 Choose Image</label>
+                          <label htmlFor="image-upload" style={{ display: 'inline-block', padding: '8px 16px', backgroundColor: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer', fontSize: '13px', fontWeight: 'bold', color: '#4b5563' }}>📸 {editingItemId ? 'Change Image' : 'Choose Image'}</label>
                           <input id="image-upload" type="file" accept="image/*" onChange={onFileSelect} style={{ display: 'none' }} />
                         </div>
                       )}
-                      {!croppedPreview && <span style={{ fontSize: '12px', color: '#9ca3af' }}>Formats to 4:3 Landscape</span>}
                     </div>
-                    <button type="submit" disabled={isUploading} style={{ padding: '10px 20px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: isUploading ? 'not-allowed' : 'pointer' }}>
-                      {isUploading ? 'Uploading...' : '+ Save Item'}
+                    <button type="submit" disabled={isUploading} style={{ padding: '10px 20px', backgroundColor: editingItemId ? '#f59e0b' : '#10b981', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: isUploading ? 'not-allowed' : 'pointer' }}>
+                      {isUploading ? 'Saving...' : (editingItemId ? 'Update Item' : '+ Save Item')}
                     </button>
                   </div>
                 </form>
               </div>
 
-              {/* Inventory List Card */}
+              {/* Inventory List Card (UPDATED WITH EDIT/DELETE BUTTONS) */}
               <div style={{ backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.03)', border: '1px solid #f3f4f6', overflow: 'hidden' }}>
                 <div style={{ padding: '20px 30px', backgroundColor: '#f9fafb', borderBottom: '1px solid #f3f4f6' }}><h2 style={{ margin: 0, fontSize: '18px', color: '#111827', fontWeight: '800' }}>Current Inventory</h2></div>
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -547,7 +607,20 @@ export default function DashboardPage() {
                             <p style={{ margin: 0, color: '#6b7280', fontSize: '13px' }}>{item.description}</p>
                           </div>
                         </div>
-                        <div style={{ fontSize: '18px', fontWeight: '900', color: '#10b981', backgroundColor: '#ecfdf5', padding: '8px 16px', borderRadius: '20px' }}>₱{parseFloat(item.price).toFixed(2)}</div>
+                        
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                          <div style={{ fontSize: '18px', fontWeight: '900', color: '#10b981', backgroundColor: '#ecfdf5', padding: '8px 16px', borderRadius: '20px' }}>₱{parseFloat(item.price).toFixed(2)}</div>
+                          
+                          {/* ACTION BUTTONS */}
+                          <div style={{ display: 'flex', gap: '5px' }}>
+                            <button onClick={() => startEditItem(item)} style={{ background: '#eff6ff', color: '#3b82f6', border: 'none', padding: '8px', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Edit Item">
+                              ✏️
+                            </button>
+                            <button onClick={() => handleDeleteItem(item.id, item.item_name)} style={{ background: '#fef2f2', color: '#ef4444', border: 'none', padding: '8px', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Delete Item">
+                              🗑️
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     ))
                   )}
