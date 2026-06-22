@@ -111,7 +111,7 @@ app.post('/api/stores/:store_id/invite', inviteLimiter, async (req, res) => {
         from: 'onboarding@resend.dev', 
         to: email,
         subject: "You've been added to a store on LocalLook!",
-        html: `<div style="font-family: sans-serif; padding: 20px;"><h2>Store Access Granted</h2><a href="https://locallook.netlify.app/dashboard">Go to Dashboard</a></div>`
+        html: `<div style="font-family: sans-serif; padding: 20px;"><h2>Store Access Granted</h2><a href="https://locallook.vercel.app/dashboard">Go to Dashboard</a></div>`
       });
     } else {
       const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email);
