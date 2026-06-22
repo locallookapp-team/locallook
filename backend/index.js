@@ -40,9 +40,10 @@ app.post('/api/stores', async (req, res) => {
     
     const newStoreId = storeResult.rows[0].id;
 
+    // Add explicit 'confirmed' status for the merchant
     await client.query(`
-      INSERT INTO store_operators (store_id, user_id, role)
-      VALUES ($1, $2, 'merchant');
+      INSERT INTO store_operators (store_id, user_id, role, status)
+      VALUES ($1, $2, 'merchant', 'confirmed');
     `, [newStoreId, user_id]);
 
     await client.query('COMMIT');
@@ -56,10 +57,19 @@ app.post('/api/stores', async (req, res) => {
   }
 });
 
-// 2. GET ALL STORES FOR USER
+// 2. GET ALL STORES FOR USER (WITH AUTO-CONFIRM LOGIC)
 app.get('/api/merchant/stores/:user_id', async (req, res) => {
   try {
     const { user_id } = req.params;
+
+    // THE MAGIC FIX: If this route is called, it means the user has successfully logged into the app.
+    // Automatically flip any 'pending' invites to 'confirmed' for this user!
+    await db.query(`
+      UPDATE store_operators 
+      SET status = 'confirmed' 
+      WHERE user_id = $1 AND status = 'pending'
+    `, [user_id]);
+
     const result = await db.query(`
       SELECT 
         s.id, s.store_name, s.store_category, s.is_open, 
@@ -83,7 +93,6 @@ app.post('/api/stores/:store_id/invite', async (req, res) => {
     const { store_id } = req.params;
     const { email, requester_id } = req.body;
 
-    // A. Verify the person requesting the invite is the 'merchant'
     const authCheck = await client.query(
       `SELECT role FROM store_operators WHERE store_id = $1 AND user_id = $2`, 
       [store_id, requester_id]
@@ -94,22 +103,18 @@ app.post('/api/stores/:store_id/invite', async (req, res) => {
     }
 
     let targetUserId;
+    let inviteStatus = 'pending'; // Default to pending so the merchant knows they haven't logged in yet
 
-    // B. Check if the user ALREADY exists in our database
-    const existingUserCheck = await client.query(
-      `SELECT id FROM users WHERE email = $1`,
-      [email]
-    );
+    const existingUserCheck = await client.query(`SELECT id FROM users WHERE email = $1`, [email]);
 
     await client.query('BEGIN');
 
     if (existingUserCheck.rows.length > 0) {
-      // THE FIX: User already exists! Grab their ID and skip the Supabase invite
       targetUserId = existingUserCheck.rows[0].id;
+      inviteStatus = 'confirmed'; // Auto-confirm because they are already an active LocalLook user
       
-      // Send them a standard email via Resend to tell them they've been granted access
-        await resend.emails.send({
-        from: 'onboarding@resend.dev', // MUST use this exact address in Sandbox mode!
+      await resend.emails.send({
+        from: 'onboarding@resend.dev', 
         to: email,
         subject: "You've been added to a store on LocalLook!",
         html: `
@@ -125,48 +130,39 @@ app.post('/api/stores/:store_id/invite', async (req, res) => {
       });
 
     } else {
-      // NEW USER: Ask Supabase to create them and send the setup invite link
       const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email);
       
       if (inviteError) {
-        if (inviteError.message.includes('already been registered')) {
-          throw new Error("This user already has an account but is missing from the public directory.");
-        }
+        if (inviteError.message.includes('already been registered')) throw new Error("This user already has an account but is missing from the public directory.");
         throw new Error(inviteError.message);
       }
       
       targetUserId = inviteData.user.id;
 
-      // Add the brand new user to our public table
       await client.query(`
         INSERT INTO users (id, email, role) VALUES ($1, $2, 'operator')
         ON CONFLICT (id) DO NOTHING;
       `, [targetUserId, email]);
     }
 
-    // C. Check if they are somehow already assigned to this store
     const existingOp = await client.query(
-      `SELECT 1 FROM store_operators WHERE store_id = $1 AND user_id = $2`,
-      [store_id, targetUserId]
+      `SELECT 1 FROM store_operators WHERE store_id = $1 AND user_id = $2`, [store_id, targetUserId]
     );
 
     if (existingOp.rows.length === 0) {
-      // D. Link them to the store as an operator!
+      // Insert with the dynamic status (Pending for new, Confirmed for existing)
       await client.query(`
-        INSERT INTO store_operators (store_id, user_id, role)
-        VALUES ($1, $2, 'operator');
-      `, [store_id, targetUserId]);
+        INSERT INTO store_operators (store_id, user_id, role, status)
+        VALUES ($1, $2, 'operator', $3);
+      `, [store_id, targetUserId, inviteStatus]);
     } else {
       throw new Error("This user is already an operator for this store.");
     }
 
     await client.query('COMMIT');
     
-    // Send a dynamic success message based on what happened
     res.json({ 
-      message: existingUserCheck.rows.length > 0 
-        ? "Existing staff member re-added and notified!" 
-        : "Invite sent successfully!", 
+      message: existingUserCheck.rows.length > 0 ? "Existing staff member re-added and notified!" : "Invite sent successfully!", 
       operator_id: targetUserId 
     });
 
@@ -179,19 +175,22 @@ app.post('/api/stores/:store_id/invite', async (req, res) => {
   }
 });
 
-// 4. GET OPERATORS FOR STORE
+// 4. GET OPERATORS FOR STORE (Now fetches actual status)
 app.get('/api/stores/:store_id/operators', async (req, res) => {
   try {
     const { store_id } = req.params;
     const result = await db.query(`
-      SELECT u.id, u.email, so.role
+      SELECT u.id, u.email, so.role, so.status
       FROM store_operators so
       JOIN users u ON so.user_id = u.id
-      WHERE so.store_id = $1 AND so.role = 'operator'
+      WHERE so.store_id = $1 AND so.role != 'merchant'
     `, [store_id]);
     
     const operatorsList = result.rows.map(row => ({
-      id: row.id, email: row.email, role: row.role, status: 'confirmed' 
+      id: row.id, 
+      email: row.email, 
+      role: row.role, 
+      status: row.status || 'confirmed' // Uses the database status!
     }));
     
     res.json(operatorsList);
@@ -205,17 +204,8 @@ app.get('/api/stores/:store_id/operators', async (req, res) => {
 app.delete('/api/stores/:store_id/staff/:staff_id', async (req, res) => {
   try {
     const { store_id, staff_id } = req.params;
-
-    const result = await db.query(`
-      DELETE FROM store_operators 
-      WHERE store_id = $1 AND user_id = $2 
-      RETURNING *
-    `, [store_id, staff_id]);
-
-    if (result.rowCount === 0) {
-      return res.status(404).json({ error: "Staff member not found in this store." });
-    }
-
+    const result = await db.query(`DELETE FROM store_operators WHERE store_id = $1 AND user_id = $2 RETURNING *`, [store_id, staff_id]);
+    if (result.rowCount === 0) return res.status(404).json({ error: "Staff member not found in this store." });
     res.status(200).json({ message: "Staff successfully removed from store" });
   } catch (error) {
     console.error("Remove Staff Error:", error);
