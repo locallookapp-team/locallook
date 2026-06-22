@@ -1,5 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { 
+  MdLocationOn, MdAccessTime, MdPhone, MdEmail, 
+  MdStarRate, MdArrowBack 
+} from "react-icons/md";
+import { supabase } from '../supabaseClient'; // Make sure Supabase is imported for Realtime
 
 export default function StoreProfilePage() {
   const { id } = useParams();
@@ -13,12 +18,13 @@ export default function StoreProfilePage() {
   const [categoryOrder, setCategoryOrder] = useState([]);
   const [activeCategory, setActiveCategory] = useState('');
   
-  // NEW: Item Modal State for Customers
+  // Item Modal State for Customers
   const [selectedItem, setSelectedItem] = useState(null);
   
   const scrollContainerRef = useRef(null);
   const sectionRefs = useRef({});
 
+  // 1. Initial Data Fetch
   useEffect(() => {
     fetch(`https://locallook-api.onrender.com/api/stores/${id}`)
       .then(res => res.json())
@@ -35,6 +41,34 @@ export default function StoreProfilePage() {
         console.error(err);
         setLoading(false);
       });
+  }, [id]);
+
+  // 2. REAL-TIME LISTENER: Watch for store updates (Open/Close status)
+  useEffect(() => {
+    if (!id) return;
+
+    // Subscribe to Postgres changes for this specific store
+    const storeSubscription = supabase
+      .channel(`store-updates-${id}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'stores', filter: `id=eq.${id}` },
+        (payload) => {
+          if (payload.new) {
+            // Update the store state in real-time without refreshing!
+            setStore((prevStore) => ({
+              ...prevStore,
+              is_open: payload.new.is_open
+            }));
+          }
+        }
+      )
+      .subscribe();
+
+    // Cleanup subscription on unmount
+    return () => {
+      supabase.removeChannel(storeSubscription);
+    };
   }, [id]);
 
   useEffect(() => {
@@ -126,7 +160,6 @@ export default function StoreProfilePage() {
           .themed-scrollbar::-webkit-scrollbar-thumb:hover {
             filter: brightness(0.8);
           }
-          /* Hover effect for interactive items */
           .menu-item-card:hover {
             transform: translateY(-2px);
             box-shadow: 0 10px 25px rgba(0,0,0,0.08) !important;
@@ -134,58 +167,38 @@ export default function StoreProfilePage() {
         `}
       </style>
 
-      {/* NEW: CUSTOMER ITEM MODAL (Slide-up Pop-up) */}
+      {/* CUSTOMER ITEM MODAL */}
       {selectedItem && (
         <div 
-          onClick={() => setSelectedItem(null)} // Clicking outside closes it
-          style={{ 
-            position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.6)', 
-            display: 'flex', justifyContent: 'center', alignItems: 'flex-end', // Aligns to bottom for mobile feel
-            padding: '20px', backdropFilter: 'blur(4px)'
-          }}
+          onClick={() => setSelectedItem(null)}
+          style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'flex-end', padding: '20px', backdropFilter: 'blur(4px)' }}
         >
           <div 
-            onClick={(e) => e.stopPropagation()} // Prevents closing when clicking inside modal
-            style={{ 
-              backgroundColor: 'white', width: '100%', maxWidth: '500px', maxHeight: '90vh', 
-              borderRadius: '24px', overflow: 'hidden', display: 'flex', flexDirection: 'column',
-              boxShadow: '0 -10px 40px rgba(0,0,0,0.2)', animation: 'slideUp 0.3s ease-out'
-            }}
+            onClick={(e) => e.stopPropagation()} 
+            style={{ backgroundColor: 'white', width: '100%', maxWidth: '500px', maxHeight: '90vh', borderRadius: '24px', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 -10px 40px rgba(0,0,0,0.2)', animation: 'slideUp 0.3s ease-out' }}
           >
-            {/* Modal Image Header */}
             <div style={{ position: 'relative', width: '100%', height: '250px', backgroundColor: '#f3f4f6' }}>
               {selectedItem.image_url ? (
                 <img src={selectedItem.image_url} alt={selectedItem.item_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               ) : (
                 <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '60px' }}>🍽️</div>
               )}
-              {/* Close Button */}
-              <button 
-                onClick={() => setSelectedItem(null)} 
-                style={{ position: 'absolute', top: '15px', right: '15px', width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'white', border: 'none', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '18px', fontWeight: 'bold', color: '#111827' }}
-              >
-                ✕
-              </button>
+              <button onClick={() => setSelectedItem(null)} style={{ position: 'absolute', top: '15px', right: '15px', width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'white', border: 'none', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '18px', fontWeight: 'bold', color: '#111827' }}>✕</button>
             </div>
 
-            {/* Modal Content Details */}
             <div style={{ padding: '25px', overflowY: 'auto', flexGrow: 1 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '15px' }}>
                 <div>
                   <h2 style={{ margin: '0 0 5px 0', fontSize: '24px', color: '#111827', fontWeight: '900', lineHeight: '1.2' }}>{selectedItem.item_name}</h2>
                   <span style={{ fontSize: '12px', padding: '4px 10px', backgroundColor: '#f3f4f6', color: '#4b5563', borderRadius: '6px', fontWeight: '700', letterSpacing: '0.5px', textTransform: 'uppercase' }}>{selectedItem.item_category}</span>
                 </div>
-                {/* Modal Price Tag */}
                 <div style={{ fontSize: '24px', fontWeight: '800', color: '#111827', letterSpacing: '-0.5px' }}>
                   ₱{parseFloat(selectedItem.price).toFixed(2)}
                 </div>
               </div>
-              <p style={{ marginTop: '20px', color: '#4b5563', fontSize: '15px', lineHeight: '1.6' }}>
-                {selectedItem.description || "No description provided for this item."}
-              </p>
+              <p style={{ marginTop: '20px', color: '#4b5563', fontSize: '15px', lineHeight: '1.6' }}>{selectedItem.description || "No description provided for this item."}</p>
             </div>
 
-            {/* Modal Action Button */}
             <div style={{ padding: '20px', borderTop: '1px solid #f3f4f6', backgroundColor: 'white' }}>
               <button style={{ width: '100%', padding: '16px', backgroundColor: brandColor, color: 'white', border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', boxShadow: `0 4px 15px ${brandColor}40` }}>
                 Add to Order — ₱{parseFloat(selectedItem.price).toFixed(2)}
@@ -199,36 +212,86 @@ export default function StoreProfilePage() {
         ref={scrollContainerRef}
         onScroll={handleScroll}
         className="themed-scrollbar"
-        style={{ 
-          height: '100vh', width: '100vw', overflowY: 'auto', 
-          backgroundColor: '#f3f4f6', fontFamily: 'sans-serif', paddingBottom: '60px' 
-        }}
+        style={{ height: '100vh', width: '100vw', overflowY: 'auto', backgroundColor: '#f3f4f6', fontFamily: 'sans-serif', paddingBottom: '60px' }}
       >
         
-        {/* HEADER HERO SECTION */}
-        <div style={{ position: 'relative', height: '220px', backgroundColor: brandColor, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', transition: 'background-color 0.3s' }}>
+        {/* --- FACEBOOK STYLE HERO HEADER --- */}
+        <div style={{ 
+          position: 'relative', height: '220px', 
+          background: `linear-gradient(135deg, ${brandColor}, #1e293b)`, 
+          display: 'flex', flexDirection: 'column'
+        }}>
           <div style={{ padding: '20px' }}>
-            <button onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', backgroundColor: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(10px)', color: 'white', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '20px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', transition: 'background 0.2s' }}>
-              ← Back to Map
+            <button onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '10px 16px', backgroundColor: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(10px)', color: 'white', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '20px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', transition: 'background 0.2s' }}>
+              <MdArrowBack size={18} /> Back to Map
             </button>
           </div>
-          <svg viewBox="0 0 1440 100" style={{ position: 'absolute', bottom: -1, width: '100%', height: 'auto', display: 'block' }}>
-            <path fill="#f3f4f6" d="M0,64L80,58.7C160,53,320,43,480,48C640,53,800,75,960,74.7C1120,75,1280,53,1360,42.7L1440,32L1440,100L1360,100C1280,100,1120,100,960,100C800,100,640,100,480,100C320,100,160,100,80,100L0,100Z"></path>
-          </svg>
         </div>
 
-        {/* FLOATING STORE INFO CARD */}
-        <div style={{ maxWidth: '800px', margin: '-60px auto 0', padding: '0 20px', position: 'relative', zIndex: 10 }}>
-          <div style={{ backgroundColor: 'white', borderRadius: '20px', padding: '25px', boxShadow: '0 10px 30px rgba(0,0,0,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
-            <div>
-              <h1 style={{ margin: '0 0 5px 0', fontSize: '28px', color: '#1f2937', fontWeight: '900', letterSpacing: '-0.5px' }}>{store.store_name}</h1>
-              <p style={{ color: '#6b7280', fontSize: '15px', margin: '0', fontWeight: '500' }}>{store.store_category}</p>
-            </div>
-            <div style={{ padding: '8px 16px', borderRadius: '20px', fontSize: '14px', fontWeight: 'bold', backgroundColor: store.is_open ? '#d1fae5' : '#fee2e2', color: store.is_open ? '#059669' : '#dc2626', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: store.is_open ? '#059669' : '#dc2626', boxShadow: store.is_open ? '0 0 8px #059669' : 'none' }}></div>
-              {store.is_open ? 'OPEN NOW' : 'CURRENTLY CLOSED'}
+        {/* --- TRUE SOCIAL MEDIA PROFILE HEADER --- */}
+        <div style={{ maxWidth: '800px', margin: '0 auto', padding: '0 20px', position: 'relative' }}>
+          
+          {/* Avatar Row */}
+          <div style={{ display: 'flex', alignItems: 'flex-end', marginTop: '-60px', marginBottom: '15px' }}>
+            <div style={{ 
+              width: '120px', height: '120px', borderRadius: '50%', backgroundColor: '#111827', 
+              border: '4px solid #f3f4f6', display: 'flex', justifyContent: 'center', alignItems: 'center', 
+              color: 'white', fontSize: '48px', fontWeight: '900', zIndex: 10, flexShrink: 0,
+              boxShadow: '0 4px 10px rgba(0,0,0,0.1)'
+            }}>
+              {store.store_name.charAt(0).toUpperCase()}
             </div>
           </div>
+
+          {/* Store Name, Category & Bio */}
+          <div style={{ padding: '0 5px' }}>
+            <h1 style={{ margin: 0, fontSize: '32px', color: '#1f2937', fontWeight: '900', letterSpacing: '-0.5px' }}>{store.store_name}</h1>
+            <p style={{ margin: '4px 0 12px 0', color: '#6b7280', fontSize: '15px', fontWeight: '600' }}>{store.store_category}</p>
+            
+            {store.description && (
+              <p style={{ margin: 0, fontSize: '15px', color: '#374151', lineHeight: '1.6' }}>
+                {store.description}
+              </p>
+            )}
+          </div>
+
+          {/* INTEGRATED SOCIAL MEDIA BADGES (No Card) */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '15px', marginBottom: '20px', padding: '0 5px' }}>
+            
+            {/* Status Pill (Reacts in Real-time) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', backgroundColor: store.is_open ? '#d1fae5' : '#fee2e2', color: store.is_open ? '#059669' : '#dc2626', borderRadius: '20px', fontSize: '13px', fontWeight: '700', transition: 'all 0.3s ease' }}>
+              <MdAccessTime size={16} /> 
+              {store.is_open ? 'Open now' : 'Closed now'}
+            </div>
+
+            {/* Rating Pill */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', backgroundColor: 'rgba(255, 255, 255, 0.6)', color: '#4b5563', borderRadius: '20px', fontSize: '13px', fontWeight: '600', border: '1px solid #e5e7eb' }}>
+              <MdStarRate size={16} color="#f59e0b" /> 
+              Highly Recommended
+            </div>
+
+            {/* Location Pill */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', backgroundColor: 'rgba(255, 255, 255, 0.6)', color: '#4b5563', borderRadius: '20px', fontSize: '13px', fontWeight: '600', border: '1px solid #e5e7eb', cursor: 'pointer' }}>
+              <MdLocationOn size={16} /> 
+              View Map
+            </div>
+
+            {/* Phone Pill */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', backgroundColor: 'rgba(255, 255, 255, 0.6)', color: '#4b5563', borderRadius: '20px', fontSize: '13px', fontWeight: '600', border: '1px solid #e5e7eb', cursor: 'pointer' }}>
+              <MdPhone size={16} /> 
+              Call
+            </div>
+
+            {/* Email Pill */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', backgroundColor: 'rgba(255, 255, 255, 0.6)', color: '#4b5563', borderRadius: '20px', fontSize: '13px', fontWeight: '600', border: '1px solid #e5e7eb', cursor: 'pointer' }}>
+              <MdEmail size={16} /> 
+              Email
+            </div>
+          </div>
+
+          {/* VISUAL SEPARATOR BEFORE MENU */}
+          <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '25px 5px 30px 5px' }} />
+
         </div>
 
         {/* STICKY CATEGORY NAV BAR */}
@@ -237,7 +300,7 @@ export default function StoreProfilePage() {
             display: 'flex', gap: '10px', padding: '15px 20px', 
             overflowX: 'auto', backgroundColor: 'rgba(243, 244, 246, 0.95)', 
             backdropFilter: 'blur(10px)', position: 'sticky', top: '0', 
-            zIndex: 50, maxWidth: '800px', margin: '20px auto 0',
+            zIndex: 50, maxWidth: '800px', margin: '0 auto',
             scrollbarWidth: 'none', msOverflowStyle: 'none'
           }}>
             {categoryOrder.map(cat => (
@@ -290,7 +353,7 @@ export default function StoreProfilePage() {
                         <div 
                           key={item.id} 
                           className="menu-item-card"
-                          onClick={() => setSelectedItem(item)} // OPEN MODAL ON CLICK
+                          onClick={() => setSelectedItem(item)}
                           style={{ 
                             backgroundColor: 'white', borderRadius: '16px', 
                             boxShadow: '0 4px 15px rgba(0,0,0,0.04)', border: '1px solid rgba(0,0,0,0.04)', 
@@ -325,11 +388,9 @@ export default function StoreProfilePage() {
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px', gap: '10px' }}>
                               <h3 style={{ margin: 0, fontSize: '17px', color: '#1f2937', fontWeight: '700', lineHeight: '1.2' }}>{item.item_name}</h3>
                               
-                              {/* --- BOLD MATCHING PRICE TYPOGRAPHY --- */}
                               <div style={{ fontSize: '18px', fontWeight: '800', color: '#111827', letterSpacing: '-0.5px', whiteSpace: 'nowrap' }}>
                                 ₱{parseFloat(item.price).toFixed(2)}
                               </div>
-
                             </div>
                             {item.description && (
                               <p style={{ 
