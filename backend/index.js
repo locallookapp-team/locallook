@@ -108,8 +108,8 @@ app.post('/api/stores/:store_id/invite', async (req, res) => {
       targetUserId = existingUserCheck.rows[0].id;
       
       // Send them a standard email via Resend to tell them they've been granted access
-      await resend.emails.send({
-        from: 'LocalLook <locallookapp@gmail.com>', // Update this if/when you verify a custom domain
+        await resend.emails.send({
+        from: 'onboarding@resend.dev', // MUST use this exact address in Sandbox mode!
         to: email,
         subject: "You've been added to a store on LocalLook!",
         html: `
