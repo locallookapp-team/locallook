@@ -159,7 +159,7 @@ app.get('/api/stores', async (req, res) => {
     const { minLng, minLat, maxLng, maxLat, userLat, userLng, radius } = req.query;
     
     // Base Select statement
-    let selectClause = `SELECT id, store_name, store_category, description, phone, email, website, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng`;
+    let selectClause = `SELECT id, store_name, store_category, description, phone, email, website, is_open, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng`;
     let fromClause = ` FROM stores`;
     let whereClauses = [];
     let queryParams = [];
@@ -202,6 +202,74 @@ app.get('/api/stores', async (req, res) => {
     console.error("Store Fetch Error:", err);
     res.status(500).send("Server Error"); 
   }
+});
+
+// --- RESTORED MISSING ROUTES ---
+
+// GET SINGLE STORE
+app.get('/api/stores/:id', async (req, res) => {
+  try {
+    const result = await db.query(`SELECT id, store_name, store_category, description, phone, email, website, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng FROM stores WHERE id = $1;`, [req.params.id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: "Store not found" });
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).send("Server Error"); }
+});
+
+// PATCH STORE THEME
+app.patch('/api/stores/:id/theme', async (req, res) => {
+  try {
+    const result = await db.query(`UPDATE stores SET theme_settings = $1 WHERE id = $2 RETURNING id, theme_settings`, [req.body.theme_settings, req.params.id]);
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).send("Server Error"); }
+});
+
+// PATCH STORE OPEN/CLOSED
+app.patch('/api/stores/:id/toggle', async (req, res) => {
+  try {
+    const result = await db.query('UPDATE stores SET is_open = $1 WHERE id = $2 RETURNING id, is_open', [req.body.is_open, req.params.id]);
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).send("Server Error"); }
+});
+
+// GET ITEMS
+app.get('/api/stores/:store_id/items', async (req, res) => {
+  try {
+    const result = await db.query('SELECT * FROM items WHERE store_id = $1 ORDER BY created_at DESC', [req.params.store_id]);
+    res.json(result.rows);
+  } catch (err) { res.status(500).send("Server Error"); }
+});
+
+// CREATE ITEM
+app.post('/api/items', async (req, res) => {
+  try {
+    const { store_id, item_name, description, price, image_url, item_category } = req.body;
+    const result = await db.query(`
+      INSERT INTO items (store_id, item_name, description, price, image_url, item_category, is_available) 
+      VALUES ($1, $2, $3, $4, $5, COALESCE($6, 'General'), true) RETURNING *;
+    `, [store_id, item_name, description, price, image_url, item_category]); 
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).send("Server Error"); }
+});
+
+// UPDATE ITEM
+app.patch('/api/items/:id', async (req, res) => {
+  try {
+    const { item_name, description, price, item_category, image_url } = req.body;
+    let query = `UPDATE items SET item_name = $1, description = $2, price = $3, item_category = $4`;
+    let values = [item_name, description, price, item_category];
+    if (image_url) { query += `, image_url = $5 WHERE id = $6 RETURNING *`; values.push(image_url, req.params.id); } 
+    else { query += ` WHERE id = $5 RETURNING *`; values.push(req.params.id); }
+    const result = await db.query(query, values);
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).send("Server Error"); }
+});
+
+// DELETE ITEM
+app.delete('/api/items/:id', async (req, res) => {
+  try {
+    await db.query('DELETE FROM items WHERE id = $1 RETURNING *', [req.params.id]);
+    res.json({ message: "Item deleted successfully" });
+  } catch (err) { res.status(500).send("Server Error"); }
 });
 
 app.listen(PORT, () => { console.log(`Server is running on http://localhost:${PORT}`); });
