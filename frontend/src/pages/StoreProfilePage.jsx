@@ -18,14 +18,30 @@ export default function StoreProfilePage() {
   const sectionRefs = useRef({});
 
   useEffect(() => {
+    setLoading(true);
     fetch(`https://locallook-api.onrender.com/api/stores/${id}`)
-      .then(res => res.json())
+      .then(res => {
+        // FIXED: Catch the 404 error before it tries to parse HTML as JSON!
+        if (!res.ok) throw new Error('Store not found');
+        return res.json();
+      })
       .then(data => {
         setStore(data);
         return fetch(`https://locallook-api.onrender.com/api/stores/${id}/items`);
       })
-      .then(res => res.json()).then(data => { setItems(data); setLoading(false); })
-      .catch(err => { console.error(err); setLoading(false); });
+      .then(res => {
+        if (!res.ok) return []; 
+        return res.json();
+      })
+      .then(data => { 
+        setItems(data || []); 
+        setLoading(false); 
+      })
+      .catch(err => { 
+        console.error("Profile Fetch Error:", err); 
+        setStore(null); // Triggers the "Store Not Found" screen safely
+        setLoading(false); 
+      });
   }, [id]);
 
   useEffect(() => {
@@ -79,8 +95,10 @@ export default function StoreProfilePage() {
 
   if (!store) return (
     <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#f9fafb', gap: '15px' }}>
-      <h3 style={{ color: '#4b5563', margin: 0 }}>Store not found.</h3>
-      <button onClick={() => navigate('/')} style={{ padding: '10px 20px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Return to Map</button>
+      <div style={{ fontSize: '50px' }}>🧭</div>
+      <h3 style={{ color: '#4b5563', margin: 0 }}>Oops! Store not found.</h3>
+      <p style={{ color: '#9ca3af', margin: '0 0 10px 0', fontSize: '14px' }}>It may have been deleted or moved.</p>
+      <button onClick={() => navigate('/')} style={{ padding: '10px 24px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Return to Map</button>
     </div>
   );
 
@@ -88,7 +106,6 @@ export default function StoreProfilePage() {
   const brandColor = theme.primaryColor || '#3b82f6';
   const isGrid = theme.layout !== 'list';
 
-  // Toggles ensure we only show pills if both the setting is turned on AND the data exists
   const showPhone = theme.showPhone && store.phone;
   const showEmail = theme.showEmail && store.email;
   const showWebsite = theme.showWebsite && store.website;
@@ -132,12 +149,13 @@ export default function StoreProfilePage() {
         </div>
       )}
 
-      <div ref={scrollContainerRef} onScroll={handleScroll} className="themed-scrollbar" style={{ height: '100vh', width: '100vw', overflowY: 'auto', backgroundColor: '#f3f4f6', fontFamily: 'sans-serif', paddingBottom: '60px' }}>
+      {/* FIXED: Increased paddingBottom to 90px so the last item isn't hidden behind the navbar */}
+      <div ref={scrollContainerRef} onScroll={handleScroll} className="themed-scrollbar" style={{ height: '100vh', width: '100vw', overflowY: 'auto', backgroundColor: '#f3f4f6', fontFamily: 'sans-serif', paddingBottom: '90px' }}>
         
         <div style={{ position: 'relative', height: '220px', background: `linear-gradient(135deg, ${brandColor}, #1e293b)`, display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '20px' }}>
-            <button onClick={() => navigate('/')} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '10px 16px', backgroundColor: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(10px)', color: 'white', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '20px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', transition: 'background 0.2s' }}>
-              <MdArrowBack size={18} /> Back to Map
+            <button onClick={() => navigate(-1)} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '10px 16px', backgroundColor: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(10px)', color: 'white', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '20px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', transition: 'background 0.2s' }}>
+              <MdArrowBack size={18} /> Back
             </button>
           </div>
         </div>
@@ -156,9 +174,7 @@ export default function StoreProfilePage() {
             {store.description && <p style={{ margin: 0, fontSize: '15px', color: '#374151', lineHeight: '1.6' }}>{store.description}</p>}
           </div>
 
-          {/* DYNAMIC CONTACT PILLS WITH ACTUAL TEXT */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '15px', marginBottom: '20px', padding: '0 5px' }}>
-            
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', backgroundColor: store.is_open ? '#d1fae5' : '#fee2e2', color: store.is_open ? '#059669' : '#dc2626', borderRadius: '20px', fontSize: '13px', fontWeight: '700', transition: 'all 0.3s ease' }}>
               <MdAccessTime size={16} /> {store.is_open ? 'Open now' : 'Closed now'}
             </div>
