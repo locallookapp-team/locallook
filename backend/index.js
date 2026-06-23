@@ -23,14 +23,14 @@ app.use('/api/', apiLimiter);
 app.post('/api/stores', async (req, res) => {
   const client = await db.connect();
   try {
-    const { store_name, store_category, description, phone, email, lat, lng, user_id } = req.body;
+    const { store_name, store_category, description, phone, email, website, lat, lng, user_id } = req.body;
     await client.query('BEGIN');
 
     const storeResult = await client.query(`
-      INSERT INTO stores (store_name, store_category, description, phone, email, location, is_open, is_approved)
-      VALUES ($1, $2, $3, $4, $5, ST_GeomFromText($6, 4326), false, true)
+      INSERT INTO stores (store_name, store_category, description, phone, email, website, location, is_open, is_approved)
+      VALUES ($1, $2, $3, $4, $5, $6, ST_GeomFromText($7, 4326), false, true)
       RETURNING id, store_name;
-    `, [store_name, store_category, description, phone, email, `POINT(${lng} ${lat})`]); 
+    `, [store_name, store_category, description, phone, email, website, `POINT(${lng} ${lat})`]); 
     
     const newStoreId = storeResult.rows[0].id;
 
@@ -51,13 +51,13 @@ app.post('/api/stores', async (req, res) => {
 
 app.patch('/api/stores/:id', async (req, res) => {
   try {
-    const { store_name, store_category, description, phone, email, lat, lng } = req.body;
+    const { store_name, store_category, description, phone, email, website, lat, lng } = req.body;
     const result = await db.query(`
       UPDATE stores 
-      SET store_name = $1, store_category = $2, description = $3, phone = $4, email = $5, location = ST_GeomFromText($6, 4326) 
-      WHERE id = $7 
-      RETURNING id, store_name, store_category, description, phone, email, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng
-    `, [store_name, store_category, description, phone, email, `POINT(${lng} ${lat})`, req.params.id]);
+      SET store_name = $1, store_category = $2, description = $3, phone = $4, email = $5, website = $6, location = ST_GeomFromText($7, 4326) 
+      WHERE id = $8 
+      RETURNING id, store_name, store_category, description, phone, email, website, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng
+    `, [store_name, store_category, description, phone, email, website, `POINT(${lng} ${lat})`, req.params.id]);
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).send("Server Error");
@@ -74,14 +74,13 @@ app.delete('/api/stores/:id', async (req, res) => {
   }
 });
 
-// UPDATED: Now fetches `theme_settings` alongside the other data
 app.get('/api/merchant/stores/:user_id', async (req, res) => {
   try {
     const { user_id } = req.params;
     await db.query(`UPDATE store_operators SET status = 'confirmed' WHERE user_id = $1 AND status = 'pending'`, [user_id]);
 
     const result = await db.query(`
-      SELECT s.id, s.store_name, s.store_category, s.description, s.phone, s.email, s.is_open, s.theme_settings, ST_Y(s.location::geometry) as lat, ST_X(s.location::geometry) as lng, so.role
+      SELECT s.id, s.store_name, s.store_category, s.description, s.phone, s.email, s.website, s.is_open, s.theme_settings, ST_Y(s.location::geometry) as lat, ST_X(s.location::geometry) as lng, so.role
       FROM stores s JOIN store_operators so ON s.id = so.store_id WHERE so.user_id = $1
     `, [user_id]);
     res.json(result.rows);
@@ -153,7 +152,7 @@ app.delete('/api/stores/:store_id/staff/:staff_id', async (req, res) => {
 app.get('/api/stores', async (req, res) => {
   try {
     const { minLng, minLat, maxLng, maxLat } = req.query;
-    let query = `SELECT id, store_name, store_category, description, phone, email, is_open, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng FROM stores`;
+    let query = `SELECT id, store_name, store_category, description, phone, email, website, is_open, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng FROM stores`;
     const queryParams = [];
     if (minLng && minLat && maxLng && maxLat) {
       query += ` WHERE location && ST_MakeEnvelope($1, $2, $3, $4, 4326)`;
@@ -166,7 +165,7 @@ app.get('/api/stores', async (req, res) => {
 
 app.get('/api/stores/:id', async (req, res) => {
   try {
-    const result = await db.query(`SELECT id, store_name, store_category, description, phone, email, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng FROM stores WHERE id = $1;`, [req.params.id]);
+    const result = await db.query(`SELECT id, store_name, store_category, description, phone, email, website, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng FROM stores WHERE id = $1;`, [req.params.id]);
     res.json(result.rows[0]);
   } catch (err) { res.status(500).send("Server Error"); }
 });
