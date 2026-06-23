@@ -16,7 +16,11 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 app.use(cors()); 
 app.use(express.json()); 
 
-const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 100, message: { error: "Too many requests." } });
+const apiLimiter = rateLimit({ 
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 2000, // <-- Increased from 100 to 2000 for development
+  message: { error: "Too many requests." } 
+});
 const inviteLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, message: { error: "Too many invites." } });
 app.use('/api/', apiLimiter); 
 
