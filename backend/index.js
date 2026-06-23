@@ -149,76 +149,55 @@ app.delete('/api/stores/:store_id/staff/:staff_id', async (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
+// GET ALL STORES (Upgraded with Spatial Queries for Map Bounding Box & Radius Browsing)
 app.get('/api/stores', async (req, res) => {
   try {
-    const { minLng, minLat, maxLng, maxLat } = req.query;
-    let query = `SELECT id, store_name, store_category, description, phone, email, website, is_open, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng FROM stores`;
-    const queryParams = [];
-    if (minLng && minLat && maxLng && maxLat) {
-      query += ` WHERE location && ST_MakeEnvelope($1, $2, $3, $4, 4326)`;
+    const { minLng, minLat, maxLng, maxLat, userLat, userLng, radius } = req.query;
+    
+    // Base Select statement
+    let selectClause = `SELECT id, store_name, store_category, description, phone, email, website, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng`;
+    let fromClause = ` FROM stores`;
+    let whereClauses = [];
+    let queryParams = [];
+    let paramIndex = 1;
+    let orderByClause = '';
+
+    // SCENARIO 1: Browse Page (Radius Query + Distance Sorting)
+    if (userLat && userLng) {
+      // 1a. Calculate exact distance in meters from the user
+      selectClause += `, ST_Distance(location::geography, ST_SetSRID(ST_MakePoint($${paramIndex}, $${paramIndex+1}), 4326)::geography) AS distance_meters`;
+      queryParams.push(userLng, userLat);
+      paramIndex += 2;
+      
+      // 1b. Filter stores within a specific radius (default: 5000 meters / 5km)
+      const searchRadius = radius ? parseInt(radius) : 5000; 
+      whereClauses.push(`ST_DWithin(location::geography, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, $${paramIndex})`);
+      queryParams.push(searchRadius);
+      paramIndex++;
+      
+      // 1c. Sort the results so the closest store is at the top of the feed
+      orderByClause = ` ORDER BY distance_meters ASC`;
+    } 
+    // SCENARIO 2: Map Page (Bounding Box Query)
+    else if (minLng && minLat && maxLng && maxLat) {
+      whereClauses.push(`location && ST_MakeEnvelope($${paramIndex}, $${paramIndex+1}, $${paramIndex+2}, $${paramIndex+3}, 4326)`);
       queryParams.push(minLng, minLat, maxLng, maxLat);
+      paramIndex += 4;
     }
+
+    // Stitch the SQL query together
+    let query = selectClause + fromClause;
+    if (whereClauses.length > 0) {
+      query += ` WHERE ` + whereClauses.join(' AND ');
+    }
+    query += orderByClause;
+
     const result = await db.query(query, queryParams);
     res.json(result.rows);
-  } catch (err) { res.status(500).send("Server Error"); }
-});
-
-app.get('/api/stores/:id', async (req, res) => {
-  try {
-    const result = await db.query(`SELECT id, store_name, store_category, description, phone, email, website, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng FROM stores WHERE id = $1;`, [req.params.id]);
-    res.json(result.rows[0]);
-  } catch (err) { res.status(500).send("Server Error"); }
-});
-
-app.patch('/api/stores/:id/theme', async (req, res) => {
-  try {
-    const result = await db.query(`UPDATE stores SET theme_settings = $1 WHERE id = $2 RETURNING id, theme_settings`, [req.body.theme_settings, req.params.id]);
-    res.json(result.rows[0]);
-  } catch (err) { res.status(500).send("Server Error"); }
-});
-
-app.patch('/api/stores/:id/toggle', async (req, res) => {
-  try {
-    const result = await db.query('UPDATE stores SET is_open = $1 WHERE id = $2 RETURNING id, is_open', [req.body.is_open, req.params.id]);
-    res.json(result.rows[0]);
-  } catch (err) { res.status(500).send("Server Error"); }
-});
-
-app.get('/api/stores/:store_id/items', async (req, res) => {
-  try {
-    const result = await db.query('SELECT * FROM items WHERE store_id = $1 ORDER BY created_at DESC', [req.params.store_id]);
-    res.json(result.rows);
-  } catch (err) { res.status(500).send("Server Error"); }
-});
-
-app.post('/api/items', async (req, res) => {
-  try {
-    const { store_id, item_name, description, price, image_url, item_category } = req.body;
-    const result = await db.query(`
-      INSERT INTO items (store_id, item_name, description, price, image_url, item_category, is_available) 
-      VALUES ($1, $2, $3, $4, $5, COALESCE($6, 'General'), true) RETURNING *;
-    `, [store_id, item_name, description, price, image_url, item_category]); 
-    res.json(result.rows[0]);
-  } catch (err) { res.status(500).send("Server Error"); }
-});
-
-app.patch('/api/items/:id', async (req, res) => {
-  try {
-    const { item_name, description, price, item_category, image_url } = req.body;
-    let query = `UPDATE items SET item_name = $1, description = $2, price = $3, item_category = $4`;
-    let values = [item_name, description, price, item_category];
-    if (image_url) { query += `, image_url = $5 WHERE id = $6 RETURNING *`; values.push(image_url, req.params.id); } 
-    else { query += ` WHERE id = $5 RETURNING *`; values.push(req.params.id); }
-    const result = await db.query(query, values);
-    res.json(result.rows[0]);
-  } catch (err) { res.status(500).send("Server Error"); }
-});
-
-app.delete('/api/items/:id', async (req, res) => {
-  try {
-    await db.query('DELETE FROM items WHERE id = $1 RETURNING *', [req.params.id]);
-    res.json({ message: "Item deleted successfully" });
-  } catch (err) { res.status(500).send("Server Error"); }
+  } catch (err) { 
+    console.error("Store Fetch Error:", err);
+    res.status(500).send("Server Error"); 
+  }
 });
 
 app.listen(PORT, () => { console.log(`Server is running on http://localhost:${PORT}`); });
