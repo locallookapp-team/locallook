@@ -10,6 +10,10 @@ import RegisterPage from './pages/RegisterPage';
 import DashboardPage from './pages/DashboardPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import UpdatePasswordPage from './pages/UpdatePasswordPage';
+import BrowsePage from './pages/BrowsePage'; // <-- NEW IMPORT
+
+// Import UI Components
+import BottomNav from './components/BottomNav'; // <-- NEW IMPORT
 
 function App() {
   
@@ -28,15 +32,22 @@ function App() {
 
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<MapPage />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/store/:id" element={<StoreProfilePage />} />
-        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-        <Route path="/update-password" element={<UpdatePasswordPage />} />
-      </Routes>
+      {/* Wrapper div to handle layout with the fixed BottomNav */}
+      <div style={{ position: 'relative', minHeight: '100vh' }}>
+        <Routes>
+          <Route path="/" element={<MapPage />} />
+          <Route path="/browse" element={<BrowsePage />} /> {/* <-- NEW ROUTE */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegisterPage />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/store/:id" element={<StoreProfilePage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/update-password" element={<UpdatePasswordPage />} />
+        </Routes>
+        
+        {/* Render Bottom Nav Globally (It hides itself on auth/dashboard pages automatically) */}
+        <BottomNav />
+      </div>
     </BrowserRouter>
   );
 }
