@@ -80,7 +80,6 @@ export default function MapPage() {
   const [selectedStore, setSelectedStore] = useState(null);
   const [isLocating, setIsLocating] = useState(false);
   
-  // New Auth State
   const [session, setSession] = useState(null);
   const [managedStores, setManagedStores] = useState([]);
 
@@ -89,19 +88,17 @@ export default function MapPage() {
 
   // AUTH & MANAGED STORES LISTENER
   useEffect(() => {
-    // 1. Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session?.user) fetchManagedStores(session.user.id);
     });
 
-    // 2. Listen for login/logout events
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session?.user) {
         fetchManagedStores(session.user.id);
       } else {
-        setManagedStores([]); // Clear stores on logout
+        setManagedStores([]); 
       }
     });
 
@@ -113,7 +110,12 @@ export default function MapPage() {
       const res = await fetch(`https://locallook-api.onrender.com/api/merchant/stores/${userId}`);
       if (res.ok) {
         const data = await res.json();
-        setManagedStores(data);
+        // Fallback check just in case this also gets hit with a rate limit
+        if (Array.isArray(data)) {
+          setManagedStores(data);
+        } else {
+          setManagedStores([]);
+        }
       }
     } catch (err) {
       console.error("Failed to fetch managed stores:", err);
@@ -122,20 +124,16 @@ export default function MapPage() {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    setSidebarOpen(false); // Close sidebar for a clean UI reset
+    setSidebarOpen(false); 
   };
 
   const updateMarkerVisuals = () => {
     if (!map.current || !userMarkerRef.current) return;
 
     const currentZoom = map.current.getZoom();
-    
-    // 1. PIN HEIGHT SCALING
     const zoomScale = Math.pow(2, currentZoom - 16.5);
     let pinHeight = 60 * zoomScale;
     pinHeight = Math.max(25, pinHeight); 
-
-    // 2. GROUND LAYER SCALING (Pulse & Cone)
     const groundScale = Math.max(0.6, Math.min(2.5, zoomScale));
 
     const el = userMarkerRef.current.getElement();
@@ -287,17 +285,35 @@ export default function MapPage() {
   }, []);
 
   useEffect(() => {
+    // UPDATED: Safe fetching with rate-limit check
     fetch('https://locallook-api.onrender.com/api/stores')
-      .then(res => res.json())
-      .then(data => setStores(data))
-      .catch(err => console.error(err));
+      .then(res => {
+        if (!res.ok) {
+          if (res.status === 429) console.warn("Rate limited by the server. Please wait.");
+          return []; // Return empty array if request fails
+        }
+        return res.json();
+      })
+      .then(data => {
+        if (Array.isArray(data)) {
+          setStores(data);
+        } else {
+          console.error("Expected array of stores, got:", data);
+          setStores([]);
+        }
+      })
+      .catch(err => {
+        console.error(err);
+        setStores([]); // Fallback to empty array on network error
+      });
 
     const subscription = supabase
       .channel('public:stores')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'stores' }, (payload) => {
-          setStores(currentStores => 
-            currentStores.map(store => store.id === payload.new.id ? { ...store, is_open: payload.new.is_open } : store)
-          );
+          setStores(currentStores => {
+            if (!Array.isArray(currentStores)) return [];
+            return currentStores.map(store => store.id === payload.new.id ? { ...store, is_open: payload.new.is_open } : store);
+          });
       }).subscribe();
 
     return () => { supabase.removeChannel(subscription); };
@@ -307,7 +323,7 @@ export default function MapPage() {
     if (searchTerm.length > 1) {
       fetch(`https://locallook-api.onrender.com/api/search/items?q=${searchTerm}`)
         .then(res => res.json())
-        .then(data => setItemResults(data))
+        .then(data => setItemResults(Array.isArray(data) ? data : []))
         .catch(err => console.error(err));
     } else {
       setItemResults([]);
@@ -315,6 +331,9 @@ export default function MapPage() {
   }, [searchTerm]);
 
   const filteredStores = useMemo(() => {
+    // UPDATED: Safety check ensuring stores is strictly an array before filtering
+    if (!Array.isArray(stores)) return [];
+    
     return stores.filter(store => {
       const hasCoords = store.lat && store.lng && !isNaN(Number(store.lat)) && !isNaN(Number(store.lng));
       const matchesSearch = store.store_name.toLowerCase().includes(searchTerm.toLowerCase());

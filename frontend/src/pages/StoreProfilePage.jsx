@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { MdLocationOn, MdAccessTime, MdPhone, MdEmail, MdStarRate, MdArrowBack } from "react-icons/md";
+import { MdLocationOn, MdAccessTime, MdPhone, MdEmail, MdStarRate, MdArrowBack, MdLanguage } from "react-icons/md";
 import { supabase } from '../supabaseClient';
 
 export default function StoreProfilePage() {
@@ -88,9 +88,10 @@ export default function StoreProfilePage() {
   const brandColor = theme.primaryColor || '#3b82f6';
   const isGrid = theme.layout !== 'list';
 
-  // Toggle evaluations
+  // Toggles ensure we only show pills if both the setting is turned on AND the data exists
   const showPhone = theme.showPhone && store.phone;
   const showEmail = theme.showEmail && store.email;
+  const showWebsite = theme.showWebsite && store.website;
   const showAddress = theme.showAddress && theme.addressText;
 
   const groupedItems = items.reduce((acc, item) => {
@@ -155,7 +156,7 @@ export default function StoreProfilePage() {
             {store.description && <p style={{ margin: 0, fontSize: '15px', color: '#374151', lineHeight: '1.6' }}>{store.description}</p>}
           </div>
 
-          {/* DYNAMIC CONTACT PILLS */}
+          {/* DYNAMIC CONTACT PILLS WITH ACTUAL TEXT */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '15px', marginBottom: '20px', padding: '0 5px' }}>
             
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', backgroundColor: store.is_open ? '#d1fae5' : '#fee2e2', color: store.is_open ? '#059669' : '#dc2626', borderRadius: '20px', fontSize: '13px', fontWeight: '700', transition: 'all 0.3s ease' }}>
@@ -166,23 +167,27 @@ export default function StoreProfilePage() {
               <MdStarRate size={16} color="#f59e0b" /> Highly Recommended
             </div>
 
-            {/* Hyperlinked Location Pill */}
-            <div 
-              onClick={() => navigate(`/?lat=${store.lat}&lng=${store.lng}&zoom=17`)}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', backgroundColor: 'rgba(255, 255, 255, 0.6)', color: '#4b5563', borderRadius: '20px', fontSize: '13px', fontWeight: '600', border: '1px solid #e5e7eb', cursor: 'pointer' }}
-            >
-              <MdLocationOn size={16} /> {showAddress ? theme.addressText : 'View Map Location'}
-            </div>
+            {showAddress && (
+              <div onClick={() => navigate(`/?lat=${store.lat}&lng=${store.lng}&zoom=17`)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', backgroundColor: 'rgba(255, 255, 255, 0.6)', color: '#4b5563', borderRadius: '20px', fontSize: '13px', fontWeight: '600', border: '1px solid #e5e7eb', cursor: 'pointer' }}>
+                <MdLocationOn size={16} /> {theme.addressText}
+              </div>
+            )}
 
             {showPhone && (
               <a href={`tel:${store.phone}`} style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', backgroundColor: 'rgba(255, 255, 255, 0.6)', color: '#4b5563', borderRadius: '20px', fontSize: '13px', fontWeight: '600', border: '1px solid #e5e7eb', cursor: 'pointer' }}>
-                <MdPhone size={16} /> Call
+                <MdPhone size={16} /> {store.phone}
               </a>
             )}
 
             {showEmail && (
               <a href={`mailto:${store.email}`} style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', backgroundColor: 'rgba(255, 255, 255, 0.6)', color: '#4b5563', borderRadius: '20px', fontSize: '13px', fontWeight: '600', border: '1px solid #e5e7eb', cursor: 'pointer' }}>
-                <MdEmail size={16} /> Email
+                <MdEmail size={16} /> {store.email}
+              </a>
+            )}
+
+            {showWebsite && (
+              <a href={store.website.startsWith('http') ? store.website : `https://${store.website}`} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', backgroundColor: 'rgba(255, 255, 255, 0.6)', color: '#4b5563', borderRadius: '20px', fontSize: '13px', fontWeight: '600', border: '1px solid #e5e7eb', cursor: 'pointer' }}>
+                <MdLanguage size={16} /> {store.website.replace(/^https?:\/\//, '')}
               </a>
             )}
           </div>
@@ -190,7 +195,6 @@ export default function StoreProfilePage() {
           <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '25px 5px 30px 5px' }} />
         </div>
 
-        {/* STICKY CATEGORY NAV BAR */}
         {categoryOrder.length > 0 && items.length > 0 && (
           <div style={{ display: 'flex', gap: '10px', padding: '15px 20px', overflowX: 'auto', backgroundColor: 'rgba(243, 244, 246, 0.95)', backdropFilter: 'blur(10px)', position: 'sticky', top: '0', zIndex: 50, maxWidth: '800px', margin: '0 auto', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
             {categoryOrder.map(cat => (
@@ -201,7 +205,6 @@ export default function StoreProfilePage() {
           </div>
         )}
 
-        {/* DYNAMIC MENU SECTION */}
         <div style={{ maxWidth: '800px', margin: '20px auto 0', padding: '0 20px' }}>
           {items.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '50px 20px', backgroundColor: 'white', borderRadius: '20px', border: '2px dashed #e5e7eb' }}>

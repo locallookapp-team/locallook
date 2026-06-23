@@ -16,7 +16,6 @@ if (MAPBOX_TOKEN) {
   mapboxgl.accessToken = MAPBOX_TOKEN;
 }
 
-// Mapbox Reverse Geocoding Fetcher
 const fetchAddressFromCoords = async (lng, lat) => {
   if (!MAPBOX_TOKEN) return '';
   try {
@@ -29,13 +28,14 @@ const fetchAddressFromCoords = async (lng, lat) => {
   }
 };
 
-const createImage = (url) => new Promise((resolve, reject) => {
-  const image = new Image();
-  image.addEventListener('load', () => resolve(image));
-  image.addEventListener('error', (error) => reject(error));
-  image.setAttribute('crossOrigin', 'anonymous');
-  image.src = url;
-});
+const createImage = (url) =>
+  new Promise((resolve, reject) => {
+    const image = new Image();
+    image.addEventListener('load', () => resolve(image));
+    image.addEventListener('error', (error) => reject(error));
+    image.setAttribute('crossOrigin', 'anonymous');
+    image.src = url;
+  });
 
 const getCroppedImg = async (imageSrc, pixelCrop) => {
   const image = await createImage(imageSrc);
@@ -46,7 +46,9 @@ const getCroppedImg = async (imageSrc, pixelCrop) => {
   canvas.height = pixelCrop.height;
   ctx.drawImage(image, pixelCrop.x, pixelCrop.y, pixelCrop.width, pixelCrop.height, 0, 0, pixelCrop.width, pixelCrop.height);
   return new Promise((resolve) => {
-    canvas.toBlob((file) => { if (file) resolve(new File([file], "cropped-image.jpg", { type: "image/jpeg" })); }, 'image/jpeg', 0.9);
+    canvas.toBlob((file) => {
+      if (file) resolve(new File([file], "cropped-image.jpg", { type: "image/jpeg" }));
+    }, 'image/jpeg', 0.9);
   });
 };
 
@@ -65,6 +67,7 @@ function SortableCategory({ id, activeCategory, brandColor, onClick }) {
 
 export default function DashboardPage() {
   const navigate = useNavigate();
+  
   const [user, setUser] = useState(null);
   const [displayName, setDisplayName] = useState(''); 
   const [stores, setStores] = useState([]);
@@ -74,19 +77,17 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('dashboard'); 
 
-  // Store Management State (NOW INCLUDES TOGGLES)
   const [openStoreMenuId, setOpenStoreMenuId] = useState(null);
   const [isEditStoreModalOpen, setIsEditStoreModalOpen] = useState(false);
   const [editStoreData, setEditStoreData] = useState({ 
-    id: '', store_name: '', store_category: '', description: '', phone: '', email: '', lat: '', lng: '',
-    showPhone: false, showEmail: false, showAddress: false, addressText: '', theme_settings: {} 
+    id: '', store_name: '', store_category: '', description: '', phone: '', email: '', website: '', lat: '', lng: '',
+    showPhone: false, showEmail: false, showWebsite: false, showAddress: false, addressText: '', theme_settings: {} 
   });
   
   const [isDeleteStoreModalOpen, setIsDeleteStoreModalOpen] = useState(false);
   const [storeToDelete, setStoreToDelete] = useState(null);
   const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
 
-  // Item Form & Modal State
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
   const [newItem, setNewItem] = useState({ name: '', description: '', price: '', category: '', imageFile: null });
   const [isUploading, setIsUploading] = useState(false);
@@ -113,15 +114,15 @@ export default function DashboardPage() {
   const [inviteMessage, setInviteMessage] = useState(null);
   const [openMenuId, setOpenMenuId] = useState(null); 
 
-  // New Store State (NOW INCLUDES TOGGLES)
   const [newStoreData, setNewStoreData] = useState({ 
-    store_name: '', store_category: 'Food & Dining', description: '', phone: '', email: '', lat: '', lng: '',
-    showPhone: false, showEmail: false, showAddress: false, addressText: ''
+    store_name: '', store_category: 'Food & Dining', description: '', phone: '', email: '', website: '', lat: '', lng: '',
+    showPhone: false, showEmail: false, showWebsite: false, showAddress: false, addressText: ''
   });
 
   const mapContainer = useRef(null);
   const map = useRef(null);
   const newPinRef = useRef(null);
+  
   const newStoreRef = useRef(newStoreData);
   useEffect(() => { newStoreRef.current = newStoreData; }, [newStoreData]);
 
@@ -166,10 +167,14 @@ export default function DashboardPage() {
         .catch(err => console.error(err));
 
       fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}/items`)
-        .then(res => res.json()).then(data => setItems(data)).catch(err => console.error(err));
+        .then(res => res.json())
+        .then(data => setItems(data))
+        .catch(err => console.error(err));
 
       fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}/operators`)
-        .then(res => res.ok ? res.json() : []).then(data => setStoreOperators(data)).catch(err => console.error(err));
+        .then(res => res.ok ? res.json() : [])
+        .then(data => setStoreOperators(data))
+        .catch(err => console.error("Failed to fetch operators", err));
         
       closeItemModal();
     }
@@ -184,22 +189,20 @@ export default function DashboardPage() {
     });
   }, [items]);
 
-  // MAP: ADD STORE
   useEffect(() => {
     if (view === 'add_store' && mapContainer.current && !map.current) {
-      map.current = new mapboxgl.Map({ container: mapContainer.current, style: 'mapbox://styles/mapbox/streets-v12', center: [121.9823, 12.3985], zoom: 15.5, pitch: 45 });
+      map.current = new mapboxgl.Map({
+        container: mapContainer.current, style: 'mapbox://styles/mapbox/streets-v12', center: [121.9823, 12.3985], zoom: 15.5, pitch: 45,
+      });
       map.current.addControl(new mapboxgl.NavigationControl({ showZoom: false, visualizePitch: true }), 'bottom-right');
       
       map.current.on('click', async (e) => {
-        const lng = e.lngLat.lng.toFixed(6);
-        const lat = e.lngLat.lat.toFixed(6);
-        
+        const lng = e.lngLat.lng.toFixed(6); const lat = e.lngLat.lat.toFixed(6);
         let addressText = newStoreRef.current.addressText;
-        if (newStoreRef.current.showAddress) {
-          addressText = await fetchAddressFromCoords(lng, lat);
-        }
+        if (newStoreRef.current.showAddress) addressText = await fetchAddressFromCoords(lng, lat);
 
         setNewStoreData(prev => ({ ...prev, lat, lng, addressText }));
+        
         if (!newPinRef.current) {
           const el = document.createElement('div');
           el.innerHTML = `<div style="background-color: #2563eb; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); transform: translateY(-12px);"></div>`;
@@ -212,10 +215,11 @@ export default function DashboardPage() {
     return () => { if (view !== 'add_store' && map.current) { map.current.remove(); map.current = null; newPinRef.current = null; } };
   }, [view]);
 
-  // MAP: EDIT STORE
   useEffect(() => {
     if (isEditStoreModalOpen && editMapContainer.current && !editMap.current) {
-      editMap.current = new mapboxgl.Map({ container: editMapContainer.current, style: 'mapbox://styles/mapbox/streets-v12', center: [editStoreData.lng || 121.9823, editStoreData.lat || 12.3985], zoom: 15.5, pitch: 45 });
+      editMap.current = new mapboxgl.Map({
+        container: editMapContainer.current, style: 'mapbox://styles/mapbox/streets-v12', center: [editStoreData.lng || 121.9823, editStoreData.lat || 12.3985], zoom: 15.5, pitch: 45,
+      });
       
       if (editStoreData.lng && editStoreData.lat) {
         const el = document.createElement('div');
@@ -224,13 +228,9 @@ export default function DashboardPage() {
       }
 
       editMap.current.on('click', async (e) => {
-        const lng = e.lngLat.lng.toFixed(6);
-        const lat = e.lngLat.lat.toFixed(6);
-        
+        const lng = e.lngLat.lng.toFixed(6); const lat = e.lngLat.lat.toFixed(6);
         let addressText = editStoreRef.current.addressText;
-        if (editStoreRef.current.showAddress) {
-          addressText = await fetchAddressFromCoords(lng, lat);
-        }
+        if (editStoreRef.current.showAddress) addressText = await fetchAddressFromCoords(lng, lat);
 
         setEditStoreData(prev => ({ ...prev, lat, lng, addressText }));
 
@@ -243,6 +243,7 @@ export default function DashboardPage() {
         }
       });
     }
+
     return () => { if (!isEditStoreModalOpen && editMap.current) { editMap.current.remove(); editMap.current = null; editPinRef.current = null; } };
   }, [isEditStoreModalOpen]);
 
@@ -250,6 +251,7 @@ export default function DashboardPage() {
   const handleScroll = () => {
     if (!scrollContainerRef.current) return;
     const containerTop = scrollContainerRef.current.getBoundingClientRect().top;
+    
     let currentActive = activeCategory; let minDistance = Infinity;
     categoryOrder.forEach(cat => {
       const el = sectionRefs.current[cat];
@@ -258,12 +260,14 @@ export default function DashboardPage() {
         if (distance < minDistance) { minDistance = distance; currentActive = cat; }
       }
     });
+
     if (currentActive !== activeCategory) setActiveCategory(currentActive);
   };
 
   const scrollToCategory = (cat) => {
     const el = sectionRefs.current[cat];
-    if (el && scrollContainerRef.current) { scrollContainerRef.current.scrollTo({ top: el.offsetTop - 120, behavior: 'smooth' }); }
+    const container = scrollContainerRef.current;
+    if (el && container) { container.scrollTo({ top: el.offsetTop - 120, behavior: 'smooth' }); }
   };
 
   const handleDragEnd = (event) => {
@@ -280,13 +284,20 @@ export default function DashboardPage() {
     }
   };
 
+  const onCropComplete = (croppedArea, croppedAreaPixels) => setCroppedAreaPixels(croppedAreaPixels);
+
   const handleSaveCrop = async () => {
     try {
       const croppedFile = await getCroppedImg(imageToCrop, croppedAreaPixels);
       setNewItem({ ...newItem, imageFile: croppedFile });
       setCroppedPreview(URL.createObjectURL(croppedFile));
       setImageToCrop(null); 
-    } catch (e) { alert("Error cropping image"); }
+    } catch (e) { console.error(e); }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    navigate('/');
   };
 
   const toggleStoreStatus = async () => {
@@ -301,7 +312,8 @@ export default function DashboardPage() {
   const handleSaveTheme = async () => {
     setIsSavingTheme(true);
     try {
-      await fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}/theme`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme_settings: { ...storeTheme, categoryOrder } }) });
+      const response = await fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}/theme`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme_settings: { ...storeTheme, categoryOrder } }) });
+      if (!response.ok) throw new Error("Failed to save theme");
       alert("Storefront branding and category layout saved successfully!");
     } catch (err) { alert(err.message); } finally { setIsSavingTheme(false); }
   };
@@ -309,13 +321,13 @@ export default function DashboardPage() {
   const handleOpenEditStore = (store) => {
     const theme = store.theme_settings || {};
     setEditStoreData({ 
-      id: store.id, store_name: store.store_name, store_category: store.store_category, 
-      description: store.description || '', phone: store.phone || '', email: store.email || '', 
-      lat: store.lat, lng: store.lng,
-      showPhone: !!theme.showPhone, showEmail: !!theme.showEmail, showAddress: !!theme.showAddress, 
+      id: store.id, store_name: store.store_name, store_category: store.store_category, description: store.description || '', 
+      phone: store.phone || '', email: store.email || '', website: store.website || '', lat: store.lat, lng: store.lng,
+      showPhone: !!theme.showPhone, showEmail: !!theme.showEmail, showWebsite: !!theme.showWebsite, showAddress: !!theme.showAddress, 
       addressText: theme.addressText || '', theme_settings: theme
     });
-    setIsEditStoreModalOpen(true); setOpenStoreMenuId(null);
+    setIsEditStoreModalOpen(true);
+    setOpenStoreMenuId(null);
   };
 
   const handleUpdateStore = async (e) => {
@@ -323,20 +335,20 @@ export default function DashboardPage() {
     if (!editStoreData.lat || !editStoreData.lng) return alert("Please drop a pin on the map!");
     setIsUploading(true);
     try {
-      // 1. Update Core Data
       const response = await fetch(`https://locallook-api.onrender.com/api/stores/${editStoreData.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ store_name: editStoreData.store_name, store_category: editStoreData.store_category, description: editStoreData.description, phone: editStoreData.phone, email: editStoreData.email, lat: editStoreData.lat, lng: editStoreData.lng })
+        body: JSON.stringify({ 
+          store_name: editStoreData.store_name, store_category: editStoreData.store_category, description: editStoreData.description, 
+          phone: editStoreData.phone, email: editStoreData.email, website: editStoreData.website, lat: editStoreData.lat, lng: editStoreData.lng 
+        })
       });
-      
-      // 2. Update Theme Settings (Toggles)
+
       if (response.ok) {
         const updatedStore = await response.json();
-        const themeUpdate = { ...editStoreData.theme_settings, showPhone: editStoreData.showPhone, showEmail: editStoreData.showEmail, showAddress: editStoreData.showAddress, addressText: editStoreData.addressText };
-        
-        await fetch(`https://locallook-api.onrender.com/api/stores/${editStoreData.id}/theme`, {
-          method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme_settings: themeUpdate })
-        });
+        const themeUpdate = { 
+          ...editStoreData.theme_settings, showPhone: editStoreData.showPhone, showEmail: editStoreData.showEmail, showWebsite: editStoreData.showWebsite, showAddress: editStoreData.showAddress, addressText: editStoreData.addressText 
+        };
+        await fetch(`https://locallook-api.onrender.com/api/stores/${editStoreData.id}/theme`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme_settings: themeUpdate }) });
         
         const fullyUpdatedStore = { ...updatedStore, theme_settings: themeUpdate };
         setStores(stores.map(s => s.id === fullyUpdatedStore.id ? { ...s, ...fullyUpdatedStore } : s));
@@ -344,30 +356,6 @@ export default function DashboardPage() {
         setIsEditStoreModalOpen(false);
       }
     } catch (err) { alert("Failed to update store."); } finally { setIsUploading(false); }
-  };
-
-  const handleCreateStore = async (e) => {
-    e.preventDefault();
-    if (!newStoreData.lat || !newStoreData.lng) return alert("Please drop a pin on the map!");
-    setIsUploading(true);
-    try {
-      const response = await fetch('https://locallook-api.onrender.com/api/stores', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...newStoreData, user_id: user.id })
-      });
-      if (!response.ok) throw new Error("Failed to create store");
-      
-      const createdStore = await response.json();
-      
-      // Save toggles to new store
-      const newTheme = { primaryColor: '#3b82f6', layout: 'grid', categoryOrder: [], showPhone: newStoreData.showPhone, showEmail: newStoreData.showEmail, showAddress: newStoreData.showAddress, addressText: newStoreData.addressText };
-      await fetch(`https://locallook-api.onrender.com/api/stores/${createdStore.id}/theme`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme_settings: newTheme })
-      });
-
-      await fetchStores(user.id);
-      setView('dashboard');
-      setNewStoreData({ store_name: '', store_category: 'Food & Dining', description: '', phone: '', email: '', lat: '', lng: '', showPhone: false, showEmail: false, showAddress: false, addressText: '' });
-    } catch (err) { alert(err.message); } finally { setIsUploading(false); }
   };
 
   const handleOpenDeleteStore = (store) => { setStoreToDelete(store); setDeleteConfirmationText(''); setIsDeleteStoreModalOpen(true); setOpenStoreMenuId(null); };
@@ -380,7 +368,10 @@ export default function DashboardPage() {
       if (response.ok) {
         const updatedStores = stores.filter(s => s.id !== storeToDelete.id);
         setStores(updatedStores);
-        if (activeStore?.id === storeToDelete.id) { setActiveStore(updatedStores.length > 0 ? updatedStores[0] : null); if (updatedStores.length === 0) setView('add_store'); }
+        if (activeStore?.id === storeToDelete.id) {
+          setActiveStore(updatedStores.length > 0 ? updatedStores[0] : null);
+          if (updatedStores.length === 0) setView('add_store');
+        }
         setIsDeleteStoreModalOpen(false);
       }
     } catch (err) { alert("Failed to delete store."); } finally { setIsUploading(false); }
@@ -393,44 +384,72 @@ export default function DashboardPage() {
   const handleAddItem = async (e) => {
     e.preventDefault(); setIsUploading(true); let finalImageUrl = null;
     if (newItem.imageFile) {
-      const filePath = `${activeStore.id}/${Math.random()}.${newItem.imageFile.name.split('.').pop() || 'jpg'}`;
+      const fileName = `${Math.random()}.${newItem.imageFile.name.split('.').pop() || 'jpg'}`;
+      const filePath = `${activeStore.id}/${fileName}`;
       const { error: uploadError } = await supabase.storage.from('item-images').upload(filePath, newItem.imageFile);
-      if (uploadError) { alert("Error uploading image"); setIsUploading(false); return; }
+      if (uploadError) { alert("Error uploading image: " + uploadError.message); setIsUploading(false); return; }
       finalImageUrl = supabase.storage.from('item-images').getPublicUrl(filePath).data.publicUrl;
     }
+
     const payload = { item_name: newItem.name, description: newItem.description, price: parseFloat(newItem.price), image_url: finalImageUrl, item_category: newItem.category };
-    
     if (editingItemId) {
-      const res = await fetch(`https://locallook-api.onrender.com/api/items/${editingItemId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      if (res.ok) { const updated = await res.json(); setItems(items.map(i => i.id === editingItemId ? updated : i)); closeItemModal(); }
+      const response = await fetch(`https://locallook-api.onrender.com/api/items/${editingItemId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (response.ok) { const updatedItem = await response.json(); setItems(items.map(i => i.id === editingItemId ? updatedItem : i)); closeItemModal(); }
     } else {
-      const res = await fetch('https://locallook-api.onrender.com/api/items', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, store_id: activeStore.id }) });
-      if (res.ok) { const added = await res.json(); setItems([added, ...items]); closeItemModal(); }
+      const response = await fetch('https://locallook-api.onrender.com/api/items', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ store_id: activeStore.id, ...payload }) });
+      if (response.ok) { const addedItem = await response.json(); setItems([addedItem, ...items]); closeItemModal(); }
     }
     setIsUploading(false);
   };
 
   const handleDeleteItem = async (itemId, itemName) => {
-    if (!window.confirm(`Delete "${itemName}"?`)) return;
-    const response = await fetch(`https://locallook-api.onrender.com/api/items/${itemId}`, { method: 'DELETE' });
-    if (response.ok) { setItems(items.filter(item => item.id !== itemId)); if (editingItemId === itemId) closeItemModal(); }
+    if (!window.confirm(`Delete "${itemName}" from the menu permanently?`)) return;
+    try {
+      const response = await fetch(`https://locallook-api.onrender.com/api/items/${itemId}`, { method: 'DELETE' });
+      if (response.ok) { setItems(items.filter(item => item.id !== itemId)); if (editingItemId === itemId) closeItemModal(); }
+    } catch (err) { alert("Failed to delete item."); }
   };
 
   const handleInviteOperator = async (e) => {
     e.preventDefault(); setIsInviting(true); setInviteMessage(null); 
     try {
       const response = await fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}/invite`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: inviteEmail, requester_id: user.id }) });
-      const data = await response.json(); if (!response.ok) throw new Error(data.error);
+      const data = await response.json(); if (!response.ok) throw new Error(data.error || "Failed to invite operator");
       setInviteMessage({ type: 'success', text: data.message });
       setStoreOperators([...storeOperators, { email: inviteEmail, status: data.message.includes('Existing') ? 'confirmed' : 'pending', role: 'operator' }]);
       setInviteEmail(''); 
     } catch (err) { setInviteMessage({ type: 'error', text: err.message }); } finally { setIsInviting(false); setTimeout(() => setInviteMessage(null), 6000); }
   };
 
+  const handleCreateStore = async (e) => {
+    e.preventDefault();
+    if (!newStoreData.lat || !newStoreData.lng) return alert("Please drop a pin on the map!");
+    setIsUploading(true);
+    try {
+      const response = await fetch('https://locallook-api.onrender.com/api/stores', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...newStoreData, user_id: user.id }) });
+      if (!response.ok) throw new Error("Failed to create store");
+      const createdStore = await response.json();
+      
+      const newTheme = { primaryColor: '#3b82f6', layout: 'grid', categoryOrder: [], showPhone: newStoreData.showPhone, showEmail: newStoreData.showEmail, showWebsite: newStoreData.showWebsite, showAddress: newStoreData.showAddress, addressText: newStoreData.addressText };
+      await fetch(`https://locallook-api.onrender.com/api/stores/${createdStore.id}/theme`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme_settings: newTheme }) });
+
+      await fetchStores(user.id);
+      setView('dashboard');
+      setNewStoreData({ store_name: '', store_category: 'Food & Dining', description: '', phone: '', email: '', website: '', lat: '', lng: '', showPhone: false, showEmail: false, showWebsite: false, showAddress: false, addressText: '' });
+    } catch (err) { alert(err.message); } finally { setIsUploading(false); }
+  };
+
+  const toggleMenu = (staffId) => setOpenMenuId(openMenuId === staffId ? null : staffId);
+
   const handleRemoveStaff = async (staffId, staffEmail) => {
-    if (!window.confirm(`Remove ${staffEmail}?`)) return;
-    await fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}/staff/${staffId}`, { method: 'DELETE' });
-    setStoreOperators(storeOperators.filter(op => op.id !== staffId)); setOpenMenuId(null);
+    if (!window.confirm(`Are you sure you want to remove ${staffEmail} from this store?`)) return;
+    try {
+      const response = await fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}/staff/${staffId}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error("Failed to remove staff");
+      alert(`${staffEmail} has been removed.`);
+      setStoreOperators(storeOperators.filter(op => op.id !== staffId));
+      setOpenMenuId(null);
+    } catch (error) { alert("Error: " + error.message); }
   };
 
   const groupedItems = items.reduce((groups, item) => {
@@ -445,7 +464,6 @@ export default function DashboardPage() {
   return (
     <div style={{ display: 'flex', height: '100vh', width: '100vw', backgroundColor: '#f3f4f6', fontFamily: 'sans-serif', overflow: 'hidden' }}>
       
-      {/* CROP MODAL */}
       {imageToCrop && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', flexDirection: 'column' }}>
           <div style={{ position: 'relative', flexGrow: 1 }}><Cropper image={imageToCrop} crop={crop} zoom={zoom} aspect={4 / 3} onCropChange={setCrop} onCropComplete={onCropComplete} onZoomChange={setZoom} /></div>
@@ -457,7 +475,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ITEM MODAL */}
       {isItemModalOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
           <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '16px', width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
@@ -471,14 +488,22 @@ export default function DashboardPage() {
                 <div style={{ flex: '2 1 200px' }}><input type="text" placeholder="Item Name" required value={newItem.name} onChange={(e) => setNewItem({...newItem, name: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', boxSizing: 'border-box' }} /></div>
                 <div style={{ flex: '1 1 100px' }}><input type="number" step="0.01" placeholder="Price (₱)" required value={newItem.price} onChange={(e) => setNewItem({...newItem, price: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', boxSizing: 'border-box' }} /></div>
               </div>
+              
               <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
                 <div style={{ flex: '2 1 200px' }}><input type="text" placeholder="Description (Optional)" value={newItem.description} onChange={(e) => setNewItem({...newItem, description: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', boxSizing: 'border-box' }} /></div>
-                <div style={{ flex: '1 1 150px' }}><input type="text" list="category-suggestions" placeholder="Category" required value={newItem.category} onChange={(e) => setNewItem({...newItem, category: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', boxSizing: 'border-box' }} /></div>
+                <div style={{ flex: '1 1 150px' }}>
+                  <input type="text" list="category-suggestions" placeholder="Category" required value={newItem.category} onChange={(e) => setNewItem({...newItem, category: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', boxSizing: 'border-box' }} />
+                  <datalist id="category-suggestions"><option value="General" /><option value="Appetizers" /><option value="Main Course" /><option value="Desserts" /><option value="Snacks" /><option value="Hot Drinks" /><option value="Cold Drinks" /><option value="Bakery & Pastries" /><option value="Vegan/Vegetarian" /><option value="Fresh Produce" /><option value="Meat & Seafood" /><option value="Dairy & Eggs" /><option value="Pantry Staples" /><option value="Personal Care" /><option value="Household" /><option value="Clothing & Apparel" /><option value="Electronics" /><option value="Beauty & Cosmetics" /><option value="Toys & Games" /><option value="Services" /></datalist>
+                </div>
               </div>
+
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', padding: '15px', backgroundColor: '#f9fafb', border: '1px dashed #d1d5db', borderRadius: '8px', flexWrap: 'wrap', gap: '15px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                   {croppedPreview ? (
-                    <div style={{ position: 'relative' }}><img src={croppedPreview} alt="Preview" style={{ width: '120px', height: '90px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #d1d5db' }} /><button type="button" onClick={() => { setCroppedPreview(null); setNewItem({...newItem, imageFile: null}) }} style={{ position: 'absolute', top: '-8px', right: '-8px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '50%', width: '20px', height: '20px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>×</button></div>
+                    <div style={{ position: 'relative' }}>
+                      <img src={croppedPreview} alt="Preview" style={{ width: '120px', height: '90px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #d1d5db' }} />
+                      <button type="button" onClick={() => { setCroppedPreview(null); setNewItem({...newItem, imageFile: null}) }} style={{ position: 'absolute', top: '-8px', right: '-8px', background: '#ef4444', color: 'white', border: 'none', borderRadius: '50%', width: '20px', height: '20px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>×</button>
+                    </div>
                   ) : (
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <div><label htmlFor="image-upload" style={{ display: 'inline-block', padding: '8px 12px', backgroundColor: 'white', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', color: '#4b5563' }}>🖼️ {editingItemId ? 'Change Image' : 'Upload Image'}</label><input id="image-upload" type="file" accept="image/*" onChange={onFileSelect} style={{ display: 'none' }} /></div>
@@ -493,7 +518,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* EDIT STORE MODAL */}
       {isEditStoreModalOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
           <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '16px', width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
@@ -511,7 +535,6 @@ export default function DashboardPage() {
 
               <textarea placeholder="Store Description (Optional)" value={editStoreData.description} onChange={(e) => setEditStoreData({...editStoreData, description: e.target.value})} style={{ padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', width: '100%', boxSizing: 'border-box', minHeight: '80px', fontFamily: 'inherit' }} />
               
-              {/* CONTACT TOGGLES */}
               <div style={{ padding: '15px', backgroundColor: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
                 <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#374151' }}>Profile Contact Buttons</h4>
                 
@@ -525,6 +548,11 @@ export default function DashboardPage() {
                 </label>
                 {editStoreData.showEmail && <input type="email" placeholder="Business Email" value={editStoreData.email} onChange={(e) => setEditStoreData({...editStoreData, email: e.target.value})} style={{ padding: '10px', border: '1px solid #d1d5db', borderRadius: '8px', width: '100%', boxSizing: 'border-box', marginBottom: '15px' }} />}
 
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', marginBottom: editStoreData.showWebsite ? '10px' : '5px', fontWeight: 'bold' }}>
+                  <input type="checkbox" checked={editStoreData.showWebsite} onChange={(e) => setEditStoreData({...editStoreData, showWebsite: e.target.checked})} /> Show Website Link
+                </label>
+                {editStoreData.showWebsite && <input type="url" placeholder="Website URL (e.g., https://yourstore.com)" value={editStoreData.website} onChange={(e) => setEditStoreData({...editStoreData, website: e.target.value})} style={{ padding: '10px', border: '1px solid #d1d5db', borderRadius: '8px', width: '100%', boxSizing: 'border-box', marginBottom: '15px' }} />}
+
                 <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', marginBottom: editStoreData.showAddress ? '10px' : '0', fontWeight: 'bold' }}>
                   <input type="checkbox" checked={editStoreData.showAddress} onChange={async (e) => {
                     const checked = e.target.checked;
@@ -537,7 +565,7 @@ export default function DashboardPage() {
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#6b7280', marginBottom: '8px' }}>Update Map Pin</label>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#6b7280', marginBottom: '8px' }}>Update Location (Drag map to move pin)</label>
                 <div style={{ position: 'relative', width: '100%', height: '200px', borderRadius: '8px', overflow: 'hidden', border: '1px solid #d1d5db' }}>
                   <div ref={editMapContainer} style={{ position: 'absolute', inset: 0 }} />
                 </div>
@@ -551,7 +579,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* DELETE STORE MODAL */}
       {isDeleteStoreModalOpen && storeToDelete && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
           <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '16px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
@@ -605,7 +632,6 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* 2. MAIN CONTENT AREA */}
       <div ref={scrollContainerRef} onScroll={handleScroll} style={{ flexGrow: 1, overflowY: 'auto', position: 'relative' }}>
         {view === 'add_store' && (
           <div style={{ display: 'flex', height: '100%' }}>
@@ -613,14 +639,12 @@ export default function DashboardPage() {
               <h2 style={{ marginTop: 0, color: '#1f2937' }}>Register Location</h2>
               <form onSubmit={handleCreateStore} style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' }}>
                 <input type="text" placeholder="Store Name" required value={newStoreData.store_name} onChange={e => setNewStoreData({...newStoreData, store_name: e.target.value})} style={{ padding: '12px', borderRadius: '8px', border: '1px solid #d1d5db' }} />
-                <select value={newStoreData.store_category} onChange={e => setNewStoreData({...newStoreData, store_category: e.target.value})} style={{ padding: '12px', borderRadius: '8px', border: '1px solid #d1d5db', backgroundColor: 'white' }}>
-                  <option value="Food & Dining">Food & Dining</option><option value="Retail">Retail</option><option value="Services">Services</option><option value="Groceries">Groceries</option>
-                </select>
+                <select value={newStoreData.store_category} onChange={e => setNewStoreData({...newStoreData, store_category: e.target.value})} style={{ padding: '12px', borderRadius: '8px', border: '1px solid #d1d5db', backgroundColor: 'white' }}><option value="Food & Dining">Food & Dining</option><option value="Retail">Retail</option><option value="Services">Services</option><option value="Groceries">Groceries</option></select>
                 <textarea placeholder="Store Description (Optional)" value={newStoreData.description} onChange={(e) => setNewStoreData({...newStoreData, description: e.target.value})} style={{ padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', width: '100%', boxSizing: 'border-box', minHeight: '80px', fontFamily: 'inherit' }} />
                 
-                {/* CONTACT TOGGLES */}
                 <div style={{ padding: '15px', backgroundColor: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
                   <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#374151' }}>Profile Contact Buttons</h4>
+                  
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', marginBottom: newStoreData.showPhone ? '10px' : '5px', fontWeight: 'bold' }}>
                     <input type="checkbox" checked={newStoreData.showPhone} onChange={(e) => setNewStoreData({...newStoreData, showPhone: e.target.checked})} /> Show Phone Number
                   </label>
@@ -631,10 +655,14 @@ export default function DashboardPage() {
                   </label>
                   {newStoreData.showEmail && <input type="email" placeholder="Business Email" value={newStoreData.email} onChange={e => setNewStoreData({...newStoreData, email: e.target.value})} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #d1d5db', width: '100%', boxSizing: 'border-box', marginBottom: '15px' }} />}
 
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', marginBottom: newStoreData.showWebsite ? '10px' : '5px', fontWeight: 'bold' }}>
+                    <input type="checkbox" checked={newStoreData.showWebsite} onChange={(e) => setNewStoreData({...newStoreData, showWebsite: e.target.checked})} /> Show Website Link
+                  </label>
+                  {newStoreData.showWebsite && <input type="url" placeholder="Website URL (e.g., https://yourstore.com)" value={newStoreData.website} onChange={e => setNewStoreData({...newStoreData, website: e.target.value})} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #d1d5db', width: '100%', boxSizing: 'border-box', marginBottom: '15px' }} />}
+
                   <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', marginBottom: newStoreData.showAddress ? '10px' : '0', fontWeight: 'bold' }}>
                     <input type="checkbox" checked={newStoreData.showAddress} onChange={async (e) => {
-                      const checked = e.target.checked;
-                      let text = newStoreData.addressText;
+                      const checked = e.target.checked; let text = newStoreData.addressText;
                       if (checked && !text && newStoreData.lng) text = await fetchAddressFromCoords(newStoreData.lng, newStoreData.lat);
                       setNewStoreData({...newStoreData, showAddress: checked, addressText: text});
                     }} /> Show Exact Street Address
@@ -646,9 +674,7 @@ export default function DashboardPage() {
                   <input type="text" readOnly placeholder="Lat" value={newStoreData.lat} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #e5e7eb', flex: 1, backgroundColor: '#f3f4f6', fontSize: '12px' }} />
                   <input type="text" readOnly placeholder="Lng" value={newStoreData.lng} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #e5e7eb', flex: 1, backgroundColor: '#f3f4f6', fontSize: '12px' }} />
                 </div>
-                <button type="submit" disabled={isUploading} style={{ padding: '14px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', marginTop: '10px' }}>
-                  {isUploading ? 'Saving...' : 'Confirm Store'}
-                </button>
+                <button type="submit" disabled={isUploading} style={{ padding: '14px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', marginTop: '10px' }}>{isUploading ? 'Saving...' : 'Confirm Store'}</button>
               </form>
             </div>
             <div style={{ flexGrow: 1, position: 'relative' }}><div ref={mapContainer} style={{ position: 'absolute', inset: 0 }} /></div>
@@ -658,7 +684,6 @@ export default function DashboardPage() {
         {view === 'dashboard' && activeStore && (
           <div style={{ padding: '40px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <div style={{ width: '100%', maxWidth: '900px' }}>
-              
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '35px', flexWrap: 'wrap', gap: '20px' }}>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -668,7 +693,6 @@ export default function DashboardPage() {
                   <p style={{ margin: '5px 0 2px 0', color: '#6b7280', fontSize: '15px', fontWeight: 'bold' }}>{activeStore.store_category}</p>
                   {activeStore.description && <p style={{ margin: 0, color: '#4b5563', fontSize: '14px' }}>{activeStore.description}</p>}
                 </div>
-                
                 <div style={{ display: 'flex', alignItems: 'center', gap: '15px', backgroundColor: 'white', padding: '12px 20px', borderRadius: '50px', boxShadow: '0 4px 15px rgba(0,0,0,0.05)', border: '1px solid #e5e7eb' }}>
                   <span style={{ fontWeight: '800', fontSize: '14px', color: activeStore.is_open ? '#10b981' : '#9ca3af' }}>OPEN</span>
                   <div onClick={toggleStoreStatus} style={{ width: '64px', height: '32px', backgroundColor: activeStore.is_open ? '#10b981' : '#d1d5db', borderRadius: '32px', padding: '4px', cursor: 'pointer', boxSizing: 'border-box' }}>
@@ -686,22 +710,14 @@ export default function DashboardPage() {
                     <div style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}>
                       <div style={{ flex: 1 }}>
                         <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#6b7280', marginBottom: '5px' }}>BRAND COLOR</label>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <input type="color" value={storeTheme.primaryColor} onChange={(e) => setStoreTheme({...storeTheme, primaryColor: e.target.value})} style={{ width: '40px', height: '40px', padding: 0, border: 'none', borderRadius: '8px', cursor: 'pointer' }} />
-                          <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#374151' }}>{storeTheme.primaryColor.toUpperCase()}</span>
-                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><input type="color" value={storeTheme.primaryColor} onChange={(e) => setStoreTheme({...storeTheme, primaryColor: e.target.value})} style={{ width: '40px', height: '40px', padding: 0, border: 'none', borderRadius: '8px', cursor: 'pointer' }} /><span style={{ fontSize: '14px', fontWeight: 'bold', color: '#374151' }}>{storeTheme.primaryColor.toUpperCase()}</span></div>
                       </div>
                       <div style={{ flex: 1 }}>
                         <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#6b7280', marginBottom: '5px' }}>MENU LAYOUT</label>
-                        <select value={storeTheme.layout} onChange={(e) => setStoreTheme({...storeTheme, layout: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #d1d5db', backgroundColor: '#f9fafb', fontSize: '14px' }}>
-                          <option value="grid">Grid Cards</option>
-                          <option value="list">Compact List</option>
-                        </select>
+                        <select value={storeTheme.layout} onChange={(e) => setStoreTheme({...storeTheme, layout: e.target.value})} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #d1d5db', backgroundColor: '#f9fafb', fontSize: '14px' }}><option value="grid">Grid Cards</option><option value="list">Compact List</option></select>
                       </div>
                     </div>
-                    <button onClick={handleSaveTheme} disabled={isSavingTheme} style={{ width: '100%', padding: '10px', backgroundColor: '#111827', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: isSavingTheme ? 'not-allowed' : 'pointer' }}>
-                      {isSavingTheme ? 'Saving...' : 'Save Theme & Sorting'}
-                    </button>
+                    <button onClick={handleSaveTheme} disabled={isSavingTheme} style={{ width: '100%', padding: '10px', backgroundColor: '#111827', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: isSavingTheme ? 'not-allowed' : 'pointer' }}>{isSavingTheme ? 'Saving...' : 'Save Theme & Sorting'}</button>
                   </div>
 
                   <div style={{ flex: 1, backgroundColor: '#eff6ff', padding: '25px', borderRadius: '16px', border: '1px dashed #93c5fd', minWidth: '300px' }}>
@@ -735,51 +751,36 @@ export default function DashboardPage() {
                 </div>
               )}
 
-              {/* Inventory Header & Add Button */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                 <h2 style={{ margin: 0, fontSize: '20px', color: '#111827', fontWeight: '800' }}>Menu & Inventory</h2>
-                <button onClick={openAddModal} style={{ padding: '10px 20px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span style={{ fontSize: '16px' }}>+</span> Add Item
-                </button>
+                <button onClick={openAddModal} style={{ padding: '10px 20px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ fontSize: '16px' }}>+</span> Add Item</button>
               </div>
 
-              {/* PREMIUM DND KIT DRAGGABLE NAV BAR */}
               {categoryOrder.length > 0 && (
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={[restrictToHorizontalAxis]}>
                   <div style={{ display: 'flex', gap: '10px', padding: '10px', marginBottom: '20px', overflowX: 'auto', backgroundColor: '#e5e7eb', borderRadius: '12px', position: 'sticky', top: '0px', zIndex: 5, boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                     <SortableContext items={categoryOrder} strategy={horizontalListSortingStrategy}>
-                      {categoryOrder.map(cat => (
-                        <SortableCategory key={cat} id={cat} activeCategory={activeCategory} brandColor={storeTheme.primaryColor} onClick={scrollToCategory} />
-                      ))}
+                      {categoryOrder.map(cat => <SortableCategory key={cat} id={cat} activeCategory={activeCategory} brandColor={storeTheme.primaryColor} onClick={scrollToCategory} />)}
                     </SortableContext>
                   </div>
                 </DndContext>
               )}
 
-              {/* Inventory List Card */}
               <div style={{ backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.03)', border: '1px solid #f3f4f6', overflow: 'hidden', paddingBottom: '100px' }}>
                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                   {Object.keys(groupedItems).length === 0 ? (
-                    <div style={{ padding: '60px 40px', textAlign: 'center', color: '#9ca3af', fontStyle: 'italic' }}>
-                      <p style={{ margin: '0 0 10px 0', fontSize: '24px' }}>🍽️</p>
-                      Your menu is currently empty.
-                    </div>
+                    <div style={{ padding: '60px 40px', textAlign: 'center', color: '#9ca3af', fontStyle: 'italic' }}><p style={{ margin: '0 0 10px 0', fontSize: '24px' }}>🍽️</p>Your menu is currently empty.</div>
                   ) : (
                     categoryOrder.map(category => {
                       if (!groupedItems[category]) return null;
                       return (
                         <div key={category} ref={(el) => (sectionRefs.current[category] = el)}>
-                          <div style={{ padding: '12px 30px', backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb', borderTop: '1px solid #e5e7eb' }}>
-                            <h3 style={{ margin: 0, fontSize: '13px', color: '#6b7280', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>{category}</h3>
-                          </div>
+                          <div style={{ padding: '12px 30px', backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb', borderTop: '1px solid #e5e7eb' }}><h3 style={{ margin: 0, fontSize: '13px', color: '#6b7280', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>{category}</h3></div>
                           {groupedItems[category].map(item => (
                             <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 30px', borderBottom: '1px solid #f3f4f6' }}>
                               <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
                                 {item.image_url ? <img src={item.image_url} alt={item.item_name} style={{ width: '80px', height: '60px', objectFit: 'cover', borderRadius: '8px' }} /> : <div style={{ width: '80px', height: '60px', backgroundColor: '#f3f4f6', borderRadius: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '20px' }}>🍽️</div>}
-                                <div>
-                                  <h4 style={{ margin: '0 0 4px 0', fontSize: '16px', color: '#1f2937' }}>{item.item_name}</h4>
-                                  <p style={{ margin: 0, color: '#6b7280', fontSize: '13px' }}>{item.description}</p>
-                                </div>
+                                <div><h4 style={{ margin: '0 0 4px 0', fontSize: '16px', color: '#1f2937' }}>{item.item_name}</h4><p style={{ margin: 0, color: '#6b7280', fontSize: '13px' }}>{item.description}</p></div>
                               </div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                                 <div style={{ fontSize: '18px', fontWeight: '800', color: '#111827', letterSpacing: '-0.5px', whiteSpace: 'nowrap' }}>₱{parseFloat(item.price).toFixed(2)}</div>
@@ -796,7 +797,6 @@ export default function DashboardPage() {
                   )}
                 </div>
               </div>
-
             </div>
           </div>
         )}
