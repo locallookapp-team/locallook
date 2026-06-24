@@ -272,4 +272,18 @@ app.delete('/api/items/:id', async (req, res) => {
   } catch (err) { res.status(500).send("Server Error"); }
 });
 
+// SEARCH ITEMS ACROSS ALL STORES
+app.get('/api/search/items', async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q) return res.json([]);
+    const result = await db.query(`
+      SELECT i.id, i.item_name, i.price, i.store_id, s.store_name 
+      FROM items i JOIN stores s ON i.store_id = s.id 
+      WHERE i.item_name ILIKE $1 OR i.item_category ILIKE $1 LIMIT 15;
+    `, [`%${q}%`]);
+    res.json(result.rows);
+  } catch (err) { res.status(500).send("Server Error"); }
+});
+
 app.listen(PORT, () => { console.log(`Server is running on http://localhost:${PORT}`); });

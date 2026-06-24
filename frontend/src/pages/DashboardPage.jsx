@@ -4,7 +4,7 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import Cropper from 'react-easy-crop';
 import { supabase } from '../supabaseClient';
-import { MdDragIndicator, MdMoreVert } from "react-icons/md";
+import { MdDragIndicator, MdMoreVert, MdMenu, MdChevronLeft } from "react-icons/md";
 
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -76,6 +76,9 @@ export default function DashboardPage() {
   const [storeOperators, setStoreOperators] = useState([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('dashboard'); 
+
+  // NEW: State to track if the sidebar is collapsed
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   const [openStoreMenuId, setOpenStoreMenuId] = useState(null);
   const [isEditStoreModalOpen, setIsEditStoreModalOpen] = useState(false);
@@ -596,27 +599,58 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* 1. SIDEBAR */}
-      <div style={{ width: '280px', backgroundColor: '#1f2937', color: 'white', display: 'flex', flexDirection: 'column', boxShadow: '4px 0 15px rgba(0,0,0,0.1)', zIndex: 10 }}>
-        <div style={{ padding: '25px 20px', borderBottom: '1px solid #374151' }}>
-          <h2 style={{ margin: '0', fontSize: '24px', color: '#3b82f6', fontWeight: '900' }}>LocalLook</h2>
-          <span style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 'bold', letterSpacing: '2px' }}>MERCHANT HUB</span>
-          <div style={{ marginTop: '20px', display: 'flex', alignItems: 'center', gap: '12px', backgroundColor: '#374151', padding: '10px', borderRadius: '8px' }}>
-            <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#60a5fa', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#1e3a8a', fontWeight: '900', fontSize: '16px' }}>{displayName ? displayName.charAt(0).toUpperCase() : '?'}</div>
-            <div style={{ overflow: 'hidden' }}>
-              <div style={{ fontSize: '14px', color: '#f3f4f6', fontWeight: 'bold', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{displayName}</div>
-              <div style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 'bold', letterSpacing: '0.5px' }}>{activeStore ? activeStore.role.toUpperCase() : 'MERCHANT'}</div>
+      {/* 1. COLLAPSIBLE SIDEBAR */}
+      <div style={{ 
+        width: isSidebarCollapsed ? '80px' : '280px', 
+        transition: 'width 0.3s ease',
+        backgroundColor: '#1f2937', 
+        color: 'white', 
+        display: 'flex', 
+        flexDirection: 'column', 
+        boxShadow: '4px 0 15px rgba(0,0,0,0.1)', 
+        zIndex: 10 
+      }}>
+        <div style={{ padding: isSidebarCollapsed ? '25px 0' : '25px 20px', borderBottom: '1px solid #374151', display: 'flex', justifyContent: isSidebarCollapsed ? 'center' : 'space-between', alignItems: 'center' }}>
+          {!isSidebarCollapsed && (
+            <div>
+              <h2 style={{ margin: '0', fontSize: '24px', color: '#3b82f6', fontWeight: '900' }}>LocalLook</h2>
+              <span style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 'bold', letterSpacing: '2px' }}>MERCHANT HUB</span>
             </div>
-          </div>
+          )}
+          <button onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)} style={{ background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '5px' }}>
+            {isSidebarCollapsed ? <MdMenu size={26} /> : <MdChevronLeft size={26} />}
+          </button>
         </div>
         
-        <div style={{ flexGrow: 1, padding: '20px 15px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#6b7280', marginBottom: '5px', paddingLeft: '5px' }}>YOUR STORES</div>
+        {!isSidebarCollapsed ? (
+          <div style={{ padding: '0 20px' }}>
+            <div style={{ marginTop: '20px', display: 'flex', alignItems: 'center', gap: '12px', backgroundColor: '#374151', padding: '10px', borderRadius: '8px' }}>
+              <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#60a5fa', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#1e3a8a', fontWeight: '900', fontSize: '16px', flexShrink: 0 }}>{displayName ? displayName.charAt(0).toUpperCase() : '?'}</div>
+              <div style={{ overflow: 'hidden' }}>
+                <div style={{ fontSize: '14px', color: '#f3f4f6', fontWeight: 'bold', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{displayName}</div>
+                <div style={{ fontSize: '11px', color: '#9ca3af', fontWeight: 'bold', letterSpacing: '0.5px' }}>{activeStore ? activeStore.role.toUpperCase() : 'MERCHANT'}</div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'center' }}>
+            <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#60a5fa', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#1e3a8a', fontWeight: '900', fontSize: '16px' }}>{displayName ? displayName.charAt(0).toUpperCase() : '?'}</div>
+          </div>
+        )}
+        
+        <div style={{ flexGrow: 1, padding: isSidebarCollapsed ? '20px 10px' : '20px 15px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ fontSize: '12px', fontWeight: 'bold', color: '#6b7280', marginBottom: '5px', paddingLeft: isSidebarCollapsed ? '0' : '5px', textAlign: isSidebarCollapsed ? 'center' : 'left' }}>
+            {isSidebarCollapsed ? 'STORES' : 'YOUR STORES'}
+          </div>
           {stores.map(s => (
-            <div key={s.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <button onClick={() => { setActiveStore(s); setView('dashboard'); }} style={{ width: '100%', padding: '12px 35px 12px 15px', backgroundColor: activeStore?.id === s.id && view === 'dashboard' ? '#374151' : 'transparent', color: 'white', border: 'none', borderRadius: '8px', textAlign: 'left', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{s.store_name}</button>
-              <button onClick={() => setOpenStoreMenuId(openStoreMenuId === s.id ? null : s.id)} style={{ position: 'absolute', right: '5px', background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', padding: '5px', display: 'flex', alignItems: 'center', borderRadius: '50%' }}><MdMoreVert size={18} /></button>
-              {openStoreMenuId === s.id && (
+            <div key={s.id} style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: isSidebarCollapsed ? 'center' : 'flex-start' }}>
+              <button onClick={() => { setActiveStore(s); setView('dashboard'); }} title={s.store_name} style={{ width: '100%', padding: isSidebarCollapsed ? '12px 0' : '12px 35px 12px 15px', backgroundColor: activeStore?.id === s.id && view === 'dashboard' ? '#374151' : 'transparent', color: 'white', border: 'none', borderRadius: '8px', textAlign: isSidebarCollapsed ? 'center' : 'left', fontWeight: 'bold', fontSize: '14px', cursor: 'pointer', display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {isSidebarCollapsed ? <span style={{ fontSize: '16px' }}>{s.store_name.charAt(0).toUpperCase()}</span> : s.store_name}
+              </button>
+              {!isSidebarCollapsed && (
+                <button onClick={() => setOpenStoreMenuId(openStoreMenuId === s.id ? null : s.id)} style={{ position: 'absolute', right: '5px', background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer', padding: '5px', display: 'flex', alignItems: 'center', borderRadius: '50%' }}><MdMoreVert size={18} /></button>
+              )}
+              {openStoreMenuId === s.id && !isSidebarCollapsed && (
                 <div style={{ position: 'absolute', right: '10px', top: '40px', backgroundColor: 'white', borderRadius: '8px', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', zIndex: 100, overflow: 'hidden', width: '130px' }}>
                   <button onClick={() => handleOpenEditStore(s)} style={{ width: '100%', padding: '10px 15px', border: 'none', borderBottom: '1px solid #f3f4f6', background: 'white', textAlign: 'left', cursor: 'pointer', fontSize: '13px', color: '#374151', fontWeight: 'bold' }}>Edit Store</button>
                   <button onClick={() => handleOpenDeleteStore(s)} style={{ width: '100%', padding: '10px 15px', border: 'none', background: 'white', textAlign: 'left', cursor: 'pointer', fontSize: '13px', color: '#dc2626', fontWeight: 'bold' }}>Delete Store</button>
@@ -624,15 +658,20 @@ export default function DashboardPage() {
               )}
             </div>
           ))}
-          <button onClick={() => setView('add_store')} style={{ width: '100%', padding: '12px 15px', marginTop: '10px', backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#60a5fa', border: '1px dashed #3b82f6', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>+ Add a Store</button>
+          <button onClick={() => setView('add_store')} style={{ width: '100%', padding: isSidebarCollapsed ? '12px 0' : '12px 15px', marginTop: '10px', backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#60a5fa', border: '1px dashed #3b82f6', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: 'center' }}>
+            {isSidebarCollapsed ? '+' : '+ Add a Store'}
+          </button>
         </div>
 
-        <div style={{ padding: '20px', borderTop: '1px solid #374151' }}>
-          <button onClick={handleLogout} style={{ width: '100%', padding: '12px', backgroundColor: 'transparent', color: '#ef4444', border: 'none', textAlign: 'left', fontWeight: 'bold', cursor: 'pointer' }}>🚪 Sign Out</button>
+        <div style={{ padding: isSidebarCollapsed ? '20px 10px' : '20px', borderTop: '1px solid #374151' }}>
+          <button onClick={handleLogout} style={{ width: '100%', padding: '12px', backgroundColor: 'transparent', color: '#ef4444', border: 'none', textAlign: isSidebarCollapsed ? 'center' : 'left', fontWeight: 'bold', cursor: 'pointer', display: 'flex', justifyContent: isSidebarCollapsed ? 'center' : 'flex-start', alignItems: 'center', gap: '8px' }}>
+            🚪 {!isSidebarCollapsed && <span>Sign Out</span>}
+          </button>
         </div>
       </div>
 
-      <div ref={scrollContainerRef} onScroll={handleScroll} style={{ flexGrow: 1, overflowY: 'auto', position: 'relative' }}>
+      {/* 2. MAIN SCROLL AREA WITH PADDING BOTTOM FOR THE BOTTOM NAV */}
+      <div ref={scrollContainerRef} onScroll={handleScroll} style={{ flexGrow: 1, overflowY: 'auto', position: 'relative', paddingBottom: '90px' }}>
         {view === 'add_store' && (
           <div style={{ display: 'flex', height: '100%' }}>
             <div style={{ width: '350px', padding: '40px 30px', backgroundColor: 'white', boxShadow: '5px 0 15px rgba(0,0,0,0.05)', zIndex: 2, overflowY: 'auto' }}>
@@ -775,12 +814,12 @@ export default function DashboardPage() {
                       if (!groupedItems[category]) return null;
                       return (
                         <div key={category} ref={(el) => (sectionRefs.current[category] = el)}>
-                          <div style={{ padding: '12px 30px', backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb', borderTop: '1px solid #e5e7eb' }}><h3 style={{ margin: 0, fontSize: '13px', color: '#6b7280', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>{category}</h3></div>
+                          <div style={{ padding: '12px 30px', backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb', borderTop: '1px solid #e5e7eb' }}><h3 style={{ margin: '0', fontSize: '13px', color: '#6b7280', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>{category}</h3></div>
                           {groupedItems[category].map(item => (
                             <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 30px', borderBottom: '1px solid #f3f4f6' }}>
                               <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
                                 {item.image_url ? <img src={item.image_url} alt={item.item_name} style={{ width: '80px', height: '60px', objectFit: 'cover', borderRadius: '8px' }} /> : <div style={{ width: '80px', height: '60px', backgroundColor: '#f3f4f6', borderRadius: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '20px' }}>🍽️</div>}
-                                <div><h4 style={{ margin: '0 0 4px 0', fontSize: '16px', color: '#1f2937' }}>{item.item_name}</h4><p style={{ margin: 0, color: '#6b7280', fontSize: '13px' }}>{item.description}</p></div>
+                                <div><h4 style={{ margin: '0 0 4px 0', fontSize: '16px', color: '#1f2937' }}>{item.item_name}</h4><p style={{ margin: '0', color: '#6b7280', fontSize: '13px' }}>{item.description}</p></div>
                               </div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                                 <div style={{ fontSize: '18px', fontWeight: '800', color: '#111827', letterSpacing: '-0.5px', whiteSpace: 'nowrap' }}>₱{parseFloat(item.price).toFixed(2)}</div>

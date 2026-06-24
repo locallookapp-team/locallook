@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { supabase } from '../supabaseClient';
@@ -45,7 +45,6 @@ const PULSING_DOT_HTML = `
       <div class="pulse-ring"></div>
       <div id="user-view-cone" class="view-cone"></div>
     </div>
-
     <div class="user-pin">
       <div class="user-pin-popup">You are here</div>
       <svg xmlns="http://www.w3.org/2000/svg" width="36" height="45" viewBox="0 0 28 36">
@@ -70,6 +69,10 @@ export default function MapPage() {
   const userHeadingRef = useRef(0); 
   const userCoordsRef = useRef([0, 0]); 
   const loadedIconsRef = useRef(new Set());
+  const fetchTimeoutRef = useRef(null);
+
+  // NEW: Initial Loading State
+  const [isMapLoading, setIsMapLoading] = useState(true);
 
   const [stores, setStores] = useState([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -84,9 +87,9 @@ export default function MapPage() {
   const [managedStores, setManagedStores] = useState([]);
 
   const navigate = useNavigate();
+  const reactLocation = useLocation();
   const categories = ['All', 'Food & Dining', 'Retail', 'Services', 'Groceries'];
 
-  // AUTH & MANAGED STORES LISTENER
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -101,7 +104,6 @@ export default function MapPage() {
         setManagedStores([]); 
       }
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
@@ -110,16 +112,9 @@ export default function MapPage() {
       const res = await fetch(`https://locallook-api.onrender.com/api/merchant/stores/${userId}`);
       if (res.ok) {
         const data = await res.json();
-        // Fallback check just in case this also gets hit with a rate limit
-        if (Array.isArray(data)) {
-          setManagedStores(data);
-        } else {
-          setManagedStores([]);
-        }
+        if (Array.isArray(data)) setManagedStores(data);
       }
-    } catch (err) {
-      console.error("Failed to fetch managed stores:", err);
-    }
+    } catch (err) { console.error(err); }
   };
 
   const handleSignOut = async () => {
@@ -127,27 +122,42 @@ export default function MapPage() {
     setSidebarOpen(false); 
   };
 
+  // Modified to return a Promise so we know when it finishes!
+  const fetchStoresInBounds = async () => {
+    if (!map.current) return;
+    
+    const bounds = map.current.getBounds();
+    const minLng = bounds.getWest();
+    const minLat = bounds.getSouth();
+    const maxLng = bounds.getEast();
+    const maxLat = bounds.getNorth();
+
+    try {
+      const res = await fetch(`https://locallook-api.onrender.com/api/stores?minLng=${minLng}&minLat=${minLat}&maxLng=${maxLng}&maxLat=${maxLat}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data)) setStores(data);
+    } catch (err) {
+      console.error("Map Fetch Error:", err);
+    }
+  };
+
   const updateMarkerVisuals = () => {
     if (!map.current || !userMarkerRef.current) return;
-
     const currentZoom = map.current.getZoom();
     const zoomScale = Math.pow(2, currentZoom - 16.5);
-    let pinHeight = 60 * zoomScale;
-    pinHeight = Math.max(25, pinHeight); 
+    let pinHeight = Math.max(25, 60 * zoomScale); 
     const groundScale = Math.max(0.6, Math.min(2.5, zoomScale));
 
     const el = userMarkerRef.current.getElement();
-    
     const pinEl = el.querySelector('.user-pin');
     if (pinEl) pinEl.style.setProperty('--hover-dist', `${pinHeight}px`);
-
     const groundEl = el.querySelector('.ground-layer');
     if (groundEl) groundEl.style.setProperty('--ground-scale', groundScale);
   };
 
   const updateUserLocation = (lng, lat, heading = null) => {
     if (lng === 0 && lat === 0) return; 
-    
     userCoordsRef.current = [lng, lat];
     if (heading !== null) userHeadingRef.current = heading;
 
@@ -157,13 +167,7 @@ export default function MapPage() {
       el.innerHTML = PULSING_DOT_HTML;
       
       const pinEl = el.querySelector('.user-pin');
-      if (pinEl) {
-        pinEl.onclick = (e) => {
-          e.stopPropagation();
-          pinEl.classList.toggle('show-popup');
-        };
-      }
-
+      if (pinEl) pinEl.onclick = (e) => { e.stopPropagation(); pinEl.classList.toggle('show-popup'); };
       userMarkerRef.current = new mapboxgl.Marker({ element: el }).setLngLat([lng, lat]).addTo(map.current);
     } else if (userMarkerRef.current) {
       userMarkerRef.current.setLngLat([lng, lat]);
@@ -174,9 +178,7 @@ export default function MapPage() {
     const cone = document.getElementById('user-view-cone');
     if (cone && map.current) {
       cone.style.display = 'block'; 
-      const mapBearing = map.current.getBearing();
-      const visualRotation = userHeadingRef.current - mapBearing;
-      cone.style.transform = `rotate(${visualRotation}deg)`;
+      cone.style.transform = `rotate(${userHeadingRef.current - map.current.getBearing()}deg)`;
     }
 
     if (map.current && map.current.getSource('user-3d-source')) {
@@ -191,79 +193,86 @@ export default function MapPage() {
     }
   };
 
+  // MAP INITIALIZATION
   useEffect(() => {
     if (map.current || !mapContainer.current) return; 
+
+    // NEW: Smart Loading! Check URL params or Session Storage to remember where the user was
+    const urlParams = new URLSearchParams(reactLocation.search);
+    const urlLat = urlParams.get('lat');
+    const urlLng = urlParams.get('lng');
+    const urlZoom = urlParams.get('zoom');
+    
+    const savedState = sessionStorage.getItem('locallook_map_state');
+    
+    let initialCenter = [121.9823, 12.3985]; // Default: Odiongan
+    let initialZoom = 15.5;
+    let shouldAutoLocate = false;
+
+    if (urlLat && urlLng) {
+      // 1. Came from the Profile "View Map Location" pill
+      initialCenter = [parseFloat(urlLng), parseFloat(urlLat)];
+      initialZoom = urlZoom ? parseFloat(urlZoom) : 17;
+    } else if (savedState) {
+      // 2. Clicked "Back" from a profile, load their last exact view
+      const parsed = JSON.parse(savedState);
+      initialCenter = [parsed.lng, parsed.lat];
+      initialZoom = parsed.zoom;
+    } else {
+      // 3. Brand new visit, auto-locate them!
+      shouldAutoLocate = true;
+    }
 
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
       style: 'mapbox://styles/mapbox/streets-v12',
-      center: [121.9823, 12.3985], 
-      zoom: 16.5,
+      center: initialCenter, 
+      zoom: initialZoom,
       pitch: 55, 
       bearing: 0
     });
 
     map.current.addControl(new mapboxgl.NavigationControl({ showZoom: false, visualizePitch: true }), 'bottom-left');
 
-    map.current.on('rotate', () => {
-      if(userCoordsRef.current[0] !== 0) updateUserLocation(userCoordsRef.current[0], userCoordsRef.current[1]);
-    });
+    map.current.on('rotate', () => { if(userCoordsRef.current[0] !== 0) updateUserLocation(userCoordsRef.current[0], userCoordsRef.current[1]); });
     map.current.on('zoom', updateMarkerVisuals);
-    
-    map.current.on('click', () => {
-      document.querySelectorAll('.user-pin.show-popup').forEach(el => el.classList.remove('show-popup'));
+    map.current.on('click', () => { document.querySelectorAll('.user-pin.show-popup').forEach(el => el.classList.remove('show-popup')); });
+
+    // Save position to memory when they stop moving
+    map.current.on('moveend', () => {
+      const center = map.current.getCenter();
+      sessionStorage.setItem('locallook_map_state', JSON.stringify({ lng: center.lng, lat: center.lat, zoom: map.current.getZoom() }));
+
+      if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
+      fetchTimeoutRef.current = setTimeout(() => {
+        fetchStoresInBounds();
+      }, 500);
     });
 
     map.current.on('style.load', () => {
       if (!map.current.getLayer('sky')) {
         map.current.addLayer({
-          id: 'sky',
-          type: 'sky',
-          paint: { 'sky-type': 'atmosphere', 'sky-atmosphere-sun': [0.0, 0.0], 'sky-atmosphere-sun-intensity': 15 }
+          id: 'sky', type: 'sky', paint: { 'sky-type': 'atmosphere', 'sky-atmosphere-sun': [0.0, 0.0], 'sky-atmosphere-sun-intensity': 15 }
         });
       }
 
-      map.current.addSource('user-3d-source', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [] }
-      });
-
+      map.current.addSource('user-3d-source', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       map.current.addLayer({
-        id: 'user-shadow-layer',
-        type: 'circle',
-        source: 'user-3d-source',
+        id: 'user-shadow-layer', type: 'circle', source: 'user-3d-source',
         paint: {
-          'circle-color': '#000000',
-          'circle-opacity': 0.35,
-          'circle-blur': 0.9,
-          'circle-pitch-alignment': 'map', 
-          'circle-pitch-scale': 'map', 
-          'circle-radius': [
-            'interpolate', ['exponential', 2], ['zoom'],
-            14, 0.1,
-            16.5, 0.6,
-            19, 3,       
-            22, 24
-          ]
+          'circle-color': '#000000', 'circle-opacity': 0.35, 'circle-blur': 0.9,
+          'circle-pitch-alignment': 'map', 'circle-pitch-scale': 'map', 
+          'circle-radius': ['interpolate', ['exponential', 2], ['zoom'], 14, 0.1, 16.5, 0.6, 19, 3, 22, 24 ]
         }
       });
 
       map.current.addModel('custom-user-model', '/user-model.glb');
-
       map.current.addLayer({
-        id: 'user-3d-layer',
-        type: 'model',
-        source: 'user-3d-source',
-        layout: { 'model-id': 'custom-user-model' },
-        paint: {
-          'model-color': '#2563eb',
-          'model-scale': [1, 1, 1], 
-          'model-rotation': ['get', 'rotation'],
-          'model-translation': [0, 0, 1.5] 
-        }
+        id: 'user-3d-layer', type: 'model', source: 'user-3d-source', layout: { 'model-id': 'custom-user-model' },
+        paint: { 'model-color': '#2563eb', 'model-scale': [1, 1, 1], 'model-rotation': ['get', 'rotation'], 'model-translation': [0, 0, 1.5] }
       });
 
-      if (navigator.geolocation) {
+      if (shouldAutoLocate && navigator.geolocation) {
         navigator.geolocation.getCurrentPosition(
           (position) => {
             updateUserLocation(position.coords.longitude, position.coords.latitude);
@@ -273,40 +282,18 @@ export default function MapPage() {
           { enableHighAccuracy: false, timeout: 5000, maximumAge: 0 } 
         );
       }
+      
+      // Fetch initial stores and turn off the loading screen!
+      fetchStoresInBounds().then(() => setIsMapLoading(false));
     });
 
     return () => {
-      if (map.current) {
-        map.current.remove();
-        map.current = null;
-        userMarkerRef.current = null;
-      }
+      if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
+      if (map.current) { map.current.remove(); map.current = null; userMarkerRef.current = null; }
     };
-  }, []);
+  }, [reactLocation.search]);
 
   useEffect(() => {
-    // UPDATED: Safe fetching with rate-limit check
-    fetch('https://locallook-api.onrender.com/api/stores')
-      .then(res => {
-        if (!res.ok) {
-          if (res.status === 429) console.warn("Rate limited by the server. Please wait.");
-          return []; // Return empty array if request fails
-        }
-        return res.json();
-      })
-      .then(data => {
-        if (Array.isArray(data)) {
-          setStores(data);
-        } else {
-          console.error("Expected array of stores, got:", data);
-          setStores([]);
-        }
-      })
-      .catch(err => {
-        console.error(err);
-        setStores([]); // Fallback to empty array on network error
-      });
-
     const subscription = supabase
       .channel('public:stores')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'stores' }, (payload) => {
@@ -315,7 +302,6 @@ export default function MapPage() {
             return currentStores.map(store => store.id === payload.new.id ? { ...store, is_open: payload.new.is_open } : store);
           });
       }).subscribe();
-
     return () => { supabase.removeChannel(subscription); };
   }, []);
 
@@ -331,9 +317,7 @@ export default function MapPage() {
   }, [searchTerm]);
 
   const filteredStores = useMemo(() => {
-    // UPDATED: Safety check ensuring stores is strictly an array before filtering
     if (!Array.isArray(stores)) return [];
-    
     return stores.filter(store => {
       const hasCoords = store.lat && store.lng && !isNaN(Number(store.lat)) && !isNaN(Number(store.lng));
       const matchesSearch = store.store_name.toLowerCase().includes(searchTerm.toLowerCase());
@@ -352,18 +336,11 @@ export default function MapPage() {
         const iconId = `sprite-${store.store_category}-${store.is_open ? 'open' : 'closed'}`;
         if (!loadedIconsRef.current.has(iconId)) {
           loadedIconsRef.current.add(iconId);
-          
           const svgString = makeSvgString(store.store_category, store.is_open);
           const img = new Image();
           img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgString);
-          
           await new Promise((resolve) => {
-            img.onload = () => {
-              if (map.current && !map.current.hasImage(iconId)) {
-                map.current.addImage(iconId, img);
-              }
-              resolve();
-            };
+            img.onload = () => { if (map.current && !map.current.hasImage(iconId)) map.current.addImage(iconId, img); resolve(); };
             img.onerror = resolve; 
           });
         }
@@ -375,12 +352,8 @@ export default function MapPage() {
           type: 'Feature',
           geometry: { type: 'Point', coordinates: [Number(store.lng), Number(store.lat)] },
           properties: {
-            id: store.id,
-            name: store.store_name,
-            category: store.store_category,
-            isOpen: store.is_open,
-            textColor: getPinConfig(store.store_category).color,
-            iconImage: `sprite-${store.store_category}-${store.is_open ? 'open' : 'closed'}`
+            id: store.id, name: store.store_name, category: store.store_category, isOpen: store.is_open,
+            textColor: getPinConfig(store.store_category).color, iconImage: `sprite-${store.store_category}-${store.is_open ? 'open' : 'closed'}`
           }
         }))
       };
@@ -391,45 +364,18 @@ export default function MapPage() {
         map.current.addSource('stores-source', { type: 'geojson', data: geoJsonData });
 
         map.current.addLayer({
-          id: 'stores-dots-layer',
-          type: 'circle',
-          source: 'stores-source',
-          maxzoom: 14.8, 
-          paint: {
-            'circle-radius': 4.5,
-            'circle-color': ['get', 'textColor'],
-            'circle-stroke-width': 1.5,
-            'circle-stroke-color': '#ffffff'
-          }
+          id: 'stores-dots-layer', type: 'circle', source: 'stores-source', maxzoom: 14.8, 
+          paint: { 'circle-radius': 4.5, 'circle-color': ['get', 'textColor'], 'circle-stroke-width': 1.5, 'circle-stroke-color': '#ffffff' }
         });
 
         map.current.addLayer({
-          id: 'stores-layer',
-          type: 'symbol',
-          source: 'stores-source',
-          minzoom: 14.8, 
+          id: 'stores-layer', type: 'symbol', source: 'stores-source', minzoom: 14.8, 
           layout: {
-            'icon-image': ['get', 'iconImage'], 
-            'icon-size': 0.85,
-            'icon-anchor': 'bottom',
-            'icon-allow-overlap': true,
-            'icon-ignore-placement': true,
-            'text-field': ['get', 'name'],
-            'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'],
-            'text-size': 13.5,
-            'text-anchor': 'left',
-            'text-offset': [0.8, -1.4],
-            'text-justify': 'left',
-            'text-allow-overlap': false,
-            'text-ignore-placement': false,
-            'text-optional': true 
+            'icon-image': ['get', 'iconImage'], 'icon-size': 0.85, 'icon-anchor': 'bottom', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+            'text-field': ['get', 'name'], 'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'], 'text-size': 13.5,
+            'text-anchor': 'left', 'text-offset': [0.8, -1.4], 'text-justify': 'left', 'text-optional': true 
           },
-          paint: {
-            'text-color': ['get', 'textColor'],
-            'text-halo-color': '#ffffff',
-            'text-halo-width': 2.5,
-            'text-halo-blur': 1
-          }
+          paint: { 'text-color': ['get', 'textColor'], 'text-halo-color': '#ffffff', 'text-halo-width': 2.5, 'text-halo-blur': 1 }
         });
 
         const handleStoreClick = (e) => {
@@ -455,31 +401,38 @@ export default function MapPage() {
       }
     };
 
-    if (map.current.isStyleLoaded()) {
-      renderWebGLData();
-    } else {
-      map.current.once('style.load', renderWebGLData);
-    }
+    if (map.current.isStyleLoaded()) { renderWebGLData(); } else { map.current.once('style.load', renderWebGLData); }
   }, [filteredStores]);
 
+  // SAFELY BUILD THE POPUP (Fixes the Unclickable Store Bug)
   useEffect(() => {
     if (!map.current) return;
     const onPopupClose = () => setSelectedStore(null);
 
     if (selectedStore) {
+      // Build DOM elements safely to prevent HTML injection bugs
       const div = document.createElement('div');
-      div.innerHTML = `
-        <div style="text-align: center; padding: 8px 4px 4px 4px;">
-          <strong style="font-size: 16px; display: block; margin-bottom: 2px; color: #1f2937;">${selectedStore.store_name}</strong>
-          <span style="color: #6b7280; font-size: 13px; display: block; margin-bottom: 12px;">${selectedStore.store_category}</span>
-          <button id="popup-btn-${selectedStore.id}" style="width: 100%; padding: 10px; background-color: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold;">
-            View Full Menu
-          </button>
-        </div>
-      `;
+      div.style.textAlign = 'center'; div.style.padding = '8px 4px 4px 4px';
+
+      const title = document.createElement('strong');
+      title.style.cssText = 'font-size: 16px; display: block; margin-bottom: 2px; color: #1f2937;';
+      title.textContent = selectedStore.store_name;
+
+      const cat = document.createElement('span');
+      cat.style.cssText = 'color: #6b7280; font-size: 13px; display: block; margin-bottom: 12px;';
+      cat.textContent = selectedStore.store_category;
+
+      const btn = document.createElement('button');
+      btn.style.cssText = 'width: 100%; padding: 10px; background-color: #2563eb; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold;';
+      btn.textContent = 'View Full Menu';
+      btn.onclick = () => navigate(`/store/${selectedStore.id}`);
+
+      div.appendChild(title);
+      div.appendChild(cat);
+      div.appendChild(btn);
+
       popupRef.current.setLngLat([Number(selectedStore.lng), Number(selectedStore.lat)]).setDOMContent(div).addTo(map.current);
       popupRef.current.on('close', onPopupClose);
-      document.getElementById(`popup-btn-${selectedStore.id}`).onclick = () => navigate(`/store/${selectedStore.id}`);
     } else {
       popupRef.current.off('close', onPopupClose);
       popupRef.current.remove();
@@ -490,24 +443,13 @@ export default function MapPage() {
   const startCompass = () => {
     const handleOrientation = (e) => {
       let heading = null;
-      if (e.webkitCompassHeading !== undefined) {
-        heading = e.webkitCompassHeading; 
-      } else if (e.alpha !== null) {
-        heading = 360 - e.alpha; 
-      }
-
-      if (heading !== null) {
-        updateUserLocation(userCoordsRef.current[0], userCoordsRef.current[1], heading);
-      }
+      if (e.webkitCompassHeading !== undefined) { heading = e.webkitCompassHeading; } 
+      else if (e.alpha !== null) { heading = 360 - e.alpha; }
+      if (heading !== null) { updateUserLocation(userCoordsRef.current[0], userCoordsRef.current[1], heading); }
     };
 
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-      DeviceOrientationEvent.requestPermission()
-        .then(response => {
-          if (response === 'granted') {
-            window.addEventListener('deviceorientation', handleOrientation);
-          }
-        }).catch(err => console.log("Compass permission error:", err));
+      DeviceOrientationEvent.requestPermission().then(response => { if (response === 'granted') { window.addEventListener('deviceorientation', handleOrientation); } }).catch(err => console.log(err));
     } else {
       window.addEventListener('deviceorientationabsolute', handleOrientation);
       window.addEventListener('deviceorientation', handleOrientation); 
@@ -524,13 +466,10 @@ export default function MapPage() {
         setIsLocating(false);
         updateUserLocation(position.coords.longitude, position.coords.latitude);
         map.current?.flyTo({ center: [position.coords.longitude, position.coords.latitude], zoom: 18, pitch: 60 });
-        
         startCompass();
       },
       () => {
-        fetch('https://ipapi.co/json/')
-          .then(res => res.json())
-          .then(data => {
+        fetch('https://ipapi.co/json/').then(res => res.json()).then(data => {
             setIsLocating(false);
             if (data.longitude && data.latitude) {
               updateUserLocation(data.longitude, data.latitude);
@@ -545,105 +484,35 @@ export default function MapPage() {
   return (
     <div style={{ position: 'relative', height: '100vh', width: '100vw', overflow: 'hidden', backgroundColor: '#f3f4f6', fontFamily: 'sans-serif' }}>
       
+      {/* BEAUTIFUL LOADING OVERLAY */}
+      {isMapLoading && (
+        <div style={{ position: 'absolute', inset: 0, zIndex: 9999, backgroundColor: '#f9fafb', display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column' }}>
+          <div style={{ fontSize: '50px', animation: 'bounce 1s infinite' }}>🧭</div>
+          <h2 style={{ color: '#1f2937', marginTop: '15px', fontWeight: '800' }}>LocalLook</h2>
+          <p style={{ color: '#6b7280', fontSize: '14px', fontWeight: 'bold' }}>Loading your neighborhood...</p>
+        </div>
+      )}
+
       <style>{`
+        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
         .user-location-marker { position: absolute; top: 0; left: 0; pointer-events: none; }
-
-        .user-pin {
-          position: absolute;
-          bottom: 0; left: 50%; 
-          cursor: pointer;
-          pointer-events: auto;
-          --hover-dist: 80px; 
-          transform: translate(-50%, calc(-1 * var(--hover-dist)));
-          animation: pin-bounce 2s infinite cubic-bezier(0.4, 0, 0.2, 1);
-          z-index: 15;
-          transition: transform 0.05s ease-out; 
-        }
-
+        .user-pin { position: absolute; bottom: 0; left: 50%; cursor: pointer; pointer-events: auto; --hover-dist: 80px; transform: translate(-50%, calc(-1 * var(--hover-dist))); animation: pin-bounce 2s infinite cubic-bezier(0.4, 0, 0.2, 1); z-index: 15; transition: transform 0.05s ease-out; }
         .user-pin:hover { filter: brightness(1.1); }
-
-        @keyframes pin-bounce {
-          0%, 100% { transform: translate(-50%, calc(-1 * var(--hover-dist))); }
-          50% { transform: translate(-50%, calc(-1 * var(--hover-dist) - 8px)); }
-        }
-
-        .user-pin-popup {
-          position: absolute;
-          bottom: 100%; 
-          left: 50%;
-          transform: translateX(-50%) translateY(0px);
-          background: white;
-          color: #1f2937;
-          font-weight: 800;
-          font-size: 13px;
-          padding: 6px 12px;
-          border-radius: 8px;
-          box-shadow: 0 4px 15px rgba(0,0,0,0.15);
-          white-space: nowrap;
-          pointer-events: none;
-          opacity: 0;
-          visibility: hidden;
-          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        
-        .user-pin-popup::after {
-          content: '';
-          position: absolute;
-          top: 100%;
-          left: 50%;
-          transform: translateX(-50%);
-          border: 6px solid transparent;
-          border-top-color: white;
-        }
-
-        .user-pin.show-popup .user-pin-popup {
-          opacity: 1;
-          visibility: visible;
-          transform: translateX(-50%) translateY(-6px);
-        }
-
-        .ground-layer {
-          position: absolute; top: 0; left: 0;
-          --ground-scale: 1;
-          transform: translate(-50%, -50%) rotateX(65deg) scale(var(--ground-scale));
-          transition: transform 0.05s ease-out;
-          z-index: 1;
-        }
-        
-        .pulse-ring { 
-          position: absolute; top: -60px; left: -60px; 
-          width: 120px; height: 120px; 
-          background-color: rgba(59, 130, 246, 0.2); 
-          border: 1.5px solid rgba(59, 130, 246, 0.6); 
-          border-radius: 50%; 
-          animation: ground-pulse 2.5s cubic-bezier(0.1, 0.7, 0.1, 1) infinite; 
-        }
-
-        .view-cone {
-          position: absolute; 
-          top: -60px; left: -60px; 
-          width: 120px; height: 120px;
-          border-radius: 50%;
-          background: conic-gradient(from 330deg, transparent 0, rgba(37, 99, 235, 0.4) 30deg, transparent 60deg);
-          transform-origin: center center;
-          display: none; 
-        }
-
-        @keyframes ground-pulse { 
-          0% { transform: scale(0.01); opacity: 0.8; } 
-          100% { transform: scale(1); opacity: 0; } 
-        }
+        @keyframes pin-bounce { 0%, 100% { transform: translate(-50%, calc(-1 * var(--hover-dist))); } 50% { transform: translate(-50%, calc(-1 * var(--hover-dist) - 8px)); } }
+        .user-pin-popup { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%) translateY(0px); background: white; color: #1f2937; font-weight: 800; font-size: 13px; padding: 6px 12px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0,0,0,0.15); white-space: nowrap; pointer-events: none; opacity: 0; visibility: hidden; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+        .user-pin-popup::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 6px solid transparent; border-top-color: white; }
+        .user-pin.show-popup .user-pin-popup { opacity: 1; visibility: visible; transform: translateX(-50%) translateY(-6px); }
+        .ground-layer { position: absolute; top: 0; left: 0; --ground-scale: 1; transform: translate(-50%, -50%) rotateX(65deg) scale(var(--ground-scale)); transition: transform 0.05s ease-out; z-index: 1; }
+        .pulse-ring { position: absolute; top: -60px; left: -60px; width: 120px; height: 120px; background-color: rgba(59, 130, 246, 0.2); border: 1.5px solid rgba(59, 130, 246, 0.6); border-radius: 50%; animation: ground-pulse 2.5s cubic-bezier(0.1, 0.7, 0.1, 1) infinite; }
+        .view-cone { position: absolute; top: -60px; left: -60px; width: 120px; height: 120px; border-radius: 50%; background: conic-gradient(from 330deg, transparent 0, rgba(37, 99, 235, 0.4) 30deg, transparent 60deg); transform-origin: center center; display: none; }
+        @keyframes ground-pulse { 0% { transform: scale(0.01); opacity: 0.8; } 100% { transform: scale(1); opacity: 0; } }
       `}</style>
 
       <div ref={mapContainer} style={{ position: 'absolute', inset: 0, zIndex: 0 }} />
 
-      <div style={{ position: 'absolute', bottom: '40px', right: '15px', zIndex: 1000 }}>
+      <div style={{ position: 'absolute', bottom: '90px', right: '15px', zIndex: 1000 }}>
         <button onClick={handleLocateMe} disabled={isLocating} style={{ width: '50px', height: '50px', backgroundColor: 'white', borderRadius: '50%', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', transition: 'transform 0.1s' }} onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.95)'} onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}>
-          {isLocating ? (
-             <svg style={{ animation: 'spin 1s linear infinite', width: '24px', height: '24px', color: '#2563eb' }} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path style={{ opacity: 0.75 }} fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-          ) : (
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg>
-          )}
+          {isLocating ? ( <svg style={{ animation: 'spin 1s linear infinite', width: '24px', height: '24px', color: '#2563eb' }} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path style={{ opacity: 0.75 }} fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> ) : ( <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg> )}
         </button>
       </div>
 
@@ -664,16 +533,11 @@ export default function MapPage() {
               <div style={{ fontSize: '12px', color: '#9ca3af', fontWeight: 'bold', letterSpacing: '1px', marginBottom: '5px' }}>BUSINESS PORTAL</div>
               
               {session ? (
-                // LOGGED IN VIEW
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                   <div style={{ backgroundColor: '#f3f4f6', padding: '15px', borderRadius: '12px' }}>
                     <div style={{ fontSize: '11px', color: '#6b7280', fontWeight: 'bold', marginBottom: '4px' }}>SIGNED IN AS</div>
-                    <div style={{ fontSize: '15px', color: '#1f2937', fontWeight: '900', wordBreak: 'break-word', textTransform: 'capitalize' }}>
-                      {session.user.user_metadata?.full_name || session.user.user_metadata?.name || 'Partner Account'}
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600', marginTop: '2px', wordBreak: 'break-all' }}>
-                      {session.user.email}
-                    </div>
+                    <div style={{ fontSize: '15px', color: '#1f2937', fontWeight: '900', wordBreak: 'break-word', textTransform: 'capitalize' }}>{session.user.user_metadata?.full_name || session.user.user_metadata?.name || 'Partner Account'}</div>
+                    <div style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600', marginTop: '2px', wordBreak: 'break-all' }}>{session.user.email}</div>
                   </div>
 
                   {managedStores.length > 0 && (
@@ -690,15 +554,10 @@ export default function MapPage() {
                     </div>
                   )}
 
-                  <button onClick={() => navigate('/dashboard')} style={{ width: '100%', padding: '15px', textAlign: 'center', backgroundColor: '#2563eb', border: 'none', borderRadius: '12px', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold', color: 'white' }}>
-                    Go to Merchant Hub →
-                  </button>
-                  <button onClick={handleSignOut} style={{ width: '100%', padding: '10px', textAlign: 'center', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold', color: '#ef4444' }}>
-                    Sign Out
-                  </button>
+                  <button onClick={() => navigate('/dashboard')} style={{ width: '100%', padding: '15px', textAlign: 'center', backgroundColor: '#2563eb', border: 'none', borderRadius: '12px', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold', color: 'white' }}>Go to Merchant Hub →</button>
+                  <button onClick={handleSignOut} style={{ width: '100%', padding: '10px', textAlign: 'center', backgroundColor: 'transparent', border: 'none', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold', color: '#ef4444' }}>Sign Out</button>
                 </div>
               ) : (
-                // LOGGED OUT VIEW
                 <>
                   <button onClick={() => navigate('/login')} style={{ width: '100%', padding: '15px', textAlign: 'left', backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '12px', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '12px', color: '#1d4ed8' }}>🔑 Partner & Staff Login</button>
                   <button onClick={() => navigate('/register')} style={{ width: '100%', padding: '15px', textAlign: 'left', backgroundColor: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '12px', cursor: 'pointer', fontSize: '15px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '12px', color: '#374151' }}>🏪 Register a Business</button>
@@ -720,16 +579,22 @@ export default function MapPage() {
           </div>
           {searchTerm.length > 0 && (
             <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '8px', backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 10px 30px rgba(0,0,0,0.15)', overflow: 'hidden', maxHeight: '400px', overflowY: 'auto', border: '1px solid #f3f4f6' }}>
-              {filteredStores.length > 0 && (
+              {itemResults.length > 0 ? (
                 <div>
-                  <div style={{ padding: '10px 15px', backgroundColor: '#f9fafb', fontSize: '11px', fontWeight: 'bold', color: '#6b7280', letterSpacing: '1px' }}>STORES</div>
-                  {filteredStores.map(store => (
-                    <div key={`store-${store.id}`} onClick={() => navigate(`/store/${store.id}`)} style={{ padding: '12px 15px', borderBottom: '1px solid #f3f4f6', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}>
-                      <div><h4 style={{ margin: '0 0 2px 0', color: '#1f2937', fontSize: '14px' }}>{store.store_name}</h4><p style={{ margin: 0, fontSize: '12px', color: '#6b7280' }}>{store.store_category}</p></div>
-                      <span style={{ fontSize: '10px', fontWeight: 'bold', padding: '4px 8px', borderRadius: '12px', backgroundColor: store.is_open ? '#d1fae5' : '#fee2e2', color: store.is_open ? '#059669' : '#dc2626' }}>{store.is_open ? 'OPEN' : 'CLOSED'}</span>
-                    </div>
-                  ))}
+                  <div style={{ padding: '10px 15px', backgroundColor: '#f9fafb', fontSize: '11px', fontWeight: 'bold', color: '#6b7280', letterSpacing: '1px' }}>ITEMS FOUND IN STORES</div>
+                  {itemResults.map(item => {
+                    const storeMatch = stores.find(s => s.id === item.store_id);
+                    if (!storeMatch) return null;
+                    return (
+                      <div key={`item-${item.id}`} onClick={() => navigate(`/store/${item.store_id}`)} style={{ padding: '12px 15px', borderBottom: '1px solid #f3f4f6', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f9fafb'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}>
+                        <div><h4 style={{ margin: '0 0 2px 0', color: '#1f2937', fontSize: '14px' }}>{item.item_name} <span style={{color: '#9ca3af', fontWeight: 'normal'}}>at {storeMatch.store_name}</span></h4><p style={{ margin: 0, fontSize: '12px', color: '#6b7280' }}>₱{item.price}</p></div>
+                        <span style={{ fontSize: '10px', fontWeight: 'bold', padding: '4px 8px', borderRadius: '12px', backgroundColor: storeMatch.is_open ? '#d1fae5' : '#fee2e2', color: storeMatch.is_open ? '#059669' : '#dc2626' }}>{storeMatch.is_open ? 'OPEN' : 'CLOSED'}</span>
+                      </div>
+                    );
+                  })}
                 </div>
+              ) : (
+                <div style={{ padding: '20px', textAlign: 'center', color: '#6b7280', fontSize: '14px' }}>No items or stores found.</div>
               )}
             </div>
           )}

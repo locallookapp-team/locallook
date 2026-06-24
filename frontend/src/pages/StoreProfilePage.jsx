@@ -150,7 +150,7 @@ export default function StoreProfilePage() {
       )}
 
       {/* FIXED: Increased paddingBottom to 90px so the last item isn't hidden behind the navbar */}
-      <div ref={scrollContainerRef} onScroll={handleScroll} className="themed-scrollbar" style={{ height: '100vh', width: '100vw', overflowY: 'auto', backgroundColor: '#f3f4f6', fontFamily: 'sans-serif', paddingBottom: '90px' }}>
+      <div ref={scrollContainerRef} onScroll={handleScroll} className="themed-scrollbar" style={{ height: '100vh', width: '100vw', overflowY: 'auto', backgroundColor: '#f3f4f6', fontFamily: 'sans-serif', paddingBottom: '40px' }}>
         
         <div style={{ position: 'relative', height: '220px', background: `linear-gradient(135deg, ${brandColor}, #1e293b)`, display: 'flex', flexDirection: 'column' }}>
           <div style={{ padding: '20px' }}>
