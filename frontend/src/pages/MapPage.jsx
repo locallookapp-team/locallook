@@ -41,20 +41,13 @@ const makeSvgString = (category, isOpen) => {
 
 const PULSING_DOT_HTML = `
   <div class="user-location-marker">
-    <div class="ground-layer">
-      <div class="pulse-ring"></div>
-      <div id="user-view-cone" class="view-cone"></div>
-    </div>
+    <div class="ground-layer"><div class="pulse-ring"></div><div id="user-view-cone" class="view-cone"></div></div>
     <div class="user-pin">
       <div class="user-pin-popup">You are here</div>
       <svg xmlns="http://www.w3.org/2000/svg" width="36" height="45" viewBox="0 0 28 36">
         <path d="M14 0C6.268 0 0 6.268 0 14C0 24.5 14 36 14 36C14 36 28 24.5 28 14C28 6.268 21.732 0 14 0Z" fill="white" />
         <circle cx="14" cy="14" r="11" fill="#2563eb"/>
-        <g transform="translate(7, 7)">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="white">
-            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
-          </svg>
-        </g>
+        <g transform="translate(7, 7)"><svg viewBox="0 0 24 24" width="14" height="14" fill="white"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg></g>
       </svg>
     </div>
   </div>
@@ -71,7 +64,6 @@ export default function MapPage() {
   const loadedIconsRef = useRef(new Set());
   const fetchTimeoutRef = useRef(null);
 
-  // NEW: Initial Loading State
   const [isMapLoading, setIsMapLoading] = useState(true);
 
   const [stores, setStores] = useState([]);
@@ -98,11 +90,8 @@ export default function MapPage() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (session?.user) {
-        fetchManagedStores(session.user.id);
-      } else {
-        setManagedStores([]); 
-      }
+      if (session?.user) fetchManagedStores(session.user.id);
+      else setManagedStores([]); 
     });
     return () => subscription.unsubscribe();
   }, []);
@@ -122,9 +111,8 @@ export default function MapPage() {
     setSidebarOpen(false); 
   };
 
-  // Modified to return a Promise so we know when it finishes!
   const fetchStoresInBounds = async () => {
-    if (!map.current) return;
+    if (!map.current) return [];
     
     const bounds = map.current.getBounds();
     const minLng = bounds.getWest();
@@ -134,11 +122,14 @@ export default function MapPage() {
 
     try {
       const res = await fetch(`https://locallook-api.onrender.com/api/stores?minLng=${minLng}&minLat=${minLat}&maxLng=${maxLng}&maxLat=${maxLat}`);
-      if (!res.ok) return;
+      if (!res.ok) return [];
       const data = await res.json();
-      if (Array.isArray(data)) setStores(data);
+      const finalData = Array.isArray(data) ? data : [];
+      setStores(finalData);
+      return finalData;
     } catch (err) {
       console.error("Map Fetch Error:", err);
+      return [];
     }
   };
 
@@ -184,52 +175,37 @@ export default function MapPage() {
     if (map.current && map.current.getSource('user-3d-source')) {
       map.current.getSource('user-3d-source').setData({
         type: 'FeatureCollection',
-        features: [{
-          type: 'Feature',
-          geometry: { type: 'Point', coordinates: [lng, lat] },
-          properties: { rotation: [0, 0, -userHeadingRef.current] }
-        }]
+        features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [lng, lat] }, properties: { rotation: [0, 0, -userHeadingRef.current] } }]
       });
     }
   };
 
-  // MAP INITIALIZATION
   useEffect(() => {
     if (map.current || !mapContainer.current) return; 
 
-    // NEW: Smart Loading! Check URL params or Session Storage to remember where the user was
     const urlParams = new URLSearchParams(reactLocation.search);
     const urlLat = urlParams.get('lat');
     const urlLng = urlParams.get('lng');
     const urlZoom = urlParams.get('zoom');
-    
     const savedState = sessionStorage.getItem('locallook_map_state');
     
-    let initialCenter = [121.9823, 12.3985]; // Default: Odiongan
+    let initialCenter = [121.9823, 12.3985]; 
     let initialZoom = 15.5;
     let shouldAutoLocate = false;
 
     if (urlLat && urlLng) {
-      // 1. Came from the Profile "View Map Location" pill
       initialCenter = [parseFloat(urlLng), parseFloat(urlLat)];
       initialZoom = urlZoom ? parseFloat(urlZoom) : 17;
     } else if (savedState) {
-      // 2. Clicked "Back" from a profile, load their last exact view
       const parsed = JSON.parse(savedState);
       initialCenter = [parsed.lng, parsed.lat];
       initialZoom = parsed.zoom;
     } else {
-      // 3. Brand new visit, auto-locate them!
       shouldAutoLocate = true;
     }
 
     map.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/streets-v12',
-      center: initialCenter, 
-      zoom: initialZoom,
-      pitch: 55, 
-      bearing: 0
+      container: mapContainer.current, style: 'mapbox://styles/mapbox/streets-v12', center: initialCenter, zoom: initialZoom, pitch: 55, bearing: 0
     });
 
     map.current.addControl(new mapboxgl.NavigationControl({ showZoom: false, visualizePitch: true }), 'bottom-left');
@@ -238,32 +214,20 @@ export default function MapPage() {
     map.current.on('zoom', updateMarkerVisuals);
     map.current.on('click', () => { document.querySelectorAll('.user-pin.show-popup').forEach(el => el.classList.remove('show-popup')); });
 
-    // Save position to memory when they stop moving
     map.current.on('moveend', () => {
       const center = map.current.getCenter();
       sessionStorage.setItem('locallook_map_state', JSON.stringify({ lng: center.lng, lat: center.lat, zoom: map.current.getZoom() }));
-
       if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
-      fetchTimeoutRef.current = setTimeout(() => {
-        fetchStoresInBounds();
-      }, 500);
+      fetchTimeoutRef.current = setTimeout(() => { fetchStoresInBounds(); }, 500);
     });
 
     map.current.on('style.load', () => {
-      if (!map.current.getLayer('sky')) {
-        map.current.addLayer({
-          id: 'sky', type: 'sky', paint: { 'sky-type': 'atmosphere', 'sky-atmosphere-sun': [0.0, 0.0], 'sky-atmosphere-sun-intensity': 15 }
-        });
-      }
+      if (!map.current.getLayer('sky')) { map.current.addLayer({ id: 'sky', type: 'sky', paint: { 'sky-type': 'atmosphere', 'sky-atmosphere-sun': [0.0, 0.0], 'sky-atmosphere-sun-intensity': 15 } }); }
 
       map.current.addSource('user-3d-source', { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
       map.current.addLayer({
         id: 'user-shadow-layer', type: 'circle', source: 'user-3d-source',
-        paint: {
-          'circle-color': '#000000', 'circle-opacity': 0.35, 'circle-blur': 0.9,
-          'circle-pitch-alignment': 'map', 'circle-pitch-scale': 'map', 
-          'circle-radius': ['interpolate', ['exponential', 2], ['zoom'], 14, 0.1, 16.5, 0.6, 19, 3, 22, 24 ]
-        }
+        paint: { 'circle-color': '#000000', 'circle-opacity': 0.35, 'circle-blur': 0.9, 'circle-pitch-alignment': 'map', 'circle-pitch-scale': 'map', 'circle-radius': ['interpolate', ['exponential', 2], ['zoom'], 14, 0.1, 16.5, 0.6, 19, 3, 22, 24 ] }
       });
 
       map.current.addModel('custom-user-model', '/user-model.glb');
@@ -283,8 +247,11 @@ export default function MapPage() {
         );
       }
       
-      // Fetch initial stores and turn off the loading screen!
-      fetchStoresInBounds().then(() => setIsMapLoading(false));
+      fetchStoresInBounds().then((data) => {
+        if (!data || data.length === 0) {
+          setIsMapLoading(false);
+        }
+      });
     });
 
     return () => {
@@ -316,15 +283,16 @@ export default function MapPage() {
     }
   }, [searchTerm]);
 
-  const filteredStores = useMemo(() => {
+  // UPDATE 1: Removed `activeCategory` filtering from Javascript entirely!
+  // Mapbox holds ALL stores in memory, giving us instant GPU filtering.
+  const mapStores = useMemo(() => {
     if (!Array.isArray(stores)) return [];
     return stores.filter(store => {
       const hasCoords = store.lat && store.lng && !isNaN(Number(store.lat)) && !isNaN(Number(store.lng));
       const matchesSearch = store.store_name.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesCategory = activeCategory === 'All' || store.store_category === activeCategory;
-      return hasCoords && matchesSearch && matchesCategory;
+      return hasCoords && matchesSearch;
     });
-  }, [stores, searchTerm, activeCategory]);
+  }, [stores, searchTerm]);
 
   useEffect(() => {
     if (!map.current) return;
@@ -332,28 +300,39 @@ export default function MapPage() {
     const renderWebGLData = async () => {
       if (!map.current.isStyleLoaded()) return;
 
-      for (const store of filteredStores) {
+      const iconPromises = [];
+
+      for (const store of mapStores) {
         const iconId = `sprite-${store.store_category}-${store.is_open ? 'open' : 'closed'}`;
         if (!loadedIconsRef.current.has(iconId)) {
           loadedIconsRef.current.add(iconId);
           const svgString = makeSvgString(store.store_category, store.is_open);
           const img = new Image();
           img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgString);
-          await new Promise((resolve) => {
+          
+          iconPromises.push(new Promise((resolve) => {
             img.onload = () => { if (map.current && !map.current.hasImage(iconId)) map.current.addImage(iconId, img); resolve(); };
             img.onerror = resolve; 
-          });
+          }));
         }
       }
 
+      await Promise.all(iconPromises);
+
       const geoJsonData = {
         type: 'FeatureCollection',
-        features: filteredStores.map(store => ({
+        features: mapStores.map(store => ({
           type: 'Feature',
           geometry: { type: 'Point', coordinates: [Number(store.lng), Number(store.lat)] },
           properties: {
-            id: store.id, name: store.store_name, category: store.store_category, isOpen: store.is_open,
-            textColor: getPinConfig(store.store_category).color, iconImage: `sprite-${store.store_category}-${store.is_open ? 'open' : 'closed'}`
+            id: store.id, 
+            name: store.store_name, 
+            category: store.store_category, 
+            isOpen: store.is_open,
+            lat: Number(store.lat), 
+            lng: Number(store.lng), 
+            textColor: getPinConfig(store.store_category).color, 
+            iconImage: `sprite-${store.store_category}-${store.is_open ? 'open' : 'closed'}`
           }
         }))
       };
@@ -371,7 +350,9 @@ export default function MapPage() {
         map.current.addLayer({
           id: 'stores-layer', type: 'symbol', source: 'stores-source', minzoom: 14.8, 
           layout: {
-            'icon-image': ['get', 'iconImage'], 'icon-size': 0.85, 'icon-anchor': 'bottom', 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+            'icon-image': ['get', 'iconImage'], 'icon-size': 0.85, 'icon-anchor': 'bottom', 
+            'icon-allow-overlap': true, 'icon-ignore-placement': true,
+            'text-allow-overlap': true, 'text-ignore-placement': true,
             'text-field': ['get', 'name'], 'text-font': ['Open Sans Semibold', 'Arial Unicode MS Bold'], 'text-size': 13.5,
             'text-anchor': 'left', 'text-offset': [0.8, -1.4], 'text-justify': 'left', 'text-optional': true 
           },
@@ -379,13 +360,14 @@ export default function MapPage() {
         });
 
         const handleStoreClick = (e) => {
-          const props = e.features[0].properties;
-          const coords = e.features[0].geometry.coordinates;
-          const matchedStore = filteredStores.find(s => s.id === props.id);
-          if (matchedStore) {
-            setSelectedStore(matchedStore);
-            map.current.flyTo({ center: coords, zoom: 18, pitch: 60, duration: 1200 });
-          }
+          const feature = e.features[0];
+          if (!feature) return;
+          const props = feature.properties;
+          const clickedStore = {
+            id: props.id, store_name: props.name, store_category: props.category, is_open: props.isOpen, lat: props.lat, lng: props.lng
+          };
+          setSelectedStore(clickedStore);
+          map.current.flyTo({ center: [props.lng, props.lat], zoom: 18, pitch: 60, duration: 1200 });
         };
 
         map.current.on('click', 'stores-layer', handleStoreClick);
@@ -393,24 +375,48 @@ export default function MapPage() {
 
         const addPointer = () => { map.current.getCanvas().style.cursor = 'pointer'; };
         const removePointer = () => { map.current.getCanvas().style.cursor = ''; };
-        
         map.current.on('mouseenter', 'stores-layer', addPointer);
         map.current.on('mouseleave', 'stores-layer', removePointer);
         map.current.on('mouseenter', 'stores-dots-layer', addPointer);
         map.current.on('mouseleave', 'stores-dots-layer', removePointer);
       }
+
+      // Apply the active category filter right after drawing the layers
+      if (activeCategory === 'All') {
+        map.current.setFilter('stores-layer', null);
+        map.current.setFilter('stores-dots-layer', null);
+      } else {
+        map.current.setFilter('stores-layer', ['==', ['get', 'category'], activeCategory]);
+        map.current.setFilter('stores-dots-layer', ['==', ['get', 'category'], activeCategory]);
+      }
+
+      if (mapStores.length > 0) {
+        setTimeout(() => { setIsMapLoading(false); }, 50);
+      }
     };
 
     if (map.current.isStyleLoaded()) { renderWebGLData(); } else { map.current.once('style.load', renderWebGLData); }
-  }, [filteredStores]);
+  }, [mapStores]); // Trigger render on mapStores changes instead of filteredStores
 
-  // SAFELY BUILD THE POPUP (Fixes the Unclickable Store Bug)
+  // UPDATE 2: Instant GPU filtering when clicking a category pill
+  useEffect(() => {
+    if (!map.current || !map.current.isStyleLoaded()) return;
+    if (!map.current.getLayer('stores-layer')) return;
+
+    if (activeCategory === 'All') {
+      map.current.setFilter('stores-layer', null);
+      map.current.setFilter('stores-dots-layer', null);
+    } else {
+      map.current.setFilter('stores-layer', ['==', ['get', 'category'], activeCategory]);
+      map.current.setFilter('stores-dots-layer', ['==', ['get', 'category'], activeCategory]);
+    }
+  }, [activeCategory]);
+
   useEffect(() => {
     if (!map.current) return;
     const onPopupClose = () => setSelectedStore(null);
 
     if (selectedStore) {
-      // Build DOM elements safely to prevent HTML injection bugs
       const div = document.createElement('div');
       div.style.textAlign = 'center'; div.style.padding = '8px 4px 4px 4px';
 
@@ -484,7 +490,6 @@ export default function MapPage() {
   return (
     <div style={{ position: 'relative', height: '100vh', width: '100vw', overflow: 'hidden', backgroundColor: '#f3f4f6', fontFamily: 'sans-serif' }}>
       
-      {/* BEAUTIFUL LOADING OVERLAY */}
       {isMapLoading && (
         <div style={{ position: 'absolute', inset: 0, zIndex: 9999, backgroundColor: '#f9fafb', display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column' }}>
           <div style={{ fontSize: '50px', animation: 'bounce 1s infinite' }}>🧭</div>

@@ -158,8 +158,8 @@ app.get('/api/stores', async (req, res) => {
   try {
     const { minLng, minLat, maxLng, maxLat, userLat, userLng, radius } = req.query;
     
-    // Base Select statement
-    let selectClause = `SELECT id, store_name, store_category, description, phone, email, website, is_open, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng`;
+    // Base Select statement - FIXED: Added 'theme_settings' here
+    let selectClause = `SELECT id, store_name, store_category, description, phone, email, website, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng`;
     let fromClause = ` FROM stores`;
     let whereClauses = [];
     let queryParams = [];
