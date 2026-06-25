@@ -1,14 +1,13 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { MdMap, MdList, MdStorefront } from 'react-icons/md';
+import { MdMap, MdStorefront } from 'react-icons/md';
+import { FaUserTie } from 'react-icons/fa';
 
 export default function BottomNav() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // ADDED '/store' so the nav hides on the Store Profile page
+  // Removed /login and /register so the nav stays visible!
   const hideOnRoutes = [
-    '/login', 
-    '/register', 
     '/forgot-password', 
     '/update-password',
     '/store' 
@@ -16,37 +15,113 @@ export default function BottomNav() {
 
   const shouldHide = hideOnRoutes.some(route => location.pathname.startsWith(route));
 
-  if (shouldHide) {
-    return null; 
-  }
+  if (shouldHide) return null; 
 
-  const isActive = (path) => location.pathname.startsWith(path) && path !== '/' || (path === '/' && location.pathname === '/');
+  // Advanced active state matching
+  const checkIsActive = (matchPaths) => {
+    if (matchPaths.includes('/') && location.pathname === '/') return true;
+    return matchPaths.some(p => p !== '/' && location.pathname.startsWith(p));
+  };
+
+  const navItems = [
+    { path: '/', label: 'Map', icon: MdMap, matchPaths: ['/'] },
+    { path: '/browse', label: 'Explore', icon: MdStorefront, matchPaths: ['/browse'] }, 
+    // Merchant tab acts as the hub and lights up for dashboard, login, AND register
+    { path: '/dashboard', label: 'Merchant', icon: FaUserTie, matchPaths: ['/dashboard', '/login', '/register'] }
+  ];
 
   return (
-    <div style={{
-      position: 'fixed', bottom: 0, left: 0, right: 0,
-      backgroundColor: 'rgba(255, 255, 255, 0.95)', backdropFilter: 'blur(10px)',
-      boxShadow: '0 -4px 20px rgba(0,0,0,0.08)',
-      display: 'flex', justifyContent: 'space-around', alignItems: 'center',
-      paddingBottom: 'env(safe-area-inset-bottom)',
-      height: '65px', zIndex: 9999
-    }}>
-      
-      <div onClick={() => navigate('/')} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', cursor: 'pointer', color: isActive('/') ? '#2563eb' : '#9ca3af', width: '33%' }}>
-        <MdMap size={26} />
-        <span style={{ fontSize: '11px', fontWeight: 'bold' }}>Map</span>
-      </div>
+    <>
+      <style>{`
+        .premium-nav-container {
+          position: fixed;
+          bottom: 24px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: rgba(255, 255, 255, 0.85);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          border: 1px solid rgba(0, 0, 0, 0.05);
+          box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0,0,0,0.05);
+          border-radius: 100px;
+          display: flex;
+          align-items: center;
+          padding: 8px;
+          gap: 8px;
+          z-index: 9999;
+        }
 
-      <div onClick={() => navigate('/browse')} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', cursor: 'pointer', color: isActive('/browse') ? '#2563eb' : '#9ca3af', width: '33%' }}>
-        <MdList size={28} />
-        <span style={{ fontSize: '11px', fontWeight: 'bold' }}>Browse</span>
-      </div>
+        .nav-pill {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          border-radius: 100px;
+          transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+          -webkit-tap-highlight-color: transparent;
+          overflow: hidden;
+        }
 
-      <div onClick={() => navigate('/dashboard')} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', cursor: 'pointer', color: isActive('/dashboard') ? '#2563eb' : '#9ca3af', width: '33%' }}>
-        <MdStorefront size={26} />
-        <span style={{ fontSize: '11px', fontWeight: 'bold' }}>Merchant</span>
-      </div>
+        .nav-pill.active {
+          background: #2563eb;
+          color: white;
+          padding: 12px 24px;
+        }
 
-    </div>
+        .nav-pill.inactive {
+          background: transparent;
+          color: #9ca3af;
+          padding: 12px 16px;
+        }
+
+        .nav-pill.inactive:hover {
+          color: #4b5563;
+          background: rgba(0, 0, 0, 0.03);
+        }
+
+        .nav-text {
+          font-size: 13.5px;
+          font-weight: 500;
+          white-space: nowrap;
+          transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .nav-pill.active .nav-text {
+          max-width: 100px;
+          opacity: 1;
+          margin-left: 8px;
+        }
+
+        .nav-pill.inactive .nav-text {
+          max-width: 0px;
+          opacity: 0;
+          margin-left: 0px;
+        }
+
+        .nav-icon {
+          flex-shrink: 0;
+        }
+      `}</style>
+
+      <div className="premium-nav-container">
+        {navItems.map((item) => {
+          const active = checkIsActive(item.matchPaths);
+          const Icon = item.icon;
+          
+          return (
+            <div 
+              key={item.label}
+              onClick={() => navigate(item.path)} 
+              className={`nav-pill ${active ? 'active' : 'inactive'}`}
+            >
+              <Icon size={20} className="nav-icon" />
+              <span className="nav-text">
+                {item.label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </>
   );
 }

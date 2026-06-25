@@ -9,6 +9,12 @@ if (MAPBOX_TOKEN) {
   mapboxgl.accessToken = MAPBOX_TOKEN;
 }
 
+// 🚀 PREMIUM CACHE LAYER
+// These survive component unmounts for instant data and asset retrieval
+let globalStoreCache = [];
+let isMapWarmedUp = false;
+let globalImageCache = {}; // Pre-rendered SVG images for the GPU
+
 const getPinConfig = (cat) => {
   switch (cat) {
     case 'Food & Dining': return { color: '#ea4335', icon: 'M11 9H9V2H7v7H5V2H3v7c0 2.12 1.66 3.88 3.75 3.97V22h2.5v-9.03C11.34 12.88 13 11.12 13 9V2h-2v7zm5-3v8h2.5v8H21V2c-2.76 0-5 2.24-5 4z' }; 
@@ -61,12 +67,12 @@ export default function MapPage() {
   const userMarkerRef = useRef(null);
   const userHeadingRef = useRef(0); 
   const userCoordsRef = useRef([0, 0]); 
-  const loadedIconsRef = useRef(new Set());
   const fetchTimeoutRef = useRef(null);
 
+  // CRITICAL: Always start with the loading screen active to mask the WebGL boot-up
   const [isMapLoading, setIsMapLoading] = useState(true);
-
-  const [stores, setStores] = useState([]);
+  const [stores, setStores] = useState(globalStoreCache);
+  
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [itemResults, setItemResults] = useState([]);
@@ -125,7 +131,10 @@ export default function MapPage() {
       if (!res.ok) return [];
       const data = await res.json();
       const finalData = Array.isArray(data) ? data : [];
+      
+      globalStoreCache = finalData;
       setStores(finalData);
+      
       return finalData;
     } catch (err) {
       console.error("Map Fetch Error:", err);
@@ -247,11 +256,14 @@ export default function MapPage() {
         );
       }
       
-      fetchStoresInBounds().then((data) => {
-        if (!data || data.length === 0) {
-          setIsMapLoading(false);
-        }
-      });
+      // If we already have data cached, we just fetch silently in the background
+      if (isMapWarmedUp) {
+        fetchStoresInBounds();
+      } else {
+        fetchStoresInBounds().then(() => {
+          isMapWarmedUp = true;
+        });
+      }
     });
 
     return () => {
@@ -266,7 +278,9 @@ export default function MapPage() {
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'stores' }, (payload) => {
           setStores(currentStores => {
             if (!Array.isArray(currentStores)) return [];
-            return currentStores.map(store => store.id === payload.new.id ? { ...store, is_open: payload.new.is_open } : store);
+            const updated = currentStores.map(store => store.id === payload.new.id ? { ...store, is_open: payload.new.is_open } : store);
+            globalStoreCache = updated; 
+            return updated;
           });
       }).subscribe();
     return () => { supabase.removeChannel(subscription); };
@@ -283,8 +297,6 @@ export default function MapPage() {
     }
   }, [searchTerm]);
 
-  // UPDATE 1: Removed `activeCategory` filtering from Javascript entirely!
-  // Mapbox holds ALL stores in memory, giving us instant GPU filtering.
   const mapStores = useMemo(() => {
     if (!Array.isArray(stores)) return [];
     return stores.filter(store => {
@@ -304,16 +316,27 @@ export default function MapPage() {
 
       for (const store of mapStores) {
         const iconId = `sprite-${store.store_category}-${store.is_open ? 'open' : 'closed'}`;
-        if (!loadedIconsRef.current.has(iconId)) {
-          loadedIconsRef.current.add(iconId);
-          const svgString = makeSvgString(store.store_category, store.is_open);
-          const img = new Image();
-          img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgString);
-          
-          iconPromises.push(new Promise((resolve) => {
-            img.onload = () => { if (map.current && !map.current.hasImage(iconId)) map.current.addImage(iconId, img); resolve(); };
-            img.onerror = resolve; 
-          }));
+        
+        if (!map.current.hasImage(iconId)) {
+          // Check our global image cache first to avoid recreating SVGs
+          if (globalImageCache[iconId]) {
+            map.current.addImage(iconId, globalImageCache[iconId]);
+          } else {
+            const svgString = makeSvgString(store.store_category, store.is_open);
+            const img = new Image();
+            img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgString);
+            
+            iconPromises.push(new Promise((resolve) => {
+              img.onload = () => { 
+                if (map.current && !map.current.hasImage(iconId)) {
+                  map.current.addImage(iconId, img); 
+                  globalImageCache[iconId] = img; // Save to memory!
+                }
+                resolve(); 
+              };
+              img.onerror = resolve; 
+            }));
+          }
         }
       }
 
@@ -381,7 +404,6 @@ export default function MapPage() {
         map.current.on('mouseleave', 'stores-dots-layer', removePointer);
       }
 
-      // Apply the active category filter right after drawing the layers
       if (activeCategory === 'All') {
         map.current.setFilter('stores-layer', null);
         map.current.setFilter('stores-dots-layer', null);
@@ -390,15 +412,14 @@ export default function MapPage() {
         map.current.setFilter('stores-dots-layer', ['==', ['get', 'category'], activeCategory]);
       }
 
-      if (mapStores.length > 0) {
-        setTimeout(() => { setIsMapLoading(false); }, 50);
-      }
+      // CRITICAL: We only dismiss the loading blur AFTER the layers are explicitly added to the map.
+      // Adding a tiny 150ms timeout ensures the GPU has actually painted the screen before revealing it.
+      setTimeout(() => { setIsMapLoading(false); }, 150);
     };
 
     if (map.current.isStyleLoaded()) { renderWebGLData(); } else { map.current.once('style.load', renderWebGLData); }
-  }, [mapStores]); // Trigger render on mapStores changes instead of filteredStores
+  }, [mapStores]); 
 
-  // UPDATE 2: Instant GPU filtering when clicking a category pill
   useEffect(() => {
     if (!map.current || !map.current.isStyleLoaded()) return;
     if (!map.current.getLayer('stores-layer')) return;
@@ -490,13 +511,22 @@ export default function MapPage() {
   return (
     <div style={{ position: 'relative', height: '100vh', width: '100vw', overflow: 'hidden', backgroundColor: '#f3f4f6', fontFamily: 'sans-serif' }}>
       
-      {isMapLoading && (
-        <div style={{ position: 'absolute', inset: 0, zIndex: 9999, backgroundColor: '#f9fafb', display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column' }}>
-          <div style={{ fontSize: '50px', animation: 'bounce 1s infinite' }}>🧭</div>
-          <h2 style={{ color: '#1f2937', marginTop: '15px', fontWeight: '800' }}>LocalLook</h2>
-          <p style={{ color: '#6b7280', fontSize: '14px', fontWeight: 'bold' }}>Loading your neighborhood...</p>
-        </div>
-      )}
+      {/* 🚀 UPGRADED GLASSMORPHISM LOADING SCREEN */}
+      <div 
+        style={{ 
+          position: 'absolute', inset: 0, zIndex: 9999, 
+          backgroundColor: 'rgba(255, 255, 255, 0.4)', 
+          backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)', 
+          display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column',
+          opacity: isMapLoading ? 1 : 0,
+          pointerEvents: isMapLoading ? 'auto' : 'none',
+          transition: 'opacity 0.3s ease-out'
+        }}
+      >
+        <div style={{ fontSize: '50px', animation: 'bounce 1s infinite' }}>🧭</div>
+        <h2 style={{ color: '#1f2937', marginTop: '15px', fontWeight: '800', textShadow: '0 2px 4px rgba(255,255,255,0.8)' }}>LocalLook</h2>
+        <p style={{ color: '#374151', fontSize: '14px', fontWeight: 'bold', textShadow: '0 1px 2px rgba(255,255,255,0.8)' }}>Loading your neighborhood...</p>
+      </div>
 
       <style>{`
         @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
@@ -515,7 +545,7 @@ export default function MapPage() {
 
       <div ref={mapContainer} style={{ position: 'absolute', inset: 0, zIndex: 0 }} />
 
-      <div style={{ position: 'absolute', bottom: '90px', right: '15px', zIndex: 1000 }}>
+      <div style={{ position: 'absolute', bottom: '120px', right: '15px', zIndex: 1000 }}>
         <button onClick={handleLocateMe} disabled={isLocating} style={{ width: '50px', height: '50px', backgroundColor: 'white', borderRadius: '50%', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.2)', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', transition: 'transform 0.1s' }} onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.95)'} onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}>
           {isLocating ? ( <svg style={{ animation: 'spin 1s linear infinite', width: '24px', height: '24px', color: '#2563eb' }} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path style={{ opacity: 0.75 }} fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> ) : ( <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg> )}
         </button>

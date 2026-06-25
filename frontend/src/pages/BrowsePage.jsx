@@ -81,8 +81,7 @@ export default function BrowsePage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f9fafb', paddingBottom: '90px', fontFamily: 'sans-serif' }}>
-      
+    <div style={{ minHeight: '100vh', backgroundColor: '#f9fafb', paddingBottom: '130px', fontFamily: 'sans-serif' }}>
       <style>{`
         .store-card {
           transition: transform 0.2s ease, box-shadow 0.2s ease;
