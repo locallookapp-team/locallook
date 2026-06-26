@@ -9,11 +9,12 @@ if (MAPBOX_TOKEN) {
   mapboxgl.accessToken = MAPBOX_TOKEN;
 }
 
-// 🚀 PREMIUM CACHE LAYER
-// These survive component unmounts for instant data and asset retrieval
+// 🚀 PREMIUM CACHE LAYER & GLOBAL FLAGS
 let globalStoreCache = [];
 let isMapWarmedUp = false;
-let globalImageCache = {}; // Pre-rendered SVG images for the GPU
+let globalImageCache = {}; 
+// NEW: This tells the app if we've already done the initial heavy load
+let globalHasMapLoadedOnce = false; 
 
 const getPinConfig = (cat) => {
   switch (cat) {
@@ -69,18 +70,16 @@ export default function MapPage() {
   const userCoordsRef = useRef([0, 0]); 
   const fetchTimeoutRef = useRef(null);
 
-  // CRITICAL: Always start with the loading screen active to mask the WebGL boot-up
-  const [isMapLoading, setIsMapLoading] = useState(true);
-  const [stores, setStores] = useState(globalStoreCache);
+  // UPGRADE: Only show the loading screen if this is the very first time opening the map
+  const [isMapLoading, setIsMapLoading] = useState(!globalHasMapLoadedOnce);
   
+  const [stores, setStores] = useState(globalStoreCache);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [itemResults, setItemResults] = useState([]);
   const [activeCategory, setActiveCategory] = useState('All');
-  
   const [selectedStore, setSelectedStore] = useState(null);
   const [isLocating, setIsLocating] = useState(false);
-  
   const [session, setSession] = useState(null);
   const [managedStores, setManagedStores] = useState([]);
 
@@ -214,7 +213,7 @@ export default function MapPage() {
     }
 
     map.current = new mapboxgl.Map({
-      container: mapContainer.current, style: 'mapbox://styles/mapbox/streets-v12', center: initialCenter, zoom: initialZoom, pitch: 55, bearing: 0
+      container: mapContainer.current, style: 'mapbox://styles/locallook/cmqttzcqe004h01rc8ya580zb', center: initialCenter, zoom: initialZoom, pitch: 55, bearing: 0
     });
 
     map.current.addControl(new mapboxgl.NavigationControl({ showZoom: false, visualizePitch: true }), 'bottom-left');
@@ -256,7 +255,6 @@ export default function MapPage() {
         );
       }
       
-      // If we already have data cached, we just fetch silently in the background
       if (isMapWarmedUp) {
         fetchStoresInBounds();
       } else {
@@ -318,7 +316,6 @@ export default function MapPage() {
         const iconId = `sprite-${store.store_category}-${store.is_open ? 'open' : 'closed'}`;
         
         if (!map.current.hasImage(iconId)) {
-          // Check our global image cache first to avoid recreating SVGs
           if (globalImageCache[iconId]) {
             map.current.addImage(iconId, globalImageCache[iconId]);
           } else {
@@ -330,7 +327,7 @@ export default function MapPage() {
               img.onload = () => { 
                 if (map.current && !map.current.hasImage(iconId)) {
                   map.current.addImage(iconId, img); 
-                  globalImageCache[iconId] = img; // Save to memory!
+                  globalImageCache[iconId] = img; 
                 }
                 resolve(); 
               };
@@ -412,9 +409,11 @@ export default function MapPage() {
         map.current.setFilter('stores-dots-layer', ['==', ['get', 'category'], activeCategory]);
       }
 
-      // CRITICAL: We only dismiss the loading blur AFTER the layers are explicitly added to the map.
-      // Adding a tiny 150ms timeout ensures the GPU has actually painted the screen before revealing it.
-      setTimeout(() => { setIsMapLoading(false); }, 150);
+      // UPGRADE: Only dismiss if we actually triggered the loading screen. Set global flag.
+      setTimeout(() => { 
+        setIsMapLoading(false); 
+        globalHasMapLoadedOnce = true;
+      }, 150);
     };
 
     if (map.current.isStyleLoaded()) { renderWebGLData(); } else { map.current.once('style.load', renderWebGLData); }
@@ -511,13 +510,14 @@ export default function MapPage() {
   return (
     <div style={{ position: 'relative', height: '100vh', width: '100vw', overflow: 'hidden', backgroundColor: '#f3f4f6', fontFamily: 'sans-serif' }}>
       
-      {/* 🚀 UPGRADED GLASSMORPHISM LOADING SCREEN */}
+      {/* 🚀 UPGRADED GLASSMORPHISM LOADING SCREEN (Now skips on return visits) */}
       <div 
         style={{ 
           position: 'absolute', inset: 0, zIndex: 9999, 
           backgroundColor: 'rgba(255, 255, 255, 0.4)', 
           backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)', 
-          display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column',
+          display: isMapLoading ? 'flex' : 'none', // Hard-hides when done
+          justifyContent: 'center', alignItems: 'center', flexDirection: 'column',
           opacity: isMapLoading ? 1 : 0,
           pointerEvents: isMapLoading ? 'auto' : 'none',
           transition: 'opacity 0.3s ease-out'
