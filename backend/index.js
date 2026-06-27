@@ -153,12 +153,11 @@ app.delete('/api/stores/:store_id/staff/:staff_id', async (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-// GET ALL STORES (Upgraded with Spatial Queries for Map Bounding Box & Radius Browsing)
+// GET ALL STORES
 app.get('/api/stores', async (req, res) => {
   try {
     const { minLng, minLat, maxLng, maxLat, userLat, userLng, radius } = req.query;
     
-    // Base Select statement - FIXED: Added 'theme_settings' here
     let selectClause = `SELECT id, store_name, store_category, description, phone, email, website, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng`;
     let fromClause = ` FROM stores`;
     let whereClauses = [];
@@ -166,30 +165,24 @@ app.get('/api/stores', async (req, res) => {
     let paramIndex = 1;
     let orderByClause = '';
 
-    // SCENARIO 1: Browse Page (Radius Query + Distance Sorting)
     if (userLat && userLng) {
-      // 1a. Calculate exact distance in meters from the user
       selectClause += `, ST_Distance(location::geography, ST_SetSRID(ST_MakePoint($${paramIndex}, $${paramIndex+1}), 4326)::geography) AS distance_meters`;
       queryParams.push(userLng, userLat);
       paramIndex += 2;
       
-      // 1b. Filter stores within a specific radius (default: 5000 meters / 5km)
       const searchRadius = radius ? parseInt(radius) : 5000; 
       whereClauses.push(`ST_DWithin(location::geography, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, $${paramIndex})`);
       queryParams.push(searchRadius);
       paramIndex++;
       
-      // 1c. Sort the results so the closest store is at the top of the feed
       orderByClause = ` ORDER BY distance_meters ASC`;
     } 
-    // SCENARIO 2: Map Page (Bounding Box Query)
     else if (minLng && minLat && maxLng && maxLat) {
       whereClauses.push(`location && ST_MakeEnvelope($${paramIndex}, $${paramIndex+1}, $${paramIndex+2}, $${paramIndex+3}, 4326)`);
       queryParams.push(minLng, minLat, maxLng, maxLat);
       paramIndex += 4;
     }
 
-    // Stitch the SQL query together
     let query = selectClause + fromClause;
     if (whereClauses.length > 0) {
       query += ` WHERE ` + whereClauses.join(' AND ');
@@ -203,8 +196,6 @@ app.get('/api/stores', async (req, res) => {
     res.status(500).send("Server Error"); 
   }
 });
-
-// --- RESTORED MISSING ROUTES ---
 
 // GET SINGLE STORE
 app.get('/api/stores/:id', async (req, res) => {
@@ -284,6 +275,62 @@ app.get('/api/search/items', async (req, res) => {
     `, [`%${q}%`]);
     res.json(result.rows);
   } catch (err) { res.status(500).send("Server Error"); }
+});
+
+// 🚀 NEW: PAYMONGO CHECKOUT SESSION ENDPOINT
+app.post('/api/create-checkout-session', async (req, res) => {
+  const { store_id } = req.body;
+
+  try {
+    // You MUST add PAYMONGO_SECRET_KEY to your Render Environment Variables
+    const secretKey = process.env.PAYMONGO_SECRET_KEY;
+    if (!secretKey) throw new Error("PayMongo Secret Key is missing in environment variables.");
+
+    const options = {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        'Content-Type': 'application/json',
+        authorization: `Basic ${Buffer.from(secretKey).toString('base64')}`
+      },
+      body: JSON.stringify({
+        data: {
+          attributes: {
+            send_email_receipt: true,
+            show_description: true,
+            show_line_items: true,
+            line_items: [
+              {
+                currency: 'PHP',
+                amount: 50000, // PayMongo requires amount in centavos (50000 = ₱500.00)
+                name: 'LocalLook Premium Plan - 30 Days',
+                quantity: 1
+              }
+            ],
+            payment_method_types: ['gcash', 'paymaya', 'grab_pay', 'card'],
+            reference_number: store_id, 
+            success_url: 'https://locallook.vercel.app/dashboard?payment=success',
+            cancel_url: 'https://locallook.vercel.app/dashboard?payment=cancelled'
+          }
+        }
+      })
+    };
+
+    const response = await fetch('https://api.paymongo.com/v1/checkout_sessions', options);
+    const data = await response.json();
+
+    if (data.errors) {
+      console.error("PayMongo API Error Details:", data.errors);
+      throw new Error(data.errors[0].detail);
+    }
+
+    // Send the generated URL back to the React frontend
+    res.json({ checkoutUrl: data.data.attributes.checkout_url });
+
+  } catch (error) {
+    console.error("Checkout Session Error:", error.message);
+    res.status(500).json({ error: 'Failed to create payment session.' });
+  }
 });
 
 app.listen(PORT, () => { console.log(`Server is running on http://localhost:${PORT}`); });

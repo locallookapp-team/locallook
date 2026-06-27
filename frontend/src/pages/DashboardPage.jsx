@@ -77,7 +77,6 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('dashboard'); 
 
-  // NEW: State to track if the sidebar is collapsed
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   const [openStoreMenuId, setOpenStoreMenuId] = useState(null);
@@ -116,6 +115,16 @@ export default function DashboardPage() {
   const [isInviting, setIsInviting] = useState(false);
   const [inviteMessage, setInviteMessage] = useState(null);
   const [openMenuId, setOpenMenuId] = useState(null); 
+
+  // Freemium Subscription States
+  const [subscription, setSubscription] = useState({ plan_type: 'free', end_date: null });
+  const [isVoucherModalOpen, setIsVoucherModalOpen] = useState(false);
+  const [voucherCode, setVoucherCode] = useState('');
+  const [voucherLoading, setVoucherLoading] = useState(false);
+
+  // Upgrade & Payment States
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
 
   const [newStoreData, setNewStoreData] = useState({ 
     store_name: '', store_category: 'Food & Dining', description: '', phone: '', email: '', website: '', lat: '', lng: '',
@@ -157,6 +166,26 @@ export default function DashboardPage() {
     } catch (err) { console.error("Failed to fetch stores:", err); } finally { setLoading(false); }
   };
 
+  const fetchSubscription = async (storeId) => {
+    try {
+      const { data, error } = await supabase
+        .from('subscriptions')
+        .select('*')
+        .eq('store_id', storeId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(); // 🚀 Changed from .single() to .maybeSingle()
+      
+      if (data) {
+        setSubscription(data);
+      } else {
+        setSubscription({ plan_type: 'free', end_date: null });
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   useEffect(() => {
     if (activeStore?.id) {
       fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}`)
@@ -179,6 +208,7 @@ export default function DashboardPage() {
         .then(data => setStoreOperators(data))
         .catch(err => console.error("Failed to fetch operators", err));
         
+      fetchSubscription(activeStore.id);
       closeItemModal();
     }
   }, [activeStore?.id]);
@@ -380,6 +410,82 @@ export default function DashboardPage() {
     } catch (err) { alert("Failed to delete store."); } finally { setIsUploading(false); }
   };
 
+  const handleRedeemVoucher = async () => {
+    if (!voucherCode) return;
+    setVoucherLoading(true);
+
+    try {
+      const { data: voucher, error: vError } = await supabase
+        .from('vouchers')
+        .select('*')
+        .eq('code', voucherCode)
+        .single();
+
+      if (vError || !voucher || voucher.current_uses >= voucher.max_uses) {
+        throw new Error("Invalid or expired voucher code.");
+      }
+
+      const { data: existing } = await supabase
+        .from('voucher_redemptions')
+        .select('id')
+        .eq('store_id', activeStore.id)
+        .eq('voucher_id', voucher.id)
+        .single();
+
+      if (existing) throw new Error("This store has already used this voucher.");
+
+      const thirtyDaysFromNow = new Date();
+      thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+
+      await supabase.from('subscriptions').insert([
+        { 
+          store_id: activeStore.id, 
+          plan_type: 'premium', 
+          end_date: thirtyDaysFromNow.toISOString() 
+        }
+      ]);
+
+      await supabase.from('vouchers').update({ current_uses: voucher.current_uses + 1 }).eq('id', voucher.id);
+      await supabase.from('voucher_redemptions').insert([{ store_id: activeStore.id, voucher_id: voucher.id }]);
+
+      alert("Success! Your Premium trial is now active for 30 days.");
+      setIsVoucherModalOpen(false);
+      setVoucherCode('');
+      
+      fetchSubscription(activeStore.id);
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setVoucherLoading(false);
+    }
+  };
+
+  // 🚀 NEW: The Actual PayMongo Checkout Implementation
+  const handleProceedToPayment = async () => {
+    setIsProcessingPayment(true);
+    try {
+      // 1. Ask your backend to create a PayMongo session
+      const response = await fetch('https://locallook-api.onrender.com/api/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: activeStore.id })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to initialize payment");
+      }
+
+      // 2. Redirect the merchant to the secure PayMongo checkout page
+      window.location.href = data.checkoutUrl;
+
+    } catch (err) {
+      alert("Payment failed to initialize: " + err.message);
+      setIsProcessingPayment(false);
+    }
+  };
+
   const openAddModal = () => { setEditingItemId(null); setNewItem({ name: '', description: '', price: '', category: '', imageFile: null }); setCroppedPreview(null); setIsItemModalOpen(true); };
   const closeItemModal = () => { setIsItemModalOpen(false); setEditingItemId(null); setNewItem({ name: '', description: '', price: '', category: '', imageFile: null }); setCroppedPreview(null); };
   const startEditItem = (item) => { setEditingItemId(item.id); setNewItem({ name: item.item_name, description: item.description || '', price: item.price, category: item.item_category, imageFile: null }); setCroppedPreview(item.image_url || null); setIsItemModalOpen(true); };
@@ -462,6 +568,8 @@ export default function DashboardPage() {
     return groups;
   }, {});
 
+  const isMenuLocked = subscription?.plan_type === 'free' || (subscription?.plan_type === 'premium' && subscription?.end_date && new Date(subscription.end_date) <= new Date());
+
   if (loading) return <div style={{ display: 'flex', height: '100vh', justifyContent: 'center', alignItems: 'center' }}>Loading...</div>;
 
   return (
@@ -474,6 +582,81 @@ export default function DashboardPage() {
             <button onClick={() => setImageToCrop(null)} style={{ padding: '10px 20px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
             <input type="range" value={zoom} min={1} max={3} step={0.1} aria-labelledby="Zoom" onChange={(e) => setZoom(e.target.value)} style={{ width: '200px' }} />
             <button onClick={handleSaveCrop} style={{ padding: '10px 20px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Save 4:3 Crop</button>
+          </div>
+        </div>
+      )}
+
+      {/* Voucher Redemption Modal */}
+      {isVoucherModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 2000, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
+          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '16px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+            <h2 style={{ margin: '0 0 15px 0', fontSize: '20px', color: '#1f2937' }}>🎟️ Activate Voucher</h2>
+            <p style={{ margin: '0 0 20px 0', color: '#4b5563', fontSize: '14px' }}>Enter your VIP Partner code to unlock 30 days of Premium features.</p>
+            <input 
+              type="text" 
+              placeholder="Enter Code (e.g., RSU-VIP-2026)" 
+              value={voucherCode} 
+              onChange={(e) => setVoucherCode(e.target.value.toUpperCase())} 
+              style={{ width: '100%', padding: '12px', border: '1px solid #d1d5db', borderRadius: '8px', marginBottom: '20px', boxSizing: 'border-box' }} 
+            />
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button onClick={() => setIsVoucherModalOpen(false)} style={{ flex: 1, padding: '12px', backgroundColor: '#f3f4f6', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
+              <button onClick={handleRedeemVoucher} disabled={voucherLoading || !voucherCode} style={{ flex: 1, padding: '12px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: voucherLoading || !voucherCode ? 'not-allowed' : 'pointer' }}>
+                {voucherLoading ? 'Activating...' : 'Redeem'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Premium Upgrade Modal */}
+      {isUpgradeModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 2000, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px', backdropFilter: 'blur(4px)' }}>
+          <div style={{ backgroundColor: 'white', borderRadius: '20px', width: '100%', maxWidth: '450px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
+            
+            <div style={{ backgroundColor: '#1e3a8a', padding: '30px 20px', textAlign: 'center', color: 'white', position: 'relative' }}>
+              <button onClick={() => setIsUpgradeModalOpen(false)} style={{ position: 'absolute', top: '15px', right: '15px', background: 'none', border: 'none', color: '#93c5fd', fontSize: '24px', cursor: 'pointer' }}>&times;</button>
+              <div style={{ fontSize: '36px', marginBottom: '10px' }}>🚀</div>
+              <h2 style={{ margin: '0 0 5px 0', fontSize: '24px', fontWeight: '900' }}>LocalLook Premium</h2>
+              <p style={{ margin: 0, color: '#bfdbfe', fontSize: '14px' }}>Get discovered by students & locals.</p>
+            </div>
+
+            <div style={{ padding: '30px' }}>
+              <div style={{ textAlign: 'center', marginBottom: '25px' }}>
+                <span style={{ fontSize: '40px', fontWeight: '900', color: '#111827', letterSpacing: '-1px' }}>₱500</span>
+                <span style={{ fontSize: '16px', color: '#6b7280', fontWeight: 'bold' }}> / 30 Days</span>
+                <div style={{ marginTop: '5px', fontSize: '12px', color: '#10b981', fontWeight: 'bold', backgroundColor: '#d1fae5', display: 'inline-block', padding: '4px 10px', borderRadius: '12px' }}>NO AUTO-DEDUCTION</div>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '30px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: '#374151', fontWeight: '600' }}>
+                  <span style={{ color: '#2563eb', fontSize: '18px' }}>✓</span> Live Pin on the Local Map
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: '#374151', fontWeight: '600' }}>
+                  <span style={{ color: '#2563eb', fontSize: '18px' }}>✓</span> Unlimited Digital Menu Items
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: '#374151', fontWeight: '600' }}>
+                  <span style={{ color: '#2563eb', fontSize: '18px' }}>✓</span> Delegate Operator/Staff Accounts
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: '#374151', fontWeight: '600' }}>
+                  <span style={{ color: '#2563eb', fontSize: '18px' }}>✓</span> Custom Branding & UI Colors
+                </div>
+              </div>
+
+              <button 
+                onClick={handleProceedToPayment} 
+                disabled={isProcessingPayment}
+                style={{ width: '100%', padding: '16px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: '800', cursor: isProcessingPayment ? 'not-allowed' : 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', transition: 'background-color 0.2s', boxShadow: '0 4px 14px rgba(37, 99, 235, 0.3)' }}
+              >
+                {isProcessingPayment ? 'Connecting to Gateway...' : 'Pay with GCash / Maya'}
+              </button>
+              
+              <div style={{ textAlign: 'center', marginTop: '15px' }}>
+                <button onClick={() => setIsUpgradeModalOpen(false)} style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: '13px', fontWeight: 'bold', cursor: 'pointer' }}>
+                  Maybe Later
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -723,6 +906,42 @@ export default function DashboardPage() {
         {view === 'dashboard' && activeStore && (
           <div style={{ padding: '40px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <div style={{ width: '100%', maxWidth: '900px' }}>
+              
+              {/* Dynamic Subscription Banner */}
+              {(() => {
+                const plan = subscription?.plan_type || 'free';
+                const endDate = subscription?.end_date ? new Date(subscription.end_date) : null;
+                const today = new Date();
+                const daysLeft = endDate ? Math.ceil((endDate - today) / (1000 * 60 * 60 * 24)) : 0;
+
+                if (plan === 'premium' && daysLeft <= 7 && daysLeft > 0) {
+                  return (
+                    <div style={{ width: '100%', backgroundColor: '#fef3c7', border: '1px solid #f59e0b', color: '#92400e', padding: '12px 20px', borderRadius: '8px', marginBottom: '25px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 'bold', fontSize: '14px' }}>⚠️ Your Premium trial expires in {daysLeft} days.</span>
+                      <button onClick={() => setIsUpgradeModalOpen(true)} style={{ backgroundColor: '#d97706', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px', transition: 'background-color 0.2s' }}>Renew Plan</button>
+                    </div>
+                  );
+                } else if (plan === 'premium' && daysLeft <= 0) {
+                   return (
+                    <div style={{ width: '100%', backgroundColor: '#fee2e2', border: '1px solid #ef4444', color: '#b91c1c', padding: '12px 20px', borderRadius: '8px', marginBottom: '25px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontWeight: 'bold', fontSize: '14px' }}>❌ Your plan has expired. Your catalog is hidden from customers.</span>
+                      <button onClick={() => setIsUpgradeModalOpen(true)} style={{ backgroundColor: '#dc2626', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px', transition: 'background-color 0.2s' }}>Renew Now</button>
+                    </div>
+                  );
+                } else if (plan === 'free') {
+                  return (
+                    <div style={{ width: '100%', backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e40af', padding: '12px 20px', borderRadius: '8px', marginBottom: '25px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                      <span style={{ fontWeight: 'bold', fontSize: '14px' }}>✨ You are on the Free Plan. Upgrade to Premium to unlock your digital catalog.</span>
+                      <div style={{ display: 'flex', gap: '10px' }}>
+                        <button onClick={() => setIsVoucherModalOpen(true)} style={{ backgroundColor: 'white', color: '#2563eb', border: '1px solid #2563eb', padding: '8px 16px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}>Redeem Voucher</button>
+                        <button onClick={() => setIsUpgradeModalOpen(true)} style={{ backgroundColor: '#2563eb', color: 'white', border: 'none', padding: '8px 16px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px', transition: 'background-color 0.2s' }}>Upgrade - ₱500/mo</button>
+                      </div>
+                    </div>
+                  );
+                }
+                return null;
+              })()}
+
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '35px', flexWrap: 'wrap', gap: '20px' }}>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -790,52 +1009,68 @@ export default function DashboardPage() {
                 </div>
               )}
 
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <h2 style={{ margin: 0, fontSize: '20px', color: '#111827', fontWeight: '800' }}>Menu & Inventory</h2>
-                <button onClick={openAddModal} style={{ padding: '10px 20px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ fontSize: '16px' }}>+</span> Add Item</button>
-              </div>
-
-              {categoryOrder.length > 0 && (
-                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={[restrictToHorizontalAxis]}>
-                  <div style={{ display: 'flex', gap: '10px', padding: '10px', marginBottom: '20px', overflowX: 'auto', backgroundColor: '#e5e7eb', borderRadius: '12px', position: 'sticky', top: '0px', zIndex: 5, boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                    <SortableContext items={categoryOrder} strategy={horizontalListSortingStrategy}>
-                      {categoryOrder.map(cat => <SortableCategory key={cat} id={cat} activeCategory={activeCategory} brandColor={storeTheme.primaryColor} onClick={scrollToCategory} />)}
-                    </SortableContext>
+              {/* The Soft-Locked Menu Container */}
+              <div style={{ position: 'relative' }}>
+                
+                {isMenuLocked && (
+                  <div style={{ position: 'absolute', inset: 0, zIndex: 10, backgroundColor: 'rgba(243, 244, 246, 0.6)', backdropFilter: 'blur(4px)', WebkitBackdropFilter: 'blur(4px)', display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: '16px', flexDirection: 'column' }}>
+                    <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', textAlign: 'center', maxWidth: '350px' }}>
+                      <div style={{ fontSize: '40px', marginBottom: '10px' }}>🔒</div>
+                      <h3 style={{ margin: '0 0 10px 0', color: '#1f2937', fontSize: '18px' }}>Menu Locked</h3>
+                      <p style={{ margin: '0 0 20px 0', color: '#6b7280', fontSize: '14px' }}>Redeem a voucher or upgrade your plan to access and edit your digital catalog.</p>
+                      <button onClick={() => setIsUpgradeModalOpen(true)} style={{ width: '100%', padding: '12px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Upgrade or Redeem Code</button>
+                    </div>
                   </div>
-                </DndContext>
-              )}
+                )}
 
-              <div style={{ backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.03)', border: '1px solid #f3f4f6', overflow: 'hidden', paddingBottom: '100px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                  {Object.keys(groupedItems).length === 0 ? (
-                    <div style={{ padding: '60px 40px', textAlign: 'center', color: '#9ca3af', fontStyle: 'italic' }}><p style={{ margin: '0 0 10px 0', fontSize: '24px' }}>🍽️</p>Your menu is currently empty.</div>
-                  ) : (
-                    categoryOrder.map(category => {
-                      if (!groupedItems[category]) return null;
-                      return (
-                        <div key={category} ref={(el) => (sectionRefs.current[category] = el)}>
-                          <div style={{ padding: '12px 30px', backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb', borderTop: '1px solid #e5e7eb' }}><h3 style={{ margin: '0', fontSize: '13px', color: '#6b7280', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>{category}</h3></div>
-                          {groupedItems[category].map(item => (
-                            <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 30px', borderBottom: '1px solid #f3f4f6' }}>
-                              <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
-                                {item.image_url ? <img src={item.image_url} alt={item.item_name} style={{ width: '80px', height: '60px', objectFit: 'cover', borderRadius: '8px' }} /> : <div style={{ width: '80px', height: '60px', backgroundColor: '#f3f4f6', borderRadius: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '20px' }}>🍽️</div>}
-                                <div><h4 style={{ margin: '0 0 4px 0', fontSize: '16px', color: '#1f2937' }}>{item.item_name}</h4><p style={{ margin: '0', color: '#6b7280', fontSize: '13px' }}>{item.description}</p></div>
-                              </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                                <div style={{ fontSize: '18px', fontWeight: '800', color: '#111827', letterSpacing: '-0.5px', whiteSpace: 'nowrap' }}>₱{parseFloat(item.price).toFixed(2)}</div>
-                                <div style={{ display: 'flex', gap: '5px', marginLeft: '10px' }}>
-                                  <button onClick={() => startEditItem(item)} style={{ background: '#eff6ff', color: '#3b82f6', border: 'none', padding: '8px', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Edit Item">✏️</button>
-                                  <button onClick={() => handleDeleteItem(item.id, item.item_name)} style={{ background: '#fef2f2', color: '#ef4444', border: 'none', padding: '8px', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Delete Item">🗑️</button>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                  <h2 style={{ margin: 0, fontSize: '20px', color: '#111827', fontWeight: '800' }}>Menu & Inventory</h2>
+                  <button onClick={openAddModal} disabled={isMenuLocked} style={{ padding: '10px 20px', backgroundColor: isMenuLocked ? '#9ca3af' : '#2563eb', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: isMenuLocked ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ fontSize: '16px' }}>+</span> Add Item</button>
+                </div>
+
+                {categoryOrder.length > 0 && (
+                  <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={[restrictToHorizontalAxis]}>
+                    <div style={{ display: 'flex', gap: '10px', padding: '10px', marginBottom: '20px', overflowX: 'auto', backgroundColor: '#e5e7eb', borderRadius: '12px', position: 'sticky', top: '0px', zIndex: 5, boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                      <SortableContext items={categoryOrder} strategy={horizontalListSortingStrategy}>
+                        {categoryOrder.map(cat => <SortableCategory key={cat} id={cat} activeCategory={activeCategory} brandColor={storeTheme.primaryColor} onClick={scrollToCategory} />)}
+                      </SortableContext>
+                    </div>
+                  </DndContext>
+                )}
+
+                <div style={{ backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.03)', border: '1px solid #f3f4f6', overflow: 'hidden', paddingBottom: '100px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    {Object.keys(groupedItems).length === 0 ? (
+                      <div style={{ padding: '60px 40px', textAlign: 'center', color: '#9ca3af', fontStyle: 'italic' }}><p style={{ margin: '0 0 10px 0', fontSize: '24px' }}>🍽️</p>Your menu is currently empty.</div>
+                    ) : (
+                      categoryOrder.map(category => {
+                        if (!groupedItems[category]) return null;
+                        return (
+                          <div key={category} ref={(el) => (sectionRefs.current[category] = el)}>
+                            <div style={{ padding: '12px 30px', backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb', borderTop: '1px solid #e5e7eb' }}><h3 style={{ margin: '0', fontSize: '13px', color: '#6b7280', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px' }}>{category}</h3></div>
+                            {groupedItems[category].map(item => (
+                              <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 30px', borderBottom: '1px solid #f3f4f6' }}>
+                                <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+                                  {item.image_url ? <img src={item.image_url} alt={item.item_name} style={{ width: '80px', height: '60px', objectFit: 'cover', borderRadius: '8px' }} /> : <div style={{ width: '80px', height: '60px', backgroundColor: '#f3f4f6', borderRadius: '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '20px' }}>🍽️</div>}
+                                  <div><h4 style={{ margin: '0 0 4px 0', fontSize: '16px', color: '#1f2937' }}>{item.item_name}</h4><p style={{ margin: '0', color: '#6b7280', fontSize: '13px' }}>{item.description}</p></div>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                                  <div style={{ fontSize: '18px', fontWeight: '800', color: '#111827', letterSpacing: '-0.5px', whiteSpace: 'nowrap' }}>₱{parseFloat(item.price).toFixed(2)}</div>
+                                  <div style={{ display: 'flex', gap: '5px', marginLeft: '10px' }}>
+                                    <button onClick={() => startEditItem(item)} disabled={isMenuLocked} style={{ background: '#eff6ff', color: '#3b82f6', border: 'none', padding: '8px', borderRadius: '6px', cursor: isMenuLocked ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Edit Item">✏️</button>
+                                    <button onClick={() => handleDeleteItem(item.id, item.item_name)} disabled={isMenuLocked} style={{ background: '#fef2f2', color: '#ef4444', border: 'none', padding: '8px', borderRadius: '6px', cursor: isMenuLocked ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Delete Item">🗑️</button>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          ))}
-                        </div>
-                      )
-                    })
-                  )}
+                            ))}
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
                 </div>
               </div>
+
             </div>
           </div>
         )}
