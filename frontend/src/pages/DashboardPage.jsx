@@ -11,6 +11,11 @@ import { arrayMove, SortableContext, horizontalListSortingStrategy, useSortable 
 import { restrictToHorizontalAxis } from '@dnd-kit/modifiers';
 import { CSS } from '@dnd-kit/utilities';
 
+// 🚀 DYNAMIC URL CONFIGURATION
+const API_BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) 
+  ? import.meta.env.VITE_API_URL 
+  : 'https://locallook-api.onrender.com';
+
 const MAPBOX_TOKEN = (typeof import.meta !== 'undefined' && import.meta.env ? import.meta.env.VITE_MAPBOX_TOKEN : '') || '';
 if (MAPBOX_TOKEN) {
   mapboxgl.accessToken = MAPBOX_TOKEN;
@@ -157,7 +162,7 @@ export default function DashboardPage() {
 
   const fetchStores = async (userId) => {
     try {
-      const res = await fetch(`https://locallook-api.onrender.com/api/merchant/stores/${userId}`);
+      const res = await fetch(`${API_BASE_URL}/api/merchant/stores/${userId}`);
       if (res.ok) {
         const data = await res.json();
         setStores(data);
@@ -174,7 +179,7 @@ export default function DashboardPage() {
         .eq('store_id', storeId)
         .order('created_at', { ascending: false })
         .limit(1)
-        .maybeSingle(); // 🚀 Changed from .single() to .maybeSingle()
+        .maybeSingle(); 
       
       if (data) {
         setSubscription(data);
@@ -188,7 +193,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (activeStore?.id) {
-      fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}`)
+      fetch(`${API_BASE_URL}/api/stores/${activeStore.id}`)
         .then(res => res.json())
         .then(data => { 
           if (data.theme_settings) {
@@ -198,12 +203,12 @@ export default function DashboardPage() {
         })
         .catch(err => console.error(err));
 
-      fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}/items`)
+      fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/items`)
         .then(res => res.json())
         .then(data => setItems(data))
         .catch(err => console.error(err));
 
-      fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}/operators`)
+      fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/operators`)
         .then(res => res.ok ? res.json() : [])
         .then(data => setStoreOperators(data))
         .catch(err => console.error("Failed to fetch operators", err));
@@ -335,7 +340,7 @@ export default function DashboardPage() {
 
   const toggleStoreStatus = async () => {
     const nextStatus = !activeStore.is_open;
-    const response = await fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}/toggle`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_open: nextStatus }) });
+    const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/toggle`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_open: nextStatus }) });
     if (response.ok) {
       setActiveStore({ ...activeStore, is_open: nextStatus });
       setStores(stores.map(s => s.id === activeStore.id ? { ...s, is_open: nextStatus } : s));
@@ -345,7 +350,7 @@ export default function DashboardPage() {
   const handleSaveTheme = async () => {
     setIsSavingTheme(true);
     try {
-      const response = await fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}/theme`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme_settings: { ...storeTheme, categoryOrder } }) });
+      const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/theme`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme_settings: { ...storeTheme, categoryOrder } }) });
       if (!response.ok) throw new Error("Failed to save theme");
       alert("Storefront branding and category layout saved successfully!");
     } catch (err) { alert(err.message); } finally { setIsSavingTheme(false); }
@@ -368,7 +373,7 @@ export default function DashboardPage() {
     if (!editStoreData.lat || !editStoreData.lng) return alert("Please drop a pin on the map!");
     setIsUploading(true);
     try {
-      const response = await fetch(`https://locallook-api.onrender.com/api/stores/${editStoreData.id}`, {
+      const response = await fetch(`${API_BASE_URL}/api/stores/${editStoreData.id}`, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           store_name: editStoreData.store_name, store_category: editStoreData.store_category, description: editStoreData.description, 
@@ -381,7 +386,7 @@ export default function DashboardPage() {
         const themeUpdate = { 
           ...editStoreData.theme_settings, showPhone: editStoreData.showPhone, showEmail: editStoreData.showEmail, showWebsite: editStoreData.showWebsite, showAddress: editStoreData.showAddress, addressText: editStoreData.addressText 
         };
-        await fetch(`https://locallook-api.onrender.com/api/stores/${editStoreData.id}/theme`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme_settings: themeUpdate }) });
+        await fetch(`${API_BASE_URL}/api/stores/${editStoreData.id}/theme`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme_settings: themeUpdate }) });
         
         const fullyUpdatedStore = { ...updatedStore, theme_settings: themeUpdate };
         setStores(stores.map(s => s.id === fullyUpdatedStore.id ? { ...s, ...fullyUpdatedStore } : s));
@@ -397,7 +402,7 @@ export default function DashboardPage() {
     if (deleteConfirmationText !== storeToDelete.store_name) return;
     setIsUploading(true);
     try {
-      const response = await fetch(`https://locallook-api.onrender.com/api/stores/${storeToDelete.id}`, { method: 'DELETE' });
+      const response = await fetch(`${API_BASE_URL}/api/stores/${storeToDelete.id}`, { method: 'DELETE' });
       if (response.ok) {
         const updatedStores = stores.filter(s => s.id !== storeToDelete.id);
         setStores(updatedStores);
@@ -430,7 +435,7 @@ export default function DashboardPage() {
         .select('id')
         .eq('store_id', activeStore.id)
         .eq('voucher_id', voucher.id)
-        .single();
+        .maybeSingle();
 
       if (existing) throw new Error("This store has already used this voucher.");
 
@@ -460,12 +465,10 @@ export default function DashboardPage() {
     }
   };
 
-  // 🚀 NEW: The Actual PayMongo Checkout Implementation
   const handleProceedToPayment = async () => {
     setIsProcessingPayment(true);
     try {
-      // 1. Ask your backend to create a PayMongo session
-      const response = await fetch('https://locallook-api.onrender.com/api/create-checkout-session', {
+      const response = await fetch(`${API_BASE_URL}/api/create-checkout-session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ store_id: activeStore.id })
@@ -477,7 +480,6 @@ export default function DashboardPage() {
         throw new Error(data.error || "Failed to initialize payment");
       }
 
-      // 2. Redirect the merchant to the secure PayMongo checkout page
       window.location.href = data.checkoutUrl;
 
     } catch (err) {
@@ -502,10 +504,10 @@ export default function DashboardPage() {
 
     const payload = { item_name: newItem.name, description: newItem.description, price: parseFloat(newItem.price), image_url: finalImageUrl, item_category: newItem.category };
     if (editingItemId) {
-      const response = await fetch(`https://locallook-api.onrender.com/api/items/${editingItemId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const response = await fetch(`${API_BASE_URL}/api/items/${editingItemId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       if (response.ok) { const updatedItem = await response.json(); setItems(items.map(i => i.id === editingItemId ? updatedItem : i)); closeItemModal(); }
     } else {
-      const response = await fetch('https://locallook-api.onrender.com/api/items', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ store_id: activeStore.id, ...payload }) });
+      const response = await fetch(`${API_BASE_URL}/api/items`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ store_id: activeStore.id, ...payload }) });
       if (response.ok) { const addedItem = await response.json(); setItems([addedItem, ...items]); closeItemModal(); }
     }
     setIsUploading(false);
@@ -514,7 +516,7 @@ export default function DashboardPage() {
   const handleDeleteItem = async (itemId, itemName) => {
     if (!window.confirm(`Delete "${itemName}" from the menu permanently?`)) return;
     try {
-      const response = await fetch(`https://locallook-api.onrender.com/api/items/${itemId}`, { method: 'DELETE' });
+      const response = await fetch(`${API_BASE_URL}/api/items/${itemId}`, { method: 'DELETE' });
       if (response.ok) { setItems(items.filter(item => item.id !== itemId)); if (editingItemId === itemId) closeItemModal(); }
     } catch (err) { alert("Failed to delete item."); }
   };
@@ -522,7 +524,7 @@ export default function DashboardPage() {
   const handleInviteOperator = async (e) => {
     e.preventDefault(); setIsInviting(true); setInviteMessage(null); 
     try {
-      const response = await fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}/invite`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: inviteEmail, requester_id: user.id }) });
+      const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/invite`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: inviteEmail, requester_id: user.id }) });
       const data = await response.json(); if (!response.ok) throw new Error(data.error || "Failed to invite operator");
       setInviteMessage({ type: 'success', text: data.message });
       setStoreOperators([...storeOperators, { email: inviteEmail, status: data.message.includes('Existing') ? 'confirmed' : 'pending', role: 'operator' }]);
@@ -535,12 +537,12 @@ export default function DashboardPage() {
     if (!newStoreData.lat || !newStoreData.lng) return alert("Please drop a pin on the map!");
     setIsUploading(true);
     try {
-      const response = await fetch('https://locallook-api.onrender.com/api/stores', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...newStoreData, user_id: user.id }) });
+      const response = await fetch(`${API_BASE_URL}/api/stores`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...newStoreData, user_id: user.id }) });
       if (!response.ok) throw new Error("Failed to create store");
       const createdStore = await response.json();
       
       const newTheme = { primaryColor: '#3b82f6', layout: 'grid', categoryOrder: [], showPhone: newStoreData.showPhone, showEmail: newStoreData.showEmail, showWebsite: newStoreData.showWebsite, showAddress: newStoreData.showAddress, addressText: newStoreData.addressText };
-      await fetch(`https://locallook-api.onrender.com/api/stores/${createdStore.id}/theme`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme_settings: newTheme }) });
+      await fetch(`${API_BASE_URL}/api/stores/${createdStore.id}/theme`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme_settings: newTheme }) });
 
       await fetchStores(user.id);
       setView('dashboard');
@@ -553,7 +555,7 @@ export default function DashboardPage() {
   const handleRemoveStaff = async (staffId, staffEmail) => {
     if (!window.confirm(`Are you sure you want to remove ${staffEmail} from this store?`)) return;
     try {
-      const response = await fetch(`https://locallook-api.onrender.com/api/stores/${activeStore.id}/staff/${staffId}`, { method: 'DELETE' });
+      const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/staff/${staffId}`, { method: 'DELETE' });
       if (!response.ok) throw new Error("Failed to remove staff");
       alert(`${staffEmail} has been removed.`);
       setStoreOperators(storeOperators.filter(op => op.id !== staffId));
@@ -1024,7 +1026,7 @@ export default function DashboardPage() {
                 )}
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                  <h2 style={{ margin: 0, fontSize: '20px', color: '#111827', fontWeight: '800' }}>Menu & Inventory</h2>
+                  <h2 style={{ margin: '0 0 0 0', fontSize: '20px', color: '#111827', fontWeight: '800' }}>Menu & Inventory</h2>
                   <button onClick={openAddModal} disabled={isMenuLocked} style={{ padding: '10px 20px', backgroundColor: isMenuLocked ? '#9ca3af' : '#2563eb', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: isMenuLocked ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ fontSize: '16px' }}>+</span> Add Item</button>
                 </div>
 

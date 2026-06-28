@@ -13,12 +13,13 @@ const PORT = process.env.PORT || 3000;
 const supabaseAdmin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+// CORS left wide open for testing purposes
 app.use(cors()); 
 app.use(express.json()); 
 
 const apiLimiter = rateLimit({ 
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 2000, // <-- Increased from 100 to 2000 for development
+  windowMs: 15 * 60 * 1000,
+  max: 2000, 
   message: { error: "Too many requests." } 
 });
 const inviteLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, message: { error: "Too many invites." } });
@@ -28,6 +29,12 @@ app.post('/api/stores', async (req, res) => {
   const client = await db.connect();
   try {
     const { store_name, store_category, description, phone, email, website, lat, lng, user_id } = req.body;
+    
+    // 🛡️ INPUT VALIDATION
+    if (!store_name || !store_category || !lat || !lng || !user_id) {
+      return res.status(400).json({ error: "Missing required store fields or location." });
+    }
+
     await client.query('BEGIN');
 
     const storeResult = await client.query(`
@@ -98,6 +105,8 @@ app.post('/api/stores/:store_id/invite', inviteLimiter, async (req, res) => {
   try {
     const { store_id } = req.params;
     const { email, requester_id } = req.body;
+
+    if (!email || !email.includes('@')) return res.status(400).json({ error: "Invalid email address." });
 
     const authCheck = await client.query(`SELECT role FROM store_operators WHERE store_id = $1 AND user_id = $2`, [store_id, requester_id]);
     if (authCheck.rows.length === 0 || authCheck.rows[0].role !== 'merchant') return res.status(403).json({ error: "Only merchants can invite." });
@@ -197,7 +206,6 @@ app.get('/api/stores', async (req, res) => {
   }
 });
 
-// GET SINGLE STORE
 app.get('/api/stores/:id', async (req, res) => {
   try {
     const result = await db.query(`SELECT id, store_name, store_category, description, phone, email, website, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng FROM stores WHERE id = $1;`, [req.params.id]);
@@ -206,7 +214,6 @@ app.get('/api/stores/:id', async (req, res) => {
   } catch (err) { res.status(500).send("Server Error"); }
 });
 
-// PATCH STORE THEME
 app.patch('/api/stores/:id/theme', async (req, res) => {
   try {
     const result = await db.query(`UPDATE stores SET theme_settings = $1 WHERE id = $2 RETURNING id, theme_settings`, [req.body.theme_settings, req.params.id]);
@@ -214,7 +221,6 @@ app.patch('/api/stores/:id/theme', async (req, res) => {
   } catch (err) { res.status(500).send("Server Error"); }
 });
 
-// PATCH STORE OPEN/CLOSED
 app.patch('/api/stores/:id/toggle', async (req, res) => {
   try {
     const result = await db.query('UPDATE stores SET is_open = $1 WHERE id = $2 RETURNING id, is_open', [req.body.is_open, req.params.id]);
@@ -222,7 +228,6 @@ app.patch('/api/stores/:id/toggle', async (req, res) => {
   } catch (err) { res.status(500).send("Server Error"); }
 });
 
-// GET ITEMS
 app.get('/api/stores/:store_id/items', async (req, res) => {
   try {
     const result = await db.query('SELECT * FROM items WHERE store_id = $1 ORDER BY created_at DESC', [req.params.store_id]);
@@ -230,19 +235,23 @@ app.get('/api/stores/:store_id/items', async (req, res) => {
   } catch (err) { res.status(500).send("Server Error"); }
 });
 
-// CREATE ITEM
 app.post('/api/items', async (req, res) => {
   try {
     const { store_id, item_name, description, price, image_url, item_category } = req.body;
+    
+    // 🛡️ INPUT VALIDATION
+    if (!store_id || !item_name || isNaN(parseFloat(price))) {
+      return res.status(400).json({ error: "Invalid item data. Name and valid price are required." });
+    }
+
     const result = await db.query(`
       INSERT INTO items (store_id, item_name, description, price, image_url, item_category, is_available) 
       VALUES ($1, $2, $3, $4, $5, COALESCE($6, 'General'), true) RETURNING *;
-    `, [store_id, item_name, description, price, image_url, item_category]); 
+    `, [store_id, item_name, description, parseFloat(price), image_url, item_category]); 
     res.json(result.rows[0]);
   } catch (err) { res.status(500).send("Server Error"); }
 });
 
-// UPDATE ITEM
 app.patch('/api/items/:id', async (req, res) => {
   try {
     const { item_name, description, price, item_category, image_url } = req.body;
@@ -255,7 +264,6 @@ app.patch('/api/items/:id', async (req, res) => {
   } catch (err) { res.status(500).send("Server Error"); }
 });
 
-// DELETE ITEM
 app.delete('/api/items/:id', async (req, res) => {
   try {
     await db.query('DELETE FROM items WHERE id = $1 RETURNING *', [req.params.id]);
@@ -263,7 +271,6 @@ app.delete('/api/items/:id', async (req, res) => {
   } catch (err) { res.status(500).send("Server Error"); }
 });
 
-// SEARCH ITEMS ACROSS ALL STORES
 app.get('/api/search/items', async (req, res) => {
   try {
     const { q } = req.query;
@@ -277,14 +284,13 @@ app.get('/api/search/items', async (req, res) => {
   } catch (err) { res.status(500).send("Server Error"); }
 });
 
-// 🚀 NEW: PAYMONGO CHECKOUT SESSION ENDPOINT
+// PAYMONGO CHECKOUT SESSION ENDPOINT
 app.post('/api/create-checkout-session', async (req, res) => {
   const { store_id } = req.body;
 
   try {
-    // You MUST add PAYMONGO_SECRET_KEY to your Render Environment Variables
     const secretKey = process.env.PAYMONGO_SECRET_KEY;
-    if (!secretKey) throw new Error("PayMongo Secret Key is missing in environment variables.");
+    if (!secretKey) throw new Error("PayMongo Secret Key is missing.");
 
     const options = {
       method: 'POST',
@@ -302,7 +308,7 @@ app.post('/api/create-checkout-session', async (req, res) => {
             line_items: [
               {
                 currency: 'PHP',
-                amount: 50000, // PayMongo requires amount in centavos (50000 = ₱500.00)
+                amount: 50000, 
                 name: 'LocalLook Premium Plan - 30 Days',
                 quantity: 1
               }
@@ -320,16 +326,56 @@ app.post('/api/create-checkout-session', async (req, res) => {
     const data = await response.json();
 
     if (data.errors) {
-      console.error("PayMongo API Error Details:", data.errors);
       throw new Error(data.errors[0].detail);
     }
 
-    // Send the generated URL back to the React frontend
     res.json({ checkoutUrl: data.data.attributes.checkout_url });
 
   } catch (error) {
     console.error("Checkout Session Error:", error.message);
     res.status(500).json({ error: 'Failed to create payment session.' });
+  }
+});
+
+// 🚀 NEW: PAYMONGO WEBHOOK LISTENER
+app.post('/api/webhooks/paymongo', async (req, res) => {
+  try {
+    // Safely extract the event type using optional chaining
+    const eventType = req.body?.data?.attributes?.type;
+    
+    // Check if this is a successful payment
+    if (eventType === 'checkout_session.payment.paid') {
+      
+      // Extract the store_id we passed as the reference_number earlier
+      const storeId = req.body?.data?.attributes?.data?.attributes?.reference_number;
+      
+      if (storeId) {
+        const thirtyDaysFromNow = new Date();
+        thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+
+        // Insert the active premium subscription into Supabase
+        const { error } = await supabaseAdmin.from('subscriptions').insert([{
+          store_id: storeId,
+          plan_type: 'premium',
+          end_date: thirtyDaysFromNow.toISOString(),
+          status: 'active'
+        }]);
+
+        if (error) {
+          console.error("Webhook Database Error:", error);
+          return res.status(500).send("Database Update Failed");
+        }
+        
+        console.log(`✅ Webhook Success: Store ${storeId} is now Premium.`);
+      }
+    }
+    
+    // Always return a 200 OK so PayMongo knows you received the webhook
+    res.status(200).send("Webhook Received");
+
+  } catch (err) {
+    console.error("Webhook Processing Error:", err);
+    res.status(500).send("Internal Server Error");
   }
 });
 
