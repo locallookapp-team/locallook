@@ -379,4 +379,87 @@ app.post('/api/webhooks/paymongo', async (req, res) => {
   }
 });
 
+// ==========================================
+// 🚀 CONSUMER FEATURES: REVIEWS & SAVES
+// ==========================================
+
+// 1. Get reviews for a specific store
+app.get('/api/stores/:store_id/reviews', async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT r.id, r.rating, r.comment, r.created_at, u.display_name, u.avatar_url 
+      FROM reviews r
+      JOIN users u ON r.user_id = u.id
+      WHERE r.store_id = $1
+      ORDER BY r.created_at DESC;
+    `, [req.params.store_id]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Server Error");
+  }
+});
+
+// 2. Add a new review
+app.post('/api/reviews', async (req, res) => {
+  try {
+    const { store_id, user_id, rating, comment } = req.body;
+    
+    if (!store_id || !user_id || !rating) {
+      return res.status(400).json({ error: "Missing required fields." });
+    }
+
+    const result = await db.query(`
+      INSERT INTO reviews (store_id, user_id, rating, comment) 
+      VALUES ($1, $2, $3, $4) 
+      RETURNING *;
+    `, [store_id, user_id, rating, comment]); 
+    
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Server Error");
+  }
+});
+
+// 3. Toggle a Saved Place (Bookmark)
+app.post('/api/saved-places/toggle', async (req, res) => {
+  try {
+    const { store_id, user_id } = req.body;
+    
+    // Check if it's already saved
+    const check = await db.query('SELECT id FROM saved_places WHERE store_id = $1 AND user_id = $2', [store_id, user_id]);
+    
+    if (check.rows.length > 0) {
+      // If it exists, unsave (delete) it
+      await db.query('DELETE FROM saved_places WHERE id = $1', [check.rows[0].id]);
+      res.json({ saved: false, message: "Removed from saved places." });
+    } else {
+      // If it doesn't exist, save (insert) it
+      await db.query('INSERT INTO saved_places (store_id, user_id) VALUES ($1, $2)', [store_id, user_id]);
+      res.json({ saved: true, message: "Added to saved places." });
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Server Error");
+  }
+});
+
+// 4. Get all saved places for a specific user
+app.get('/api/users/:user_id/saved-places', async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT s.id, s.store_name, s.store_category, s.cover_image_url, sp.created_at
+      FROM saved_places sp
+      JOIN stores s ON sp.store_id = s.id
+      WHERE sp.user_id = $1
+      ORDER BY sp.created_at DESC;
+    `, [req.params.user_id]);
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).send("Server Error");
+  }
+});
+
 app.listen(PORT, () => { console.log(`Server is running on http://localhost:${PORT}`); });
