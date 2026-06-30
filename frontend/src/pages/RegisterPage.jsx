@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import PageTransition from '../components/PageTransition';
 
 export default function RegisterPage() {
   const navigate = useNavigate();
@@ -9,13 +8,14 @@ export default function RegisterPage() {
   const [formData, setFormData] = useState({ fullName: '', email: '', password: '' });
   const [isLoading, setIsLoading] = useState(false);
   
-  // OTP States
   const [isOtpSent, setIsOtpSent] = useState(false);
   const [otpToken, setOtpToken] = useState('');
 
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
   const handleGoogleSignIn = async () => {
+    // 🚀 Set VIP Pass for when they return from Google
+    localStorage.setItem('upgrade_to_merchant', 'true');
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: window.location.origin + '/dashboard' }
@@ -24,6 +24,8 @@ export default function RegisterPage() {
   };
 
   const handleFacebookSignIn = async () => {
+    // 🚀 Set VIP Pass for when they return from Facebook
+    localStorage.setItem('upgrade_to_merchant', 'true');
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'facebook',
       options: { redirectTo: window.location.origin + '/dashboard' }
@@ -39,11 +41,7 @@ export default function RegisterPage() {
       const { error: authError } = await supabase.auth.signUp({ 
         email: formData.email, 
         password: formData.password,
-        options: {
-          data: {
-            full_name: formData.fullName
-          }
-        }
+        options: { data: { full_name: formData.fullName } }
       });
       
       if (authError) {
@@ -78,14 +76,14 @@ export default function RegisterPage() {
       if (!data.user) throw new Error("Failed to verify user account.");
 
       const userId = data.user.id;
+      
+      // 🚀 FIX: Use 'update' instead of 'upsert' because the DB trigger already created the row!
       const { error: userError } = await supabase
         .from('users')
-        .upsert(
-          { id: userId, email: formData.email, role: 'merchant' },
-          { onConflict: 'email' }
-        );
+        .update({ role: 'merchant' })
+        .eq('id', userId);
 
-      if (userError) throw new Error("Failed to create user profile: " + userError.message);
+      if (userError) throw new Error("Failed to upgrade profile: " + userError.message);
 
       navigate('/dashboard');
 
@@ -98,45 +96,14 @@ export default function RegisterPage() {
   };
 
   return (
-    <PageTransition>
-      {/* Outer wrapper allows normal scrolling if viewed on a tiny mobile screen */}
-      <div style={{ 
-        minHeight: '100vh', 
-        display: 'flex', 
-        flexDirection: 'column',
-        backgroundColor: '#f3f4f6', 
-        fontFamily: 'sans-serif',
-        overflowY: 'auto'
-      }}>
-        
-        {/* Inner wrapper dynamically centers the card AND reserves 100px for the floating nav bar */}
-        <div style={{ 
-          flex: 1, 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'center', 
-          padding: '20px',
-          paddingBottom: '100px' // Hard reservation for the floating dock
-        }}>
-          
-          {/* COMPACTED CARD: Removed redundant back button, slimmed paddings */}
-          <div style={{ 
-            backgroundColor: 'white', 
-            padding: '28px', // Sleeker padding
-            borderRadius: '16px', 
-            boxShadow: '0 10px 25px rgba(0,0,0,0.05)', 
-            width: '100%', 
-            maxWidth: '380px', // Slimmer width
-            boxSizing: 'border-box'
-          }}>
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#f3f4f6', fontFamily: 'sans-serif', overflowY: 'auto' }}>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', paddingBottom: '100px' }}>
+          <div style={{ backgroundColor: 'white', padding: '28px', borderRadius: '16px', boxShadow: '0 10px 25px rgba(0,0,0,0.05)', width: '100%', maxWidth: '380px', boxSizing: 'border-box' }}>
 
             <h2 style={{ margin: '0 0 4px 0', color: '#1f2937', fontSize: '22px', fontWeight: '900' }}>Register Business</h2>
             <p style={{ margin: '0 0 20px 0', color: '#6b7280', fontSize: '13px' }}>Create an account to list your store.</p>
 
             {!isOtpSent ? (
-              // ==========================================
-              // STANDARD REGISTRATION VIEW
-              // ==========================================
               <>
                 <button onClick={handleGoogleSignIn} style={{ width: '100%', padding: '10px', backgroundColor: 'white', border: '1px solid #d1d5db', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px', color: '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'background-color 0.2s', marginBottom: '10px' }}>
                   <svg width="16" height="16" viewBox="0 0 24 24">
@@ -183,9 +150,6 @@ export default function RegisterPage() {
                 </form>
               </>
             ) : (
-              // ==========================================
-              // OTP VERIFICATION VIEW (Also compacted)
-              // ==========================================
               <form onSubmit={handleVerifyOtp} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                 <div style={{ backgroundColor: '#eff6ff', padding: '12px', borderRadius: '8px', border: '1px solid #bfdbfe', marginBottom: '10px' }}>
                   <h3 style={{ margin: '0 0 4px 0', color: '#1e3a8a', fontSize: '15px' }}>Check your email</h3>
@@ -193,24 +157,13 @@ export default function RegisterPage() {
                     We sent a 6-digit confirmation code to <strong style={{wordBreak: 'break-all'}}>{formData.email}</strong>.
                   </p>
                 </div>
-
                 <div>
                   <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#4b5563', marginBottom: '5px', textAlign: 'center' }}>CONFIRMATION CODE</label>
-                  <input 
-                    type="text" 
-                    required 
-                    value={otpToken} 
-                    onChange={(e) => setOtpToken(e.target.value)} 
-                    placeholder="000000" 
-                    maxLength={6}
-                    style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '2px solid #d1d5db', fontSize: '22px', letterSpacing: '8px', textAlign: 'center', boxSizing: 'border-box', outline: 'none', fontWeight: 'bold', color: '#1f2937' }} 
-                  />
+                  <input type="text" required value={otpToken} onChange={(e) => setOtpToken(e.target.value)} placeholder="000000" maxLength={6} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '2px solid #d1d5db', fontSize: '22px', letterSpacing: '8px', textAlign: 'center', boxSizing: 'border-box', outline: 'none', fontWeight: 'bold', color: '#1f2937' }} />
                 </div>
-
                 <button type="submit" disabled={isLoading || otpToken.length < 6} style={{ padding: '12px', backgroundColor: (isLoading || otpToken.length < 6) ? '#9ca3af' : '#10b981', color: 'white', border: 'none', borderRadius: '8px', cursor: (isLoading || otpToken.length < 6) ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '14px', marginTop: '6px', transition: 'background-color 0.2s' }}>
                   {isLoading ? 'Verifying...' : 'Verify & Continue'}
                 </button>
-
                 <button type="button" onClick={() => setIsOtpSent(false)} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', marginTop: '5px', fontSize: '13px', textDecoration: 'underline' }}>
                   Wait, I need to use a different email
                 </button>
@@ -220,6 +173,5 @@ export default function RegisterPage() {
           </div>
         </div>
       </div>
-    </PageTransition>
   );
 }

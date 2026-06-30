@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import PageTransition from '../components/PageTransition';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -14,7 +13,7 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin + '/dashboard'
+        redirectTo: window.location.origin 
       }
     });
     if (error) alert("Google Sign-In Error: " + error.message);
@@ -24,7 +23,7 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'facebook',
       options: {
-        redirectTo: window.location.origin + '/dashboard'
+        redirectTo: window.location.origin
       }
     });
     if (error) alert("Facebook Sign-In Error: " + error.message);
@@ -35,12 +34,28 @@ export default function LoginPage() {
     setIsLoading(true);
     
     try {
-      const { error } = await supabase.auth.signInWithPassword({ 
+      const { data, error } = await supabase.auth.signInWithPassword({ 
         email: formData.email, 
         password: formData.password 
       });
+      
       if (error) throw new Error(error.message);
-      navigate('/dashboard'); 
+
+      // ROLE-BASED ROUTING
+      const { data: userData } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', data.user.id)
+        .single();
+
+      const role = userData?.role || 'consumer';
+
+      if (role === 'merchant' || role === 'operator') {
+        navigate('/dashboard'); 
+      } else {
+        navigate('/'); 
+      }
+
     } catch (err) {
       alert("Login Failed: " + err.message);
     } finally {
@@ -49,40 +64,14 @@ export default function LoginPage() {
   };
 
   return (
-    <PageTransition>
-      <div style={{ 
-        minHeight: '100vh', 
-        display: 'flex', 
-        flexDirection: 'column',
-        backgroundColor: '#f3f4f6', 
-        fontFamily: 'sans-serif',
-        overflowY: 'auto'
-      }}>
-        
-        <div style={{ 
-          flex: 1, 
-          display: 'flex', 
-          alignItems: 'center', 
-          justifyContent: 'center', 
-          padding: '20px',
-          paddingBottom: '100px' // Hard reservation for the floating dock
-        }}>
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: '#f3f4f6', fontFamily: 'sans-serif', overflowY: 'auto' }}>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', paddingBottom: '100px' }}>
           
-          {/* Relaxed Card Padding: Brought back up to 36px for a more premium feel */}
-          <div style={{ 
-            backgroundColor: 'white', 
-            padding: '36px', 
-            borderRadius: '16px', 
-            boxShadow: '0 10px 25px rgba(0,0,0,0.05)', 
-            width: '100%', 
-            maxWidth: '380px', 
-            boxSizing: 'border-box'
-          }}>
+          <div style={{ backgroundColor: 'white', padding: '36px', borderRadius: '16px', boxShadow: '0 10px 25px rgba(0,0,0,0.05)', width: '100%', maxWidth: '380px', boxSizing: 'border-box' }}>
 
-            <h2 style={{ margin: '0 0 6px 0', color: '#1f2937', fontSize: '24px', fontWeight: '900' }}>Welcome Back</h2>
-            <p style={{ margin: '0 0 24px 0', color: '#6b7280', fontSize: '14px' }}>Log in to your Business Portal.</p>
+            <h2 style={{ margin: '0 0 6px 0', color: '#1f2937', fontSize: '24px', fontWeight: '900' }}>Welcome to LocalLook</h2>
+            <p style={{ margin: '0 0 24px 0', color: '#6b7280', fontSize: '14px' }}>Sign in to save places, review stores, or manage your business.</p>
 
-            {/* Restored button padding to 12px for better touch targets */}
             <button onClick={handleGoogleSignIn} style={{ width: '100%', padding: '12px', backgroundColor: 'white', border: '1px solid #d1d5db', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', color: '#374151', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'background-color 0.2s', marginBottom: '12px' }}>
               <svg width="18" height="18" viewBox="0 0 24 24">
                 <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -106,7 +95,6 @@ export default function LoginPage() {
               <div style={{ flexGrow: 1, height: '1px', backgroundColor: '#e5e7eb' }}></div>
             </div>
 
-            {/* Restored gap: 16px to give form inputs proper spacing */}
             <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#4b5563', marginBottom: '6px' }}>EMAIL ADDRESS</label>
@@ -116,29 +104,22 @@ export default function LoginPage() {
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                   <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#4b5563' }}>PASSWORD</label>
-                  <span 
-                    onClick={() => navigate('/forgot-password')} 
-                    style={{ fontSize: '12px', color: '#2563eb', fontWeight: 'bold', cursor: 'pointer', textDecoration: 'none' }}
-                  >
-                    Forgot password?
-                  </span>
+                  <span onClick={() => navigate('/forgot-password')} style={{ fontSize: '12px', color: '#2563eb', fontWeight: 'bold', cursor: 'pointer', textDecoration: 'none' }}>Forgot password?</span>
                 </div>
                 <input type="password" name="password" required value={formData.password} onChange={handleChange} style={{ width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '14px', boxSizing: 'border-box', outline: 'none' }} />
               </div>
 
-              {/* Restored 14px padding for the primary call-to-action button */}
               <button type="submit" disabled={isLoading} style={{ padding: '14px', backgroundColor: isLoading ? '#9ca3af' : '#2563eb', color: 'white', border: 'none', borderRadius: '8px', cursor: isLoading ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '15px', marginTop: '4px', transition: 'background-color 0.2s' }}>
                 {isLoading ? 'Verifying...' : 'Log In'}
               </button>
               
-              <div style={{ textAlign: 'center', marginTop: '12px', fontSize: '14px', color: '#6b7280' }}>
-                Don't have an account? <span onClick={() => navigate('/register')} style={{ color: '#2563eb', fontWeight: 'bold', cursor: 'pointer' }}>Sign up</span>
+              <div style={{ textAlign: 'center', marginTop: '16px', fontSize: '14px', color: '#6b7280' }}>
+                New here? <span onClick={() => navigate('/signup')} style={{ color: '#2563eb', fontWeight: 'bold', cursor: 'pointer' }}>Create an account</span>
               </div>
             </form>
 
           </div>
         </div>
       </div>
-    </PageTransition>
   );
 }

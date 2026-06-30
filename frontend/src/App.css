@@ -1,0 +1,45 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+
+:root {
+  /* Core Brand Colors from Mockup */
+  --brand-primary: #2563EB; /* The solid blue */
+  --brand-gradient: linear-gradient(135deg, #7C3AED, #3B82F6); /* The Promoted badge */
+  --font-main: 'Inter', sans-serif;
+  --app-radius: 24px; /* For the map and cards */
+}
+
+/* Light Mode (Matches image_4121c7.jpg) */
+body {
+  --bg-color: #F8FAFC;
+  --surface-color: #FFFFFF;
+  --surface-hover: #F1F5F9;
+  --text-main: #0F172A;
+  --text-muted: #64748B;
+  --border-color: #E2E8F0;
+  --icon-color: #94A3B8;
+
+  background-color: var(--bg-color);
+  color: var(--text-main);
+  font-family: var(--font-main);
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Dark Mode (Matches image_34d3a6.jpg) */
+@media (prefers-color-scheme: dark) {
+  body {
+    --bg-color: #0B1121; /* Deepest navy */
+    --surface-color: #161F33; /* Slightly lighter for cards/sidebar */
+    --surface-hover: #1E293B;
+    --text-main: #F8FAFC;
+    --text-muted: #94A3B8;
+    --border-color: #1E293B;
+    --icon-color: #64748B;
+  }
+}
+
+/* Custom Scrollbar to match the sleek design */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }

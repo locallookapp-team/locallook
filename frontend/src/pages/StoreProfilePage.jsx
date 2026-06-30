@@ -1,7 +1,28 @@
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { MdLocationOn, MdAccessTime, MdPhone, MdEmail, MdStarRate, MdArrowBack, MdLanguage } from "react-icons/md";
-import { supabase } from '../supabaseClient';
+import { MdArrowBack, MdLocationOn, MdPhone, MdEmail, MdLanguage, MdStar, MdAccessTime } from 'react-icons/md';
+
+// Dynamic API URL setup (Matches your Dashboard config)
+const API_BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) 
+  ? import.meta.env.VITE_API_URL 
+  : 'https://locallook-api.onrender.com';
+
+// 🚀 THE COVER IMAGE FALLBACK SYSTEM
+const getStoreCoverImage = (store) => {
+  // 1. If merchant uploaded a cover, use it!
+  if (store.cover_image_url) {
+    return store.cover_image_url;
+  }
+  // 2. Otherwise, fall back to high-quality category defaults
+  switch (store.store_category) {
+    case 'Food & Dining': return 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1200&q=80';
+    case 'Retail': return 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1200&q=80';
+    case 'Services': return 'https://images.unsplash.com/photo-1521791136064-7986c2920216?w=1200&q=80';
+    case 'Groceries': return 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=1200&q=80';
+    case 'Health': return 'https://images.unsplash.com/photo-1505751172876-fa1923c5c528?w=1200&q=80';
+    default: return 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=1200&q=80';
+  }
+};
 
 export default function StoreProfilePage() {
   const { id } = useParams();
@@ -11,251 +32,183 @@ export default function StoreProfilePage() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const [categoryOrder, setCategoryOrder] = useState([]);
-  const [activeCategory, setActiveCategory] = useState('');
-  const [selectedItem, setSelectedItem] = useState(null);
-  const scrollContainerRef = useRef(null);
-  const sectionRefs = useRef({});
-
+  // Fetch store data and items on mount
   useEffect(() => {
-    setLoading(true);
-    fetch(`https://locallook-api.onrender.com/api/stores/${id}`)
-      .then(res => {
-        // FIXED: Catch the 404 error before it tries to parse HTML as JSON!
-        if (!res.ok) throw new Error('Store not found');
-        return res.json();
-      })
-      .then(data => {
-        setStore(data);
-        return fetch(`https://locallook-api.onrender.com/api/stores/${id}/items`);
-      })
-      .then(res => {
-        if (!res.ok) return []; 
-        return res.json();
-      })
-      .then(data => { 
-        setItems(data || []); 
-        setLoading(false); 
-      })
-      .catch(err => { 
-        console.error("Profile Fetch Error:", err); 
-        setStore(null); // Triggers the "Store Not Found" screen safely
-        setLoading(false); 
-      });
-  }, [id]);
+    const fetchStoreData = async () => {
+      try {
+        const storeRes = await fetch(`${API_BASE_URL}/api/stores/${id}`);
+        if (!storeRes.ok) throw new Error("Store not found");
+        const storeData = await storeRes.json();
+        setStore(storeData);
 
-  useEffect(() => {
-    if (!id) return;
-    const storeSubscription = supabase
-      .channel(`store-updates-${id}`)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'stores', filter: `id=eq.${id}` }, (payload) => {
-          if (payload.new) { setStore((prev) => ({ ...prev, is_open: payload.new.is_open })); }
-      }).subscribe();
-    return () => { supabase.removeChannel(storeSubscription); };
-  }, [id]);
-
-  useEffect(() => {
-    if (store && items.length > 0) {
-      const uniqueCats = [...new Set(items.map(i => i.item_category || 'General'))];
-      const savedOrder = store.theme_settings?.categoryOrder || [];
-      const newOrder = [...savedOrder];
-      uniqueCats.forEach(c => { if (!newOrder.includes(c)) newOrder.push(c); });
-      const finalOrder = newOrder.filter(c => uniqueCats.includes(c)); 
-      setCategoryOrder(finalOrder);
-      if (finalOrder.length > 0) setActiveCategory(finalOrder[0]);
-    }
-  }, [store, items]);
-
-  const handleScroll = () => {
-    if (!scrollContainerRef.current) return;
-    const containerTop = scrollContainerRef.current.getBoundingClientRect().top;
-    let currentActive = activeCategory; let minDistance = Infinity;
-    categoryOrder.forEach(cat => {
-      const el = sectionRefs.current[cat];
-      if (el) {
-        const distance = Math.abs(el.getBoundingClientRect().top - containerTop - 120); 
-        if (distance < minDistance) { minDistance = distance; currentActive = cat; }
+        const itemsRes = await fetch(`${API_BASE_URL}/api/stores/${id}/items`);
+        if (itemsRes.ok) {
+          const itemsData = await itemsRes.json();
+          setItems(itemsData);
+        }
+      } catch (err) {
+        console.error("Error fetching store:", err);
+      } finally {
+        setLoading(false);
       }
-    });
-    if (currentActive !== activeCategory) setActiveCategory(currentActive);
-  };
+    };
 
-  const scrollToCategory = (cat) => {
-    const el = sectionRefs.current[cat];
-    if (el && scrollContainerRef.current) { scrollContainerRef.current.scrollTo({ top: el.offsetTop - 120, behavior: 'smooth' }); }
-  };
+    fetchStoreData();
+  }, [id]);
 
-  if (loading) return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#f9fafb' }}>
-      <div style={{ padding: '20px', background: 'white', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.05)' }}>
-        <h3 style={{ color: '#2563eb', margin: 0 }}>Loading Profile...</h3>
+  if (loading) {
+    return <div style={{ display: 'flex', height: '100vh', justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' }}>Loading...</div>;
+  }
+
+  if (!store) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' }}>
+        <h2>Store not found</h2>
+        <button onClick={() => navigate('/')} style={{ padding: '10px 20px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>Go Back Home</button>
       </div>
-    </div>
-  );
+    );
+  }
 
-  if (!store) return (
-    <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#f9fafb', gap: '15px' }}>
-      <div style={{ fontSize: '50px' }}>🧭</div>
-      <h3 style={{ color: '#4b5563', margin: 0 }}>Oops! Store not found.</h3>
-      <p style={{ color: '#9ca3af', margin: '0 0 10px 0', fontSize: '14px' }}>It may have been deleted or moved.</p>
-      <button onClick={() => navigate('/')} style={{ padding: '10px 24px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Return to Map</button>
-    </div>
-  );
-
-  const theme = store.theme_settings || { primaryColor: '#3b82f6', layout: 'grid' };
-  const brandColor = theme.primaryColor || '#3b82f6';
-  const isGrid = theme.layout !== 'list';
-
-  const showPhone = theme.showPhone && store.phone;
-  const showEmail = theme.showEmail && store.email;
-  const showWebsite = theme.showWebsite && store.website;
-  const showAddress = theme.showAddress && theme.addressText;
-
-  const groupedItems = items.reduce((acc, item) => {
-    const category = item.item_category || 'General';
-    if (!acc[category]) acc[category] = [];
-    acc[category].push(item);
-    return acc;
-  }, {});
+  // Parse theme settings (or use defaults)
+  const theme = store.theme_settings || {};
+  const showPhone = theme.showPhone !== false && store.phone; 
+  const showEmail = theme.showEmail !== false && store.email;
+  const showWebsite = theme.showWebsite !== false && store.website;
+  const showAddress = theme.showAddress !== false && theme.addressText;
 
   return (
-    <>
-      <style>
-        {`.themed-scrollbar::-webkit-scrollbar { width: 10px; } .themed-scrollbar::-webkit-scrollbar-track { background: #e5e7eb; } .themed-scrollbar::-webkit-scrollbar-thumb { background-color: ${brandColor}; border-radius: 10px; border: 2px solid #e5e7eb; } .themed-scrollbar::-webkit-scrollbar-thumb:hover { filter: brightness(0.8); } .menu-item-card:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(0,0,0,0.08) !important; }`}
-      </style>
-
-      {/* CUSTOMER ITEM MODAL */}
-      {selectedItem && (
-        <div onClick={() => setSelectedItem(null)} style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'flex-end', padding: '20px', backdropFilter: 'blur(4px)' }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ backgroundColor: 'white', width: '100%', maxWidth: '500px', maxHeight: '90vh', borderRadius: '24px', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 -10px 40px rgba(0,0,0,0.2)', animation: 'slideUp 0.3s ease-out' }}>
-            <div style={{ position: 'relative', width: '100%', height: '250px', backgroundColor: '#f3f4f6' }}>
-              {selectedItem.image_url ? <img src={selectedItem.image_url} alt={selectedItem.item_name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '60px' }}>🍽️</div>}
-              <button onClick={() => setSelectedItem(null)} style={{ position: 'absolute', top: '15px', right: '15px', width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'white', border: 'none', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '18px', fontWeight: 'bold', color: '#111827' }}>✕</button>
-            </div>
-            <div style={{ padding: '25px', overflowY: 'auto', flexGrow: 1 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '15px' }}>
-                <div>
-                  <h2 style={{ margin: '0 0 5px 0', fontSize: '24px', color: '#111827', fontWeight: '900', lineHeight: '1.2' }}>{selectedItem.item_name}</h2>
-                  <span style={{ fontSize: '12px', padding: '4px 10px', backgroundColor: '#f3f4f6', color: '#4b5563', borderRadius: '6px', fontWeight: '700', letterSpacing: '0.5px', textTransform: 'uppercase' }}>{selectedItem.item_category}</span>
-                </div>
-                <div style={{ fontSize: '24px', fontWeight: '800', color: '#111827', letterSpacing: '-0.5px' }}>₱{parseFloat(selectedItem.price).toFixed(2)}</div>
-              </div>
-              <p style={{ marginTop: '20px', color: '#4b5563', fontSize: '15px', lineHeight: '1.6' }}>{selectedItem.description || "No description provided for this item."}</p>
-            </div>
-            <div style={{ padding: '20px', borderTop: '1px solid #f3f4f6', backgroundColor: 'white' }}>
-              <button style={{ width: '100%', padding: '16px', backgroundColor: brandColor, color: 'white', border: 'none', borderRadius: '12px', fontSize: '16px', fontWeight: 'bold', cursor: 'pointer', boxShadow: `0 4px 15px ${brandColor}40` }}>Add to Order — ₱{parseFloat(selectedItem.price).toFixed(2)}</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* FIXED: Increased paddingBottom to 90px so the last item isn't hidden behind the navbar */}
-      <div ref={scrollContainerRef} onScroll={handleScroll} className="themed-scrollbar" style={{ height: '100vh', width: '100vw', overflowY: 'auto', backgroundColor: '#f3f4f6', fontFamily: 'sans-serif', paddingBottom: '40px' }}>
+  <div style={{ height: '100%', overflowY: 'auto', width: '100%', backgroundColor: '#F8FAFC', fontFamily: 'Inter, sans-serif' }}>
+      {/* 🚀 1. THE HERO COVER IMAGE (No Avatar) */}
+      <div style={{ 
+        height: '320px', 
+        width: '100%', 
+        backgroundColor: '#1E293B',
+        backgroundImage: `url(${getStoreCoverImage(store)})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        position: 'relative'
+      }}>
+        {/* Dark gradient overlay to make the back button visible */}
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0) 50%)' }} />
         
-        <div style={{ position: 'relative', height: '220px', background: `linear-gradient(135deg, ${brandColor}, #1e293b)`, display: 'flex', flexDirection: 'column' }}>
-          <div style={{ padding: '20px' }}>
-            <button onClick={() => navigate(-1)} style={{ display: 'flex', alignItems: 'center', gap: '5px', padding: '10px 16px', backgroundColor: 'rgba(255,255,255,0.2)', backdropFilter: 'blur(10px)', color: 'white', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '20px', cursor: 'pointer', fontWeight: 'bold', fontSize: '14px', transition: 'background 0.2s' }}>
-              <MdArrowBack size={18} /> Back
-            </button>
-          </div>
-        </div>
+        {/* Floating Back Button */}
+        <button 
+          onClick={() => navigate(-1)} 
+          style={{ 
+            position: 'absolute', 
+            top: '25px', 
+            left: '25px', 
+            backgroundColor: 'rgba(255, 255, 255, 0.2)', 
+            backdropFilter: 'blur(10px)', 
+            border: '1px solid rgba(255,255,255,0.4)', 
+            color: 'white', 
+            padding: '10px 20px', 
+            borderRadius: '24px', 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '8px', 
+            cursor: 'pointer',
+            fontWeight: '600',
+            fontSize: '14px',
+            zIndex: 10,
+            transition: 'background-color 0.2s'
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.3)'}
+          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.2)'}
+        >
+          <MdArrowBack size={18} /> Back
+        </button>
+      </div>
 
-        <div style={{ maxWidth: '800px', margin: '0 auto', padding: '0 20px', position: 'relative' }}>
-          
-          <div style={{ display: 'flex', alignItems: 'flex-end', marginTop: '-60px', marginBottom: '15px' }}>
-            <div style={{ width: '120px', height: '120px', borderRadius: '50%', backgroundColor: '#111827', border: '4px solid #f3f4f6', display: 'flex', justifyContent: 'center', alignItems: 'center', color: 'white', fontSize: '48px', fontWeight: '900', zIndex: 10, flexShrink: 0, boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
-              {store.store_name.charAt(0).toUpperCase()}
-            </div>
-          </div>
-
-          <div style={{ padding: '0 5px' }}>
-            <h1 style={{ margin: 0, fontSize: '32px', color: '#1f2937', fontWeight: '900', letterSpacing: '-0.5px' }}>{store.store_name}</h1>
-            <p style={{ margin: '4px 0 12px 0', color: '#6b7280', fontSize: '15px', fontWeight: '600' }}>{store.store_category}</p>
-            {store.description && <p style={{ margin: 0, fontSize: '15px', color: '#374151', lineHeight: '1.6' }}>{store.description}</p>}
-          </div>
-
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '15px', marginBottom: '20px', padding: '0 5px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', backgroundColor: store.is_open ? '#d1fae5' : '#fee2e2', color: store.is_open ? '#059669' : '#dc2626', borderRadius: '20px', fontSize: '13px', fontWeight: '700', transition: 'all 0.3s ease' }}>
-              <MdAccessTime size={16} /> {store.is_open ? 'Open now' : 'Closed now'}
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', backgroundColor: 'rgba(255, 255, 255, 0.6)', color: '#4b5563', borderRadius: '20px', fontSize: '13px', fontWeight: '600', border: '1px solid #e5e7eb' }}>
-              <MdStarRate size={16} color="#f59e0b" /> Highly Recommended
-            </div>
-
-            {showAddress && (
-              <div onClick={() => navigate(`/?lat=${store.lat}&lng=${store.lng}&zoom=17`)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', backgroundColor: 'rgba(255, 255, 255, 0.6)', color: '#4b5563', borderRadius: '20px', fontSize: '13px', fontWeight: '600', border: '1px solid #e5e7eb', cursor: 'pointer' }}>
-                <MdLocationOn size={16} /> {theme.addressText}
-              </div>
-            )}
-
-            {showPhone && (
-              <a href={`tel:${store.phone}`} style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', backgroundColor: 'rgba(255, 255, 255, 0.6)', color: '#4b5563', borderRadius: '20px', fontSize: '13px', fontWeight: '600', border: '1px solid #e5e7eb', cursor: 'pointer' }}>
-                <MdPhone size={16} /> {store.phone}
-              </a>
-            )}
-
-            {showEmail && (
-              <a href={`mailto:${store.email}`} style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', backgroundColor: 'rgba(255, 255, 255, 0.6)', color: '#4b5563', borderRadius: '20px', fontSize: '13px', fontWeight: '600', border: '1px solid #e5e7eb', cursor: 'pointer' }}>
-                <MdEmail size={16} /> {store.email}
-              </a>
-            )}
-
-            {showWebsite && (
-              <a href={store.website.startsWith('http') ? store.website : `https://${store.website}`} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', backgroundColor: 'rgba(255, 255, 255, 0.6)', color: '#4b5563', borderRadius: '20px', fontSize: '13px', fontWeight: '600', border: '1px solid #e5e7eb', cursor: 'pointer' }}>
-                <MdLanguage size={16} /> {store.website.replace(/^https?:\/\//, '')}
-              </a>
-            )}
-          </div>
-
-          <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '25px 5px 30px 5px' }} />
-        </div>
-
-        {categoryOrder.length > 0 && items.length > 0 && (
-          <div style={{ display: 'flex', gap: '10px', padding: '15px 20px', overflowX: 'auto', backgroundColor: 'rgba(243, 244, 246, 0.95)', backdropFilter: 'blur(10px)', position: 'sticky', top: '0', zIndex: 50, maxWidth: '800px', margin: '0 auto', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-            {categoryOrder.map(cat => (
-              <button key={cat} onClick={() => scrollToCategory(cat)} style={{ padding: '8px 20px', borderRadius: '20px', cursor: 'pointer', whiteSpace: 'nowrap', fontWeight: 'bold', fontSize: '14px', border: 'none', transition: 'all 0.2s', backgroundColor: activeCategory === cat ? brandColor : 'white', color: activeCategory === cat ? 'white' : '#4b5563', boxShadow: activeCategory === cat ? `0 4px 10px ${brandColor}40` : '0 2px 4px rgba(0,0,0,0.05)' }}>
-                {cat}
-              </button>
-            ))}
-          </div>
+      {/* 🚀 2. STORE INFO SECTION (Clean & Centered) */}
+      <div style={{ maxWidth: '900px', margin: '0 auto', padding: '30px 20px', textAlign: 'center' }}>
+        
+        <h1 style={{ margin: '0 0 5px 0', fontSize: '32px', fontWeight: '900', color: '#0F172A' }}>
+          {store.store_name}
+        </h1>
+        <p style={{ margin: '0 0 15px 0', fontSize: '15px', color: '#64748B', fontWeight: '600' }}>
+          {store.store_category}
+        </p>
+        
+        {store.description && (
+          <p style={{ margin: '0 auto 25px auto', maxWidth: '600px', color: '#475569', fontSize: '15px', lineHeight: '1.6' }}>
+            {store.description}
+          </p>
         )}
 
-        <div style={{ maxWidth: '800px', margin: '20px auto 0', padding: '0 20px' }}>
-          {items.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '50px 20px', backgroundColor: 'white', borderRadius: '20px', border: '2px dashed #e5e7eb' }}>
-              <span style={{ fontSize: '40px', display: 'block', marginBottom: '10px' }}>🍽️</span><p style={{ margin: 0, color: '#6b7280', fontWeight: '500' }}>This store hasn't posted any items yet.</p>
+        {/* Status & Rating Pills */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', marginBottom: '25px', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', backgroundColor: store.is_open ? '#D1FAE5' : '#FEE2E2', color: store.is_open ? '#059669' : '#DC2626', borderRadius: '20px', fontSize: '13px', fontWeight: '700' }}>
+            <MdAccessTime size={16} /> {store.is_open ? 'Open now' : 'Closed'}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', backgroundColor: '#FFFBEB', border: '1px solid #FEF3C7', color: '#D97706', borderRadius: '20px', fontSize: '13px', fontWeight: '700' }}>
+            <MdStar size={16} /> Highly Recommended
+          </div>
+        </div>
+
+        {/* Contact Information Pills */}
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '40px' }}>
+          {showAddress && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', backgroundColor: 'white', border: '1px solid #E2E8F0', borderRadius: '12px', fontSize: '13px', color: '#475569', fontWeight: '600', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+              <MdLocationOn size={16} color="#94A3B8" /> {theme.addressText}
             </div>
-          ) : (
-            <div>
-              {categoryOrder.map((category) => {
-                if (!groupedItems[category]) return null;
-                return (
-                  <div key={category} ref={(el) => (sectionRefs.current[category] = el)} style={{ marginBottom: '50px', paddingTop: '10px' }}>
-                    <h2 style={{ margin: '0 0 20px 0', fontSize: '22px', color: '#1f2937', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '15px' }}>
-                      {category} <div style={{ flexGrow: 1, height: '2px', backgroundColor: brandColor, opacity: 0.2, borderRadius: '2px' }}></div>
-                    </h2>
-                    <div style={{ display: isGrid ? 'grid' : 'flex', gridTemplateColumns: isGrid ? 'repeat(auto-fill, minmax(250px, 1fr))' : 'none', flexDirection: isGrid ? 'row' : 'column', gap: '20px' }}>
-                      {groupedItems[category].map(item => (
-                        <div key={item.id} className="menu-item-card" onClick={() => setSelectedItem(item)} style={{ backgroundColor: 'white', borderRadius: '16px', boxShadow: '0 4px 15px rgba(0,0,0,0.04)', border: '1px solid rgba(0,0,0,0.04)', display: 'flex', flexDirection: isGrid ? 'column' : 'row', overflow: 'hidden', alignItems: isGrid ? 'stretch' : 'center', padding: isGrid ? '0' : '15px', gap: isGrid ? '0' : '20px', cursor: 'pointer', transition: 'all 0.2s ease' }}>
-                          {item.image_url ? ( <div style={{ width: isGrid ? '100%' : '120px', height: isGrid ? 'auto' : '90px', aspectRatio: isGrid ? '4/3' : 'auto', minWidth: isGrid ? 'auto' : '120px', backgroundImage: `url(${item.image_url})`, backgroundSize: 'cover', backgroundPosition: 'center', borderRadius: isGrid ? '0' : '8px' }} /> ) : ( <div style={{ width: isGrid ? '100%' : '120px', height: isGrid ? 'auto' : '90px', aspectRatio: isGrid ? '4/3' : 'auto', minWidth: isGrid ? 'auto' : '120px', backgroundColor: '#f3f4f6', borderRadius: isGrid ? '0' : '8px', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '30px' }}>🍽️</div> )}
-                          <div style={{ padding: isGrid ? '20px' : '0', display: 'flex', flexDirection: 'column', flexGrow: 1, justifyContent: 'center' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px', gap: '10px' }}>
-                              <h3 style={{ margin: 0, fontSize: '17px', color: '#1f2937', fontWeight: '700', lineHeight: '1.2' }}>{item.item_name}</h3>
-                              <div style={{ fontSize: '18px', fontWeight: '800', color: '#111827', letterSpacing: '-0.5px', whiteSpace: 'nowrap' }}>₱{parseFloat(item.price).toFixed(2)}</div>
-                            </div>
-                            {item.description && <p style={{ margin: 0, color: '#6b7280', fontSize: '13px', lineHeight: '1.5', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.description}</p>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )
-              })}
+          )}
+          {showPhone && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', backgroundColor: 'white', border: '1px solid #E2E8F0', borderRadius: '12px', fontSize: '13px', color: '#475569', fontWeight: '600', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+              <MdPhone size={16} color="#94A3B8" /> {store.phone}
+            </div>
+          )}
+          {showEmail && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', backgroundColor: 'white', border: '1px solid #E2E8F0', borderRadius: '12px', fontSize: '13px', color: '#475569', fontWeight: '600', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+              <MdEmail size={16} color="#94A3B8" /> {store.email}
+            </div>
+          )}
+          {showWebsite && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', backgroundColor: 'white', border: '1px solid #E2E8F0', borderRadius: '12px', fontSize: '13px', color: '#475569', fontWeight: '600', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+              <MdLanguage size={16} color="#94A3B8" /> {store.website.replace(/^https?:\/\//, '')}
             </div>
           )}
         </div>
       </div>
-    </>
+
+      {/* 🚀 3. MENU / CATALOG SECTION */}
+      <div style={{ maxWidth: '900px', margin: '0 auto', padding: '0 20px 60px 20px' }}>
+        
+        {items.length === 0 ? (
+          /* EMPTY CATALOG PAYWALL SCREEN */
+          <div style={{ textAlign: 'center', padding: '60px 30px', backgroundColor: 'white', borderRadius: '24px', boxShadow: '0 4px 20px rgba(0,0,0,0.02)', border: '2px dashed #E2E8F0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px' }}>
+            <div style={{ fontSize: '50px', marginBottom: '5px' }}>📋</div>
+            <h3 style={{ color: '#0F172A', margin: 0, fontSize: '22px', fontWeight: '800' }}>Catalog Not Available Online</h3>
+            <p style={{ color: '#64748B', margin: 0, fontSize: '15px', maxWidth: '450px', lineHeight: '1.6', fontWeight: '500' }}>
+              This store hasn't published their digital menu or catalog yet. Feel free to use the contact details above to inquire about their offerings, or visit them in person!
+            </p>
+          </div>
+        ) : (
+          /* ACTUAL MENU LAYOUT */
+          <div>
+            <h2 style={{ fontSize: '20px', fontWeight: '800', color: '#0F172A', marginBottom: '20px' }}>Menu & Catalog</h2>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
+              {items.map(item => (
+                <div key={item.id} style={{ backgroundColor: 'white', borderRadius: '16px', overflow: 'hidden', border: '1px solid #E2E8F0', boxShadow: '0 4px 15px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column' }}>
+                  {item.image_url ? (
+                    <div style={{ height: '160px', backgroundImage: `url(${item.image_url})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundColor: '#F1F5F9' }} />
+                  ) : (
+                    <div style={{ height: '160px', backgroundColor: '#F1F5F9', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '40px' }}>🍽️</div>
+                  )}
+                  <div style={{ padding: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', marginBottom: '6px' }}>
+                      <h4 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: '#0F172A' }}>{item.item_name}</h4>
+                      <span style={{ fontSize: '15px', fontWeight: '800', color: '#2563EB', whiteSpace: 'nowrap' }}>₱{parseFloat(item.price).toFixed(2)}</span>
+                    </div>
+                    {item.description && <p style={{ margin: 0, fontSize: '13px', color: '#64748B', lineHeight: '1.4' }}>{item.description}</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+    </div>
   );
 }
