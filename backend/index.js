@@ -90,8 +90,9 @@ app.get('/api/merchant/stores/:user_id', async (req, res) => {
     const { user_id } = req.params;
     await db.query(`UPDATE store_operators SET status = 'confirmed' WHERE user_id = $1 AND status = 'pending'`, [user_id]);
 
+    // 🚀 ADDED: s.industry, s.tags
     const result = await db.query(`
-      SELECT s.id, s.store_name, s.store_category, s.description, s.phone, s.email, s.website, s.is_open, s.theme_settings, ST_Y(s.location::geometry) as lat, ST_X(s.location::geometry) as lng, so.role
+      SELECT s.id, s.store_name, s.store_category, s.industry, s.tags, s.description, s.phone, s.email, s.website, s.is_open, s.theme_settings, ST_Y(s.location::geometry) as lat, ST_X(s.location::geometry) as lng, so.role
       FROM stores s JOIN store_operators so ON s.id = so.store_id WHERE so.user_id = $1
     `, [user_id]);
     res.json(result.rows);
@@ -167,7 +168,8 @@ app.get('/api/stores', async (req, res) => {
   try {
     const { minLng, minLat, maxLng, maxLat, userLat, userLng, radius } = req.query;
     
-    let selectClause = `SELECT id, store_name, store_category, description, phone, email, website, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng`;
+    // 🚀 ADDED: industry, tags
+    let selectClause = `SELECT id, store_name, store_category, industry, tags, description, phone, email, website, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng`;
     let fromClause = ` FROM stores`;
     let whereClauses = [];
     let queryParams = [];
@@ -208,7 +210,8 @@ app.get('/api/stores', async (req, res) => {
 
 app.get('/api/stores/:id', async (req, res) => {
   try {
-    const result = await db.query(`SELECT id, store_name, store_category, description, phone, email, website, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng FROM stores WHERE id = $1;`, [req.params.id]);
+    // 🚀 ADDED: industry, tags
+    const result = await db.query(`SELECT id, store_name, store_category, industry, tags, description, phone, email, website, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng FROM stores WHERE id = $1;`, [req.params.id]);
     if (result.rows.length === 0) return res.status(404).json({ error: "Store not found" });
     res.json(result.rows[0]);
   } catch (err) { res.status(500).send("Server Error"); }
