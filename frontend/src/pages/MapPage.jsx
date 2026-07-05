@@ -1,8 +1,10 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { renderToString } from 'react-dom/server';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { supabase } from '../supabaseClient';
+import { CustomMapPin } from '../components/MapMarkers';
 import { MdSearch, MdNotificationsNone, MdTune, MdExpandMore, MdLocationOn, MdStorefront, MdFastfood, MdClose, MdStar } from "react-icons/md";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || '';
@@ -24,7 +26,6 @@ const TABLAS_MUNICIPALITIES = [
   { name: 'Santa Fe', lat: 12.1558, lng: 121.9959 } 
 ];
 
-// 🚀 HA-VERSINE FORMULA: Calculates exact distance between two GPS coordinates in KM
 const calculateDistance = (lat1, lon1, lat2, lon2) => {
   const R = 6371; 
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -37,7 +38,8 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
 export default function MapPage() {
   const mapContainer = useRef(null);
   const map = useRef(null);
-  const popupRef = useRef(new mapboxgl.Popup({ offset: [0, -24], closeButton: true, closeOnClick: false }));
+  const markersRef = useRef({}); 
+  const popupRef = useRef(new mapboxgl.Popup({ offset: [0, -32], closeButton: true, closeOnClick: false }));
   
   const [stores, setStores] = useState(globalStoreCache);
   const [activeCategory, setActiveCategory] = useState('All');
@@ -51,10 +53,9 @@ export default function MapPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState({ stores: [], items: [] });
 
-  // 🚀 1. NEW: Filter States
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [filters, setFilters] = useState({
-    distance: 10, // Default 10km radius
+    distance: 10, 
     minRating: 0,
     openNow: false
   });
@@ -63,7 +64,7 @@ export default function MapPage() {
   const [profile, setProfile] = useState(null);
 
   const navigate = useNavigate();
-  const categories = ['All', 'Food & Dining', 'Retail', 'Services', 'Groceries'];
+  const categories = ['All', 'Food & Dining', 'Grocery & Retail', 'Beauty & Personal Care', 'Automotive'];
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -117,14 +118,38 @@ export default function MapPage() {
 
   useEffect(() => {
     if (!searchTerm.trim()) { setSearchResults({ stores: [], items: [] }); return; }
+    
     const delayDebounceFn = setTimeout(async () => {
       setIsSearching(true);
       try {
-        const { data: storeHits } = await supabase.from('stores').select('id, store_name, store_category, lat, lng').ilike('store_name', `%${searchTerm}%`).limit(4);
-        const { data: itemHits, error: itemError } = await supabase.from('items').select('id, item_name, price, stores(id, store_name, lat, lng)').ilike('item_name', `%${searchTerm}%`).limit(4);
-        setSearchResults({ stores: storeHits || [], items: itemError ? [] : (itemHits || []) });
-      } catch (error) { console.error(error); } finally { setIsSearching(false); }
+        const term = searchTerm.toLowerCase();
+
+        const storeHits = globalStoreCache.filter(store => {
+          const matchesName = store.store_name?.toLowerCase().includes(term);
+          const matchesIndustry = store.industry?.toLowerCase().includes(term);
+          const matchesCategory = store.store_category?.toLowerCase().includes(term);
+          
+          return matchesName || matchesIndustry || matchesCategory;
+        }).slice(0, 5);
+          
+        const { data: itemHits, error: itemError } = await supabase
+          .from('items')
+          .select('id, item_name, price, stores(id, store_name, lat, lng)')
+          .ilike('item_name', `%${searchTerm}%`)
+          .limit(4);
+          
+        setSearchResults({ 
+          stores: storeHits, 
+          items: itemError ? [] : (itemHits || []) 
+        });
+
+      } catch (error) { 
+        console.error("Search Error:", error); 
+      } finally { 
+        setIsSearching(false); 
+      }
     }, 300); 
+
     return () => clearTimeout(delayDebounceFn);
   }, [searchTerm]);
 
@@ -133,35 +158,26 @@ export default function MapPage() {
     setSearchTerm('');
     const lat = target.lat || target.stores?.lat;
     const lng = target.lng || target.stores?.lng;
-    const storeId = target.id || target.stores?.id;
-    const storeName = target.store_name || target.stores?.store_name;
-    const category = target.store_category || 'Store';
-
+    
     if (map.current && lat && lng) {
       map.current.flyTo({ center: [lng, lat], zoom: 18, duration: 1200 });
-      setSelectedStore({ id: storeId, store_name: storeName, store_category: category, lat, lng });
+      const storeObj = target.stores ? target.stores : target;
+      setSelectedStore(storeObj);
     }
   };
 
-  // 🚀 2. NEW: Apply Filters dynamically
   const mapStores = useMemo(() => {
     if (!Array.isArray(stores)) return [];
     
     return stores.filter(store => {
       if (!store.lat || !store.lng) return false;
-
-      // 1. Category Filter
       if (activeCategory !== 'All' && store.store_category !== activeCategory) return false;
-
-      // 2. Distance Filter (using Haversine)
+      
       const dist = calculateDistance(activeLocation.lat, activeLocation.lng, store.lat, store.lng);
       if (dist > filters.distance) return false;
-
-      // 3. Rating Filter (assuming you have rating data later, mocking > 0 for now)
+      
       const storeRating = store.rating || 0; 
       if (filters.minRating > 0 && storeRating < filters.minRating) return false;
-
-      // 4. Open Now Filter (mock logic: requires operating hours schema)
       if (filters.openNow && store.is_open === false) return false;
 
       return true;
@@ -169,33 +185,39 @@ export default function MapPage() {
   }, [stores, activeCategory, filters, activeLocation]);
 
   useEffect(() => {
-    if (!map.current || !map.current.isStyleLoaded()) return;
+    if (!map.current) return;
 
-    const geoJsonData = {
-      type: 'FeatureCollection',
-      features: mapStores.map(store => ({
-        type: 'Feature', geometry: { type: 'Point', coordinates: [Number(store.lng), Number(store.lat)] },
-        properties: { id: store.id, name: store.store_name, category: store.store_category, lat: Number(store.lat), lng: Number(store.lng) }
-      }))
-    };
+    const currentMarkerIds = new Set(mapStores.map(s => s.id));
 
-    if (map.current.getSource('stores-source')) { 
-      map.current.getSource('stores-source').setData(geoJsonData); 
-    } else {
-      map.current.addSource('stores-source', { type: 'geojson', data: geoJsonData });
-      map.current.addLayer({ 
-        id: 'stores-dots-layer', type: 'circle', source: 'stores-source', 
-        paint: { 'circle-radius': 8, 'circle-color': '#2563EB', 'circle-stroke-width': 2.5, 'circle-stroke-color': '#ffffff', 'circle-stroke-opacity': 0.9 } 
-      });
+    Object.keys(markersRef.current).forEach(id => {
+      if (!currentMarkerIds.has(id)) {
+        markersRef.current[id].remove();
+        delete markersRef.current[id];
+      }
+    });
 
-      map.current.on('click', 'stores-dots-layer', (e) => {
-        const props = e.features[0].properties;
-        setSelectedStore({ id: props.id, store_name: props.name, store_category: props.category, lat: props.lat, lng: props.lng });
-        map.current.flyTo({ center: [props.lng, props.lat], zoom: 17.5, duration: 1000 });
-      });
-      map.current.on('mouseenter', 'stores-dots-layer', () => map.current.getCanvas().style.cursor = 'pointer');
-      map.current.on('mouseleave', 'stores-dots-layer', () => map.current.getCanvas().style.cursor = '');
-    }
+    mapStores.forEach(store => {
+      if (!markersRef.current[store.id]) {
+        const el = document.createElement('div');
+        el.style.cursor = 'pointer';
+        
+        el.innerHTML = renderToString(
+          <CustomMapPin category={store.store_category} industry={store.industry} size={40} />
+        );
+
+        const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+          .setLngLat([store.lng, store.lat])
+          .addTo(map.current);
+
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          setSelectedStore(store);
+          map.current.flyTo({ center: [store.lng, store.lat], zoom: 17.5, duration: 1000 });
+        });
+
+        markersRef.current[store.id] = marker;
+      }
+    });
   }, [mapStores]); 
 
   useEffect(() => {
@@ -204,23 +226,25 @@ export default function MapPage() {
 
     if (selectedStore) {
       const div = document.createElement('div');
-      div.style.textAlign = 'center'; div.style.padding = '4px 2px';
+      div.style.padding = '8px 4px 4px 4px';
+      div.style.minWidth = '160px';
 
       const title = document.createElement('strong');
-      title.style.cssText = 'font-size: 14px; display: block; margin-bottom: 2px; color: #0F172A; font-family: "Plus Jakarta Sans", sans-serif;'; 
+      title.style.cssText = 'font-size: 15px; display: block; margin-bottom: 2px; color: #0F172A; font-family: "Plus Jakarta Sans", sans-serif;'; 
       title.textContent = selectedStore.store_name;
 
-      const cat = document.createElement('span');
-      cat.style.cssText = 'color: #64748B; font-size: 11px; display: block; margin-bottom: 10px; font-weight: 600; font-family: "Plus Jakarta Sans", sans-serif;';
-      cat.textContent = selectedStore.store_category;
-
-      const btn = document.createElement('button');
-      btn.style.cssText = 'width: 100%; padding: 8px; background-color: #2563EB; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 700; font-size: 12px; font-family: "Plus Jakarta Sans", sans-serif;';
-      btn.textContent = 'View Menu';
-      btn.onclick = () => navigate(`/store/${selectedStore.id}`);
+      const ind = document.createElement('span');
+      ind.style.cssText = 'color: #64748B; font-size: 12px; display: block; margin-bottom: 12px; font-weight: 600; font-family: "Plus Jakarta Sans", sans-serif;';
+      ind.textContent = selectedStore.industry || selectedStore.store_category;
 
       div.appendChild(title);
-      div.appendChild(cat);
+      div.appendChild(ind);
+
+      const btn = document.createElement('button');
+      btn.style.cssText = 'width: 100%; padding: 10px; background-color: #2563EB; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 800; font-size: 13px; font-family: "Plus Jakarta Sans", sans-serif; transition: background-color 0.2s;';
+      btn.textContent = 'View Store';
+      btn.onclick = () => navigate(`/store/${selectedStore.id}`);
+
       div.appendChild(btn);
 
       popupRef.current.setLngLat([Number(selectedStore.lng), Number(selectedStore.lat)]).setDOMContent(div).addTo(map.current);
@@ -238,7 +262,6 @@ export default function MapPage() {
         * { font-family: 'Plus Jakarta Sans', sans-serif; }
       `}</style>
 
-      {/* 🚀 3. NEW: Filter Modal Overlay */}
       {isFilterOpen && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
           <div style={{ backgroundColor: '#FFFFFF', padding: '24px', borderRadius: '20px', width: '90%', maxWidth: '360px', boxShadow: '0 20px 40px rgba(0,0,0,0.1)' }}>
@@ -248,7 +271,6 @@ export default function MapPage() {
               <button onClick={() => setIsFilterOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}><MdClose size={22} /></button>
             </div>
 
-            {/* Distance Slider */}
             <div style={{ marginBottom: '24px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                 <label style={{ fontSize: '13px', fontWeight: '700', color: '#475569' }}>Distance Radius</label>
@@ -262,7 +284,6 @@ export default function MapPage() {
               <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '4px' }}>Searching from {activeLocation.name} plaza</div>
             </div>
 
-            {/* Rating Filter */}
             <div style={{ marginBottom: '24px' }}>
               <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#475569', marginBottom: '8px' }}>Minimum Rating</label>
               <div style={{ display: 'flex', gap: '8px' }}>
@@ -277,7 +298,6 @@ export default function MapPage() {
               </div>
             </div>
 
-            {/* Open Now Toggle */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '14px', fontWeight: '700', color: '#0F172A' }}>Open Now</label>
@@ -298,7 +318,6 @@ export default function MapPage() {
         </div>
       )}
 
-      {/* 🚀 Reduced padding from 24px 32px to 16px 24px globally */}
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', padding: '16px 24px', overflowY: 'auto', backgroundColor: '#F8FAFC' }}>
         
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
@@ -306,7 +325,7 @@ export default function MapPage() {
           <div style={{ position: 'relative', flexGrow: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#FFFFFF', border: isSearchFocused ? '2px solid #2563EB' : '1px solid #E2E8F0', borderRadius: '12px', padding: '9px 14px', boxShadow: isSearchFocused ? '0 0 0 4px rgba(37,99,235,0.1)' : '0 2px 4px rgba(0,0,0,0.02)', transition: 'all 0.2s' }}>
               <MdSearch size={20} color={isSearchFocused ? '#2563EB' : '#94A3B8'} />
-              <input type="text" placeholder="Search places or services..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} onFocus={() => setIsSearchFocused(true)} style={{ border: 'none', backgroundColor: 'transparent', flexGrow: 1, outline: 'none', fontSize: '13.5px', color: '#0F172A', marginLeft: '10px', fontWeight: '500' }} />
+              <input type="text" placeholder="Search places or industries..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} onFocus={() => setIsSearchFocused(true)} style={{ border: 'none', backgroundColor: 'transparent', flexGrow: 1, outline: 'none', fontSize: '13.5px', color: '#0F172A', marginLeft: '10px', fontWeight: '500' }} />
               {isSearching && <span style={{ fontSize: '11px', color: '#94A3B8', fontWeight: 'bold' }}>Searching...</span>}
             </div>
 
@@ -322,11 +341,11 @@ export default function MapPage() {
                         <div style={{ paddingBottom: searchResults.items.length > 0 ? '10px' : '0' }}>
                           <div style={{ padding: '6px 14px', fontSize: '10px', fontWeight: '900', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Stores</div>
                           {searchResults.stores.map(store => (
-                            <div key={store.id} onClick={() => handleSearchResultClick(store)} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 14px', cursor: 'pointer', transition: 'background-color 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F8FAFC'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
-                              <div style={{ backgroundColor: '#EFF6FF', padding: '6px', borderRadius: '8px' }}><MdStorefront size={16} color="#2563EB" /></div>
+                            <div key={store.id} onClick={() => handleSearchResultClick(store)} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', cursor: 'pointer', transition: 'background-color 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F8FAFC'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
+                              <div style={{ backgroundColor: '#EFF6FF', padding: '8px', borderRadius: '8px' }}><MdStorefront size={18} color="#2563EB" /></div>
                               <div>
-                                <div style={{ fontSize: '13px', fontWeight: '700', color: '#0F172A' }}>{store.store_name}</div>
-                                <div style={{ fontSize: '11px', color: '#64748B' }}>{store.store_category}</div>
+                                <div style={{ fontSize: '14px', fontWeight: '800', color: '#0F172A' }}>{store.store_name}</div>
+                                <div style={{ fontSize: '12px', color: '#64748B', fontWeight: '500' }}>{store.industry || store.store_category}</div>
                               </div>
                             </div>
                           ))}
@@ -412,7 +431,6 @@ export default function MapPage() {
           </button>
         </div>
 
-        {/* 🚀 INCREASED HEIGHT to 68vh */}
         <div style={{ flexShrink: 0, height: '68vh', borderRadius: '20px', overflow: 'hidden', position: 'relative', marginBottom: '24px', border: '4px solid #FFFFFF', boxShadow: '0 10px 30px rgba(0,0,0,0.06)' }}>
           <div ref={mapContainer} style={{ position: 'absolute', inset: 0 }} />
           <div style={{ position: 'absolute', bottom: '16px', left: '16px', backgroundColor: '#FFFFFF', borderRadius: '14px', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', zIndex: 10 }}>
@@ -443,7 +461,7 @@ export default function MapPage() {
                     <span style={{ fontSize: '12px', fontWeight: '800', color: '#475569' }}>4.8</span>
                     <span style={{ fontSize: '12px', color: '#94A3B8', fontWeight: '500' }}>(124)</span>
                   </div>
-                  <div style={{ fontSize: '11.5px', color: '#94A3B8', marginTop: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: '500' }}>{store.store_category} • {calculateDistance(activeLocation.lat, activeLocation.lng, store.lat, store.lng).toFixed(1)} km</div>
+                  <div style={{ fontSize: '11.5px', color: '#94A3B8', marginTop: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: '500' }}>{store.industry || store.store_category} • {calculateDistance(activeLocation.lat, activeLocation.lng, store.lat, store.lng).toFixed(1)} km</div>
                 </div>
               </div>
             ))}

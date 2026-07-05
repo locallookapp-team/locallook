@@ -11,8 +11,8 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import UpdatePasswordPage from './pages/UpdatePasswordPage';
 import BrowsePage from './pages/BrowsePage'; 
 import ProfilePage from './pages/ProfilePage'; 
-// 🚀 Import the new page we will build next
 import CreateBusinessPage from './pages/CreateBusinessPage'; 
+import TestPages from './pages/TestPages'; // 🚀 Added this import!
 
 import AppLayout from './components/AppLayout'; 
 import ProtectedRoute from './components/ProtectedRoute'; 
@@ -50,6 +50,9 @@ function App() {
         <Route path="/signup" element={<SignupPage />} /> 
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/update-password" element={<UpdatePasswordPage />} />
+        
+        {/* SVG TEST ROUTE */}
+        <Route path="/test" element={<TestPages />} />
       </Routes>
     </BrowserRouter>
   );
