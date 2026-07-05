@@ -13,7 +13,6 @@ const PORT = process.env.PORT || 3000;
 const supabaseAdmin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-// CORS left wide open for testing purposes
 app.use(cors()); 
 app.use(express.json()); 
 
@@ -30,7 +29,6 @@ app.post('/api/stores', async (req, res) => {
   try {
     const { store_name, store_category, description, phone, email, website, lat, lng, user_id } = req.body;
     
-    // 🛡️ INPUT VALIDATION
     if (!store_name || !store_category || !lat || !lng || !user_id) {
       return res.status(400).json({ error: "Missing required store fields or location." });
     }
@@ -90,9 +88,8 @@ app.get('/api/merchant/stores/:user_id', async (req, res) => {
     const { user_id } = req.params;
     await db.query(`UPDATE store_operators SET status = 'confirmed' WHERE user_id = $1 AND status = 'pending'`, [user_id]);
 
-    // 🚀 ADDED: s.industry, s.tags
     const result = await db.query(`
-      SELECT s.id, s.store_name, s.store_category, s.industry, s.tags, s.description, s.phone, s.email, s.website, s.is_open, s.theme_settings, ST_Y(s.location::geometry) as lat, ST_X(s.location::geometry) as lng, so.role
+      SELECT s.id, s.store_name, s.store_category, s.industry, s.description, s.phone, s.email, s.website, s.is_open, s.theme_settings, ST_Y(s.location::geometry) as lat, ST_X(s.location::geometry) as lng, so.role
       FROM stores s JOIN store_operators so ON s.id = so.store_id WHERE so.user_id = $1
     `, [user_id]);
     res.json(result.rows);
@@ -163,13 +160,11 @@ app.delete('/api/stores/:store_id/staff/:staff_id', async (req, res) => {
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
-// GET ALL STORES
 app.get('/api/stores', async (req, res) => {
   try {
     const { minLng, minLat, maxLng, maxLat, userLat, userLng, radius } = req.query;
     
-    // 🚀 ADDED: industry, tags
-    let selectClause = `SELECT id, store_name, store_category, industry, tags, description, phone, email, website, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng`;
+    let selectClause = `SELECT id, store_name, store_category, industry, description, phone, email, website, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng`;
     let fromClause = ` FROM stores`;
     let whereClauses = [];
     let queryParams = [];
@@ -210,8 +205,7 @@ app.get('/api/stores', async (req, res) => {
 
 app.get('/api/stores/:id', async (req, res) => {
   try {
-    // 🚀 ADDED: industry, tags
-    const result = await db.query(`SELECT id, store_name, store_category, industry, tags, description, phone, email, website, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng FROM stores WHERE id = $1;`, [req.params.id]);
+    const result = await db.query(`SELECT id, store_name, store_category, industry, description, phone, email, website, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng FROM stores WHERE id = $1;`, [req.params.id]);
     if (result.rows.length === 0) return res.status(404).json({ error: "Store not found" });
     res.json(result.rows[0]);
   } catch (err) { res.status(500).send("Server Error"); }
@@ -242,7 +236,6 @@ app.post('/api/items', async (req, res) => {
   try {
     const { store_id, item_name, description, price, image_url, item_category } = req.body;
     
-    // 🛡️ INPUT VALIDATION
     if (!store_id || !item_name || isNaN(parseFloat(price))) {
       return res.status(400).json({ error: "Invalid item data. Name and valid price are required." });
     }
@@ -287,7 +280,6 @@ app.get('/api/search/items', async (req, res) => {
   } catch (err) { res.status(500).send("Server Error"); }
 });
 
-// PAYMONGO CHECKOUT SESSION ENDPOINT
 app.post('/api/create-checkout-session', async (req, res) => {
   const { store_id } = req.body;
 
@@ -340,23 +332,17 @@ app.post('/api/create-checkout-session', async (req, res) => {
   }
 });
 
-// 🚀 NEW: PAYMONGO WEBHOOK LISTENER
 app.post('/api/webhooks/paymongo', async (req, res) => {
   try {
-    // Safely extract the event type using optional chaining
     const eventType = req.body?.data?.attributes?.type;
     
-    // Check if this is a successful payment
     if (eventType === 'checkout_session.payment.paid') {
-      
-      // Extract the store_id we passed as the reference_number earlier
       const storeId = req.body?.data?.attributes?.data?.attributes?.reference_number;
       
       if (storeId) {
         const thirtyDaysFromNow = new Date();
         thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
 
-        // Insert the active premium subscription into Supabase
         const { error } = await supabaseAdmin.from('subscriptions').insert([{
           store_id: storeId,
           plan_type: 'premium',
@@ -373,7 +359,6 @@ app.post('/api/webhooks/paymongo', async (req, res) => {
       }
     }
     
-    // Always return a 200 OK so PayMongo knows you received the webhook
     res.status(200).send("Webhook Received");
 
   } catch (err) {
@@ -382,11 +367,6 @@ app.post('/api/webhooks/paymongo', async (req, res) => {
   }
 });
 
-// ==========================================
-// 🚀 CONSUMER FEATURES: REVIEWS & SAVES
-// ==========================================
-
-// 1. Get reviews for a specific store
 app.get('/api/stores/:store_id/reviews', async (req, res) => {
   try {
     const result = await db.query(`
@@ -403,7 +383,6 @@ app.get('/api/stores/:store_id/reviews', async (req, res) => {
   }
 });
 
-// 2. Add a new review
 app.post('/api/reviews', async (req, res) => {
   try {
     const { store_id, user_id, rating, comment } = req.body;
@@ -425,20 +404,16 @@ app.post('/api/reviews', async (req, res) => {
   }
 });
 
-// 3. Toggle a Saved Place (Bookmark)
 app.post('/api/saved-places/toggle', async (req, res) => {
   try {
     const { store_id, user_id } = req.body;
     
-    // Check if it's already saved
     const check = await db.query('SELECT id FROM saved_places WHERE store_id = $1 AND user_id = $2', [store_id, user_id]);
     
     if (check.rows.length > 0) {
-      // If it exists, unsave (delete) it
       await db.query('DELETE FROM saved_places WHERE id = $1', [check.rows[0].id]);
       res.json({ saved: false, message: "Removed from saved places." });
     } else {
-      // If it doesn't exist, save (insert) it
       await db.query('INSERT INTO saved_places (store_id, user_id) VALUES ($1, $2)', [store_id, user_id]);
       res.json({ saved: true, message: "Added to saved places." });
     }
@@ -448,7 +423,6 @@ app.post('/api/saved-places/toggle', async (req, res) => {
   }
 });
 
-// 4. Get all saved places for a specific user
 app.get('/api/users/:user_id/saved-places', async (req, res) => {
   try {
     const result = await db.query(`
@@ -465,11 +439,6 @@ app.get('/api/users/:user_id/saved-places', async (req, res) => {
   }
 });
 
-// ==========================================
-// 🚀 USER PROFILE MANAGEMENT
-// ==========================================
-
-// 1. Get a user's profile data
 app.get('/api/users/:id', async (req, res) => {
   try {
     const result = await db.query(`
@@ -489,7 +458,6 @@ app.get('/api/users/:id', async (req, res) => {
   }
 });
 
-// 2. Update a user's profile (Name & Avatar)
 app.patch('/api/users/:id', async (req, res) => {
   try {
     const { display_name, avatar_url } = req.body;
