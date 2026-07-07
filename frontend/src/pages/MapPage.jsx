@@ -39,11 +39,24 @@ export default function MapPage() {
   const mapContainer = useRef(null);
   const map = useRef(null);
   const markersRef = useRef({}); 
-  const popupRef = useRef(new mapboxgl.Popup({ offset: [0, -32], closeButton: true, closeOnClick: false }));
   
+  const popupRef = useRef(new mapboxgl.Popup({ 
+    offset: [0, -38], 
+    anchor: 'bottom',
+    closeButton: false, 
+    closeOnClick: true 
+  }));
+  
+  const [isMapLoaded, setIsMapLoaded] = useState(false);
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
+  const [zoom, setZoom] = useState(16);
+
   const [stores, setStores] = useState(globalStoreCache);
   const [activeCategory, setActiveCategory] = useState('All');
   const [selectedStore, setSelectedStore] = useState(null);
+
+  const selectedStoreRef = useRef(selectedStore);
+  useEffect(() => { selectedStoreRef.current = selectedStore; }, [selectedStore]);
 
   const [activeLocation, setActiveLocation] = useState(TABLAS_MUNICIPALITIES[0]); 
   const [isLocationDropdownOpen, setIsLocationDropdownOpen] = useState(false);
@@ -54,17 +67,18 @@ export default function MapPage() {
   const [searchResults, setSearchResults] = useState({ stores: [], items: [] });
 
   const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const [filters, setFilters] = useState({
-    distance: 10, 
-    minRating: 0,
-    openNow: false
-  });
+  const [filters, setFilters] = useState({ distance: 10, minRating: 0, openNow: false });
 
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
 
   const navigate = useNavigate();
-  const categories = ['All', 'Food & Dining', 'Grocery & Retail', 'Beauty & Personal Care', 'Automotive'];
+  
+  const categories = [
+    'All', 'Food & Dining', 'Grocery & Retail', 'Beauty & Personal Care', 
+    'Health & Medical', 'Automotive', 'Travel & Accommodation', 
+    'Home & Professional Services', 'Financial & Business'
+  ];
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -82,9 +96,9 @@ export default function MapPage() {
 
   const fetchStoresInBounds = async () => {
     if (!map.current) return [];
-    const bounds = map.current.getBounds();
+    const b = map.current.getBounds();
     try {
-      const res = await fetch(`${API_BASE_URL}/api/stores?minLng=${bounds.getWest()}&minLat=${bounds.getSouth()}&maxLng=${bounds.getEast()}&maxLat=${bounds.getNorth()}`);
+      const res = await fetch(`${API_BASE_URL}/api/stores?minLng=${b.getWest()}&minLat=${b.getSouth()}&maxLng=${b.getEast()}&maxLat=${b.getNorth()}`);
       if (!res.ok) return [];
       const data = await res.json();
       globalStoreCache = Array.isArray(data) ? data : [];
@@ -94,16 +108,91 @@ export default function MapPage() {
 
   useEffect(() => {
     if (map.current || !mapContainer.current) return; 
+    
     map.current = new mapboxgl.Map({
       container: mapContainer.current, 
       style: 'mapbox://styles/locallook/cmqttzcqe004h01rc8ya580zb', 
       center: [activeLocation.lng, activeLocation.lat], 
       zoom: 16, 
-      pitch: 0 
+      pitch: 60 
     });
-    map.current.addControl(new mapboxgl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true }), 'bottom-right');
+    
+    map.current.on('idle', () => setIsMapLoaded(true));
+
+    const updateMapState = () => setZoom(map.current.getZoom());
+
+    map.current.on('move', updateMapState);
+    map.current.on('zoom', updateMapState);
     map.current.on('moveend', fetchStoresInBounds);
-    map.current.on('style.load', fetchStoresInBounds);
+
+    map.current.on('render', () => {
+      Object.entries(markersRef.current).forEach(([id, marker]) => {
+        const lngLat = marker.getLngLat();
+        if (lngLat) {
+          const pos = map.current.project(lngLat);
+          let zIndex = Math.round(pos.y * 10); 
+          
+          if (selectedStoreRef.current && selectedStoreRef.current.id === id) {
+            zIndex += 100000;
+          }
+          
+          marker.getElement().style.zIndex = zIndex;
+        }
+      });
+    });
+
+    map.current.on('style.load', async () => {
+      await fetchStoresInBounds();
+      updateMapState();
+      setIsDataLoaded(true);
+
+      map.current.addModel('user-model', '/user-model.glb');
+      
+      map.current.addSource('user-location', {
+        type: 'geojson',
+        data: { type: 'Feature', geometry: { type: 'Point', coordinates: [0,0] }, properties: { heading: 0 } }
+      });
+
+      map.current.addLayer({
+        id: 'user-pulse',
+        type: 'circle',
+        source: 'user-location',
+        paint: {
+          'circle-radius': 30,
+          'circle-color': '#2563EB',
+          'circle-opacity': 0.2,
+          'circle-stroke-width': 2,
+          'circle-stroke-color': '#2563EB',
+          'circle-pitch-alignment': 'map'
+        }
+      });
+
+      map.current.addLayer({
+        id: 'user-model-layer',
+        type: 'model',
+        source: 'user-location',
+        layout: {
+          'model-id': 'user-model',
+          'model-scale': [5, 5, 5], 
+          'model-rotation': [0, 0, ['get', 'heading']], 
+        }
+      });
+
+      const geolocate = new mapboxgl.GeolocateControl({
+        positionOptions: { enableHighAccuracy: true },
+        trackUserLocation: true,
+        showUserHeading: true
+      });
+      map.current.addControl(geolocate, 'bottom-right');
+
+      geolocate.on('geolocate', (e) => {
+        const coords = [e.coords.longitude, e.coords.latitude];
+        const heading = e.coords.heading || 0;
+        map.current.getSource('user-location').setData({
+          type: 'Feature', geometry: { type: 'Point', coordinates: coords }, properties: { heading: heading }
+        });
+      });
+    });
 
     return () => { if (map.current) { map.current.remove(); map.current = null; } };
   }, []);
@@ -118,38 +207,18 @@ export default function MapPage() {
 
   useEffect(() => {
     if (!searchTerm.trim()) { setSearchResults({ stores: [], items: [] }); return; }
-    
     const delayDebounceFn = setTimeout(async () => {
       setIsSearching(true);
       try {
         const term = searchTerm.toLowerCase();
-
         const storeHits = globalStoreCache.filter(store => {
-          const matchesName = store.store_name?.toLowerCase().includes(term);
-          const matchesIndustry = store.industry?.toLowerCase().includes(term);
-          const matchesCategory = store.store_category?.toLowerCase().includes(term);
-          
-          return matchesName || matchesIndustry || matchesCategory;
+          return store.store_name?.toLowerCase().includes(term) || store.industry?.toLowerCase().includes(term) || store.store_category?.toLowerCase().includes(term);
         }).slice(0, 5);
           
-        const { data: itemHits, error: itemError } = await supabase
-          .from('items')
-          .select('id, item_name, price, stores(id, store_name, lat, lng)')
-          .ilike('item_name', `%${searchTerm}%`)
-          .limit(4);
-          
-        setSearchResults({ 
-          stores: storeHits, 
-          items: itemError ? [] : (itemHits || []) 
-        });
-
-      } catch (error) { 
-        console.error("Search Error:", error); 
-      } finally { 
-        setIsSearching(false); 
-      }
+        const { data: itemHits, error: itemError } = await supabase.from('items').select('id, item_name, price, stores(id, store_name, lat, lng)').ilike('item_name', `%${searchTerm}%`).limit(4);
+        setSearchResults({ stores: storeHits, items: itemError ? [] : (itemHits || []) });
+      } catch (error) { console.error(error); } finally { setIsSearching(false); }
     }, 300); 
-
     return () => clearTimeout(delayDebounceFn);
   }, [searchTerm]);
 
@@ -160,92 +229,139 @@ export default function MapPage() {
     const lng = target.lng || target.stores?.lng;
     
     if (map.current && lat && lng) {
-      map.current.flyTo({ center: [lng, lat], zoom: 18, duration: 1200 });
-      const storeObj = target.stores ? target.stores : target;
-      setSelectedStore(storeObj);
+      map.current.flyTo({ center: [lng, lat], zoom: 18.5, duration: 1200 });
+      setSelectedStore(target.stores ? target.stores : target);
     }
   };
 
   const mapStores = useMemo(() => {
     if (!Array.isArray(stores)) return [];
-    
     return stores.filter(store => {
       if (!store.lat || !store.lng) return false;
       if (activeCategory !== 'All' && store.store_category !== activeCategory) return false;
-      
-      const dist = calculateDistance(activeLocation.lat, activeLocation.lng, store.lat, store.lng);
-      if (dist > filters.distance) return false;
-      
-      const storeRating = store.rating || 0; 
-      if (filters.minRating > 0 && storeRating < filters.minRating) return false;
+      if (calculateDistance(activeLocation.lat, activeLocation.lng, store.lat, store.lng) > filters.distance) return false;
       if (filters.openNow && store.is_open === false) return false;
-
       return true;
     });
   }, [stores, activeCategory, filters, activeLocation]);
 
   useEffect(() => {
-    if (!map.current) return;
+    if (!map.current || !isMapLoaded) return;
 
     const currentMarkerIds = new Set(mapStores.map(s => s.id));
+    const isZoomedOut = zoom < 15.5; 
 
     Object.keys(markersRef.current).forEach(id => {
-      if (!currentMarkerIds.has(id)) {
+      if (!currentMarkerIds.has(id.toString())) {
         markersRef.current[id].remove();
         delete markersRef.current[id];
       }
     });
 
     mapStores.forEach(store => {
-      if (!markersRef.current[store.id]) {
+      const id = store.id;
+      const lat = store.lat;
+      const lng = store.lng;
+
+      const htmlString = renderToString(
+        <CustomMapPin 
+          category={store.store_category} 
+          industry={store.industry} 
+          storeName={store.store_name} 
+          showLabel={zoom >= 16.5} 
+          isDotMode={isZoomedOut} 
+          size={30} 
+        />
+      );
+
+      if (!markersRef.current[id]) {
         const el = document.createElement('div');
         el.style.cursor = 'pointer';
-        
-        el.innerHTML = renderToString(
-          <CustomMapPin category={store.store_category} industry={store.industry} size={40} />
-        );
+        el.innerHTML = htmlString;
 
-        const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
-          .setLngLat([store.lng, store.lat])
-          .addTo(map.current);
-
-        el.addEventListener('click', (e) => {
+        el.onclick = (e) => {
           e.stopPropagation();
           setSelectedStore(store);
-          map.current.flyTo({ center: [store.lng, store.lat], zoom: 17.5, duration: 1000 });
-        });
+          map.current.flyTo({ center: [lng, lat], zoom: 18.5, duration: 1000 });
+        };
 
-        markersRef.current[store.id] = marker;
+        const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+          .setLngLat([lng, lat])
+          .addTo(map.current);
+          
+        markersRef.current[id] = marker;
+      } else {
+        const existingEl = markersRef.current[id].getElement();
+        if (existingEl.innerHTML !== htmlString) {
+           existingEl.innerHTML = htmlString;
+        }
       }
     });
-  }, [mapStores]); 
+  }, [mapStores, isMapLoaded, zoom, selectedStore]); 
 
+  // 🚀 FIXED: Real Reviews, Smaller Popup, Status Pill Layout
   useEffect(() => {
     if (!map.current) return;
     const onPopupClose = () => setSelectedStore(null);
 
     if (selectedStore) {
+      const dist = calculateDistance(activeLocation.lat, activeLocation.lng, selectedStore.lat, selectedStore.lng).toFixed(2);
+      const isOpen = selectedStore.is_open;
+      const coverImage = selectedStore.cover_url || selectedStore.image_url || 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&w=300&q=80';
+      
+      // Pulling real review data
+      const rating = selectedStore.rating || 0;
+      const reviewCount = selectedStore.review_count || 0;
+
       const div = document.createElement('div');
-      div.style.padding = '8px 4px 4px 4px';
-      div.style.minWidth = '160px';
+      
+      div.innerHTML = `
+        <div style="font-family: 'Plus Jakarta Sans', sans-serif; width: 200px; display: flex; flex-direction: column;">
+          
+          <div style="width: 100%; height: 80px; background-image: url('${coverImage}'); background-size: cover; background-position: center; border-bottom: 1px solid #F1F5F9;">
+          </div>
+          
+          <div style="padding: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2px;">
+              <h3 style="margin: 0; font-size: 15px; font-weight: 800; color: #0F172A; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; flex-grow: 1;">
+                ${selectedStore.store_name}
+              </h3>
+            </div>
+            
+            <div style="font-size: 11px; color: #64748B; font-weight: 600; margin-bottom: 8px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;">
+              ${selectedStore.industry || selectedStore.store_category}
+            </div>
+            
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-size: 11px;">
+              <div style="display: flex; align-items: center; gap: 4px;">
+                <span style="color: ${rating > 0 ? '#F59E0B' : '#CBD5E1'}; font-size: 14px;">★</span>
+                <span style="color: #0F172A; font-weight: 800;">${rating > 0 ? rating.toFixed(1) : 'New'}</span>
+                <span style="color: #64748B; font-weight: 500;">(${reviewCount})</span>
+              </div>
+              <div style="color: #64748B; font-weight: 700;">
+                ${dist} km
+              </div>
+            </div>
 
-      const title = document.createElement('strong');
-      title.style.cssText = 'font-size: 15px; display: block; margin-bottom: 2px; color: #0F172A; font-family: "Plus Jakarta Sans", sans-serif;'; 
-      title.textContent = selectedStore.store_name;
+            <div style="margin-bottom: 12px;">
+              <span style="background: ${isOpen ? '#E6F4EA' : '#FEE2E2'}; color: ${isOpen ? '#16A34A' : '#DC2626'}; padding: 4px 8px; border-radius: 6px; font-size: 10px; font-weight: 800; display: inline-block;">
+                ${isOpen ? 'OPEN NOW' : 'CLOSED'}
+              </span>
+            </div>
+            
+            <button id="view-store-btn" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; background: #2563EB; color: white; border: none; padding: 8px; border-radius: 8px; font-weight: 800; font-size: 12px; cursor: pointer; transition: background-color 0.2s;">
+              View Full Details
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+          </div>
 
-      const ind = document.createElement('span');
-      ind.style.cssText = 'color: #64748B; font-size: 12px; display: block; margin-bottom: 12px; font-weight: 600; font-family: "Plus Jakarta Sans", sans-serif;';
-      ind.textContent = selectedStore.industry || selectedStore.store_category;
+        </div>
+      `;
 
-      div.appendChild(title);
-      div.appendChild(ind);
-
-      const btn = document.createElement('button');
-      btn.style.cssText = 'width: 100%; padding: 10px; background-color: #2563EB; color: white; border: none; border-radius: 10px; cursor: pointer; font-weight: 800; font-size: 13px; font-family: "Plus Jakarta Sans", sans-serif; transition: background-color 0.2s;';
-      btn.textContent = 'View Store';
-      btn.onclick = () => navigate(`/store/${selectedStore.id}`);
-
-      div.appendChild(btn);
+      setTimeout(() => {
+        const btn = document.getElementById('view-store-btn');
+        if(btn) btn.onclick = () => navigate(`/store/${selectedStore.id}`);
+      }, 0);
 
       popupRef.current.setLngLat([Number(selectedStore.lng), Number(selectedStore.lat)]).setDOMContent(div).addTo(map.current);
       popupRef.current.on('close', onPopupClose);
@@ -260,10 +376,24 @@ export default function MapPage() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         * { font-family: 'Plus Jakarta Sans', sans-serif; }
+        
+        .mapboxgl-popup {
+          z-index: 800001 !important; 
+        }
+        .mapboxgl-popup-tip {
+          display: none !important; 
+        }
+        .mapboxgl-popup-content {
+          border-radius: 12px !important;
+          padding: 0 !important; 
+          overflow: hidden !important;
+          box-shadow: 0 10px 25px rgba(0,0,0,0.15) !important;
+          border: none !important;
+        }
       `}</style>
 
       {isFilterOpen && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)', zIndex: 999999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
           <div style={{ backgroundColor: '#FFFFFF', padding: '24px', borderRadius: '20px', width: '90%', maxWidth: '360px', boxShadow: '0 20px 40px rgba(0,0,0,0.1)' }}>
             
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
@@ -331,8 +461,8 @@ export default function MapPage() {
 
             {isSearchFocused && searchTerm.trim().length > 0 && (
               <>
-                <div onClick={() => setIsSearchFocused(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '6px', backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px', boxShadow: '0 15px 35px rgba(0,0,0,0.1)', zIndex: 50, overflow: 'hidden', padding: '8px 0' }}>
+                <div onClick={() => setIsSearchFocused(false)} style={{ position: 'fixed', inset: 0, zIndex: 999997 }} />
+                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '6px', backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px', boxShadow: '0 15px 35px rgba(0,0,0,0.1)', zIndex: 999998, overflow: 'hidden', padding: '8px 0' }}>
                   {searchResults.stores.length === 0 && searchResults.items.length === 0 && !isSearching ? (
                     <div style={{ padding: '16px', textAlign: 'center', color: '#64748B', fontSize: '13px' }}>No results found for "{searchTerm}"</div>
                   ) : (
@@ -379,10 +509,11 @@ export default function MapPage() {
               <span style={{ fontSize: '13.5px', fontWeight: '700', color: '#0F172A', minWidth: '75px' }}>{activeLocation.name}</span>
               <MdExpandMore size={18} color="#64748B" style={{ transform: isLocationDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }} />
             </div>
+            
             {isLocationDropdownOpen && (
               <>
-                <div onClick={() => setIsLocationDropdownOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-                <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '6px', width: '200px', backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', zIndex: 50, overflow: 'hidden' }}>
+                <div onClick={() => setIsLocationDropdownOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 999997 }} />
+                <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '6px', width: '200px', backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', zIndex: 999998, overflow: 'hidden' }}>
                   <div style={{ padding: '10px 14px', fontSize: '10px', fontWeight: '900', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px', borderBottom: '1px solid #F1F5F9', backgroundColor: '#F8FAFC' }}>
                     Tablas Island
                   </div>
@@ -409,65 +540,39 @@ export default function MapPage() {
           </div>
           
           {session ? (
-            <div onClick={() => navigate('/profile')} style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundImage: `url(${profile?.avatar_url || `https://ui-avatars.com/api/?name=${profile?.display_name || 'User'}&background=EFF6FF&color=2563EB`})`, backgroundSize: 'cover', backgroundPosition: 'center', cursor: 'pointer', border: '2px solid #FFFFFF', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }} />
+            <div onClick={() => navigate('/profile')} style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundImage: `url('${profile?.avatar_url || `https://ui-avatars.com/api/?name=${profile?.display_name || 'User'}&background=EFF6FF&color=2563EB`}')`, backgroundSize: 'cover', backgroundPosition: 'center', cursor: 'pointer', border: '2px solid #FFFFFF', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }} />
           ) : (
             <button onClick={() => navigate('/login')} style={{ padding: '8px 16px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap' }}>Sign In</button>
           )}
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', scrollbarWidth: 'none' }}>
+          
+          {/* 🚀 FIXED: flexShrink ensures the buttons don't squeeze, allowing scrolling */}
+          <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', scrollbarWidth: 'none', paddingBottom: '4px', WebkitOverflowScrolling: 'touch' }}>
             {categories.map(cat => (
-              <button key={cat} onClick={() => setActiveCategory(cat)} style={{ padding: '6px 16px', borderRadius: '20px', border: activeCategory === cat ? 'none' : '1px solid #E2E8F0', backgroundColor: activeCategory === cat ? '#2563EB' : '#FFFFFF', color: activeCategory === cat ? 'white' : '#475569', fontWeight: '700', fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.2s', boxShadow: activeCategory === cat ? '0 4px 12px rgba(37,99,235,0.2)' : '0 2px 4px rgba(0,0,0,0.02)' }}>
+              <button key={cat} onClick={() => setActiveCategory(cat)} style={{ flexShrink: 0, padding: '6px 16px', borderRadius: '20px', border: activeCategory === cat ? '1px solid transparent' : '1px solid #E2E8F0', backgroundColor: activeCategory === cat ? '#2563EB' : '#FFFFFF', color: activeCategory === cat ? 'white' : '#475569', fontWeight: '700', fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.2s', boxShadow: activeCategory === cat ? '0 4px 12px rgba(37,99,235,0.2)' : '0 2px 4px rgba(0,0,0,0.02)' }}>
                 {cat}
               </button>
             ))}
-            <button style={{ padding: '6px 14px', borderRadius: '20px', border: '1px solid #E2E8F0', backgroundColor: '#FFFFFF', color: '#475569', fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
-              More <MdExpandMore size={16} />
-            </button>
           </div>
-          <button onClick={() => setIsFilterOpen(true)} style={{ padding: '6px 14px', borderRadius: '20px', border: '1px solid #E2E8F0', backgroundColor: '#FFFFFF', color: '#475569', fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+
+          <button onClick={() => setIsFilterOpen(true)} style={{ padding: '6px 14px', borderRadius: '20px', border: '1px solid #E2E8F0', backgroundColor: '#FFFFFF', color: '#475569', fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', flexShrink: 0, marginLeft: '12px' }}>
             <MdTune size={16} /> Filters
           </button>
         </div>
 
-        <div style={{ flexShrink: 0, height: '68vh', borderRadius: '20px', overflow: 'hidden', position: 'relative', marginBottom: '24px', border: '4px solid #FFFFFF', boxShadow: '0 10px 30px rgba(0,0,0,0.06)' }}>
+        <div style={{ flexGrow: 1, borderRadius: '20px', overflow: 'hidden', position: 'relative', border: '4px solid #FFFFFF', boxShadow: '0 10px 30px rgba(0,0,0,0.06)' }}>
           <div ref={mapContainer} style={{ position: 'absolute', inset: 0 }} />
-          <div style={{ position: 'absolute', bottom: '16px', left: '16px', backgroundColor: '#FFFFFF', borderRadius: '14px', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '10px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', zIndex: 10 }}>
-             <div style={{ fontSize: '24px' }}>☀️</div>
-             <div style={{ display: 'flex', flexDirection: 'column' }}>
-               <span style={{ fontSize: '15px', fontWeight: '800', color: '#0F172A', lineHeight: '1.2' }}>28°C</span>
-               <span style={{ fontSize: '11px', color: '#64748B', fontWeight: '600' }}>Sunny</span>
-             </div>
-          </div>
-        </div>
-
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-            <h2 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: '#0F172A' }}>Popular near you</h2>
-            <span style={{ fontSize: '13px', color: '#2563EB', fontWeight: '700', cursor: 'pointer' }}>View all</span>
-          </div>
           
-          <div style={{ display: 'flex', gap: '16px', overflowX: 'auto', paddingBottom: '16px', scrollbarWidth: 'none' }}>
-            {mapStores.slice(0, 5).map(store => (
-              <div key={store.id} onClick={() => navigate(`/store/${store.id}`)} style={{ minWidth: '220px', maxWidth: '220px', backgroundColor: '#FFFFFF', borderRadius: '14px', overflow: 'hidden', cursor: 'pointer', border: '1px solid #E2E8F0', display: 'flex', flexDirection: 'column', boxShadow: '0 4px 15px rgba(0,0,0,0.02)' }}>
-                <div style={{ height: '120px', backgroundColor: '#e2e8f0', backgroundImage: `url(${store.image_url})`, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative', margin: '8px 8px 0 8px', borderRadius: '10px' }}>
-                  <div style={{ position: 'absolute', top: '8px', left: '8px', background: '#2563EB', color: 'white', fontSize: '10px', fontWeight: '800', padding: '4px 8px', borderRadius: '6px' }}>Promoted</div>
-                </div>
-                <div style={{ padding: '12px' }}>
-                  <h3 style={{ margin: '0 0 4px 0', fontSize: '14px', fontWeight: '800', color: '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{store.store_name}</h3>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <span style={{ color: '#F59E0B', fontSize: '13px' }}>★</span>
-                    <span style={{ fontSize: '12px', fontWeight: '800', color: '#475569' }}>4.8</span>
-                    <span style={{ fontSize: '12px', color: '#94A3B8', fontWeight: '500' }}>(124)</span>
-                  </div>
-                  <div style={{ fontSize: '11.5px', color: '#94A3B8', marginTop: '6px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: '500' }}>{store.industry || store.store_category} • {calculateDistance(activeLocation.lat, activeLocation.lng, store.lat, store.lng).toFixed(1)} km</div>
-                </div>
-              </div>
-            ))}
-          </div>
+          {(!isMapLoaded || !isDataLoaded) && (
+            <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(255, 255, 255, 0.4)', backdropFilter: 'blur(8px)', zIndex: 20, display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column', transition: 'opacity 0.5s ease' }}>
+              <div style={{ width: '40px', height: '40px', border: '4px solid #E2E8F0', borderTopColor: '#2563EB', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+              <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+              <strong style={{ marginTop: '12px', color: '#0F172A', fontSize: '14px' }}>Loading Map...</strong>
+            </div>
+          )}
         </div>
-        
       </div>
     </>
   );
