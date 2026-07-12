@@ -126,9 +126,10 @@ app.post('/api/stores/:store_id/invite', inviteLimiter, async (req, res) => {
       targetUserId = existingUserCheck.rows[0].id;
       inviteStatus = 'confirmed'; 
       await resend.emails.send({
-        from: 'onboarding@resend.dev', 
-        to: email, subject: "You've been added to a store on LocalLook!",
-        html: `<div style="font-family: sans-serif; padding: 20px;"><h2>Store Access Granted</h2><a href="https://locallook.vercel.app/dashboard">Go to Dashboard</a></div>`
+        from: 'LocalLook <support@locallookph.com>', 
+        to: email, 
+        subject: "You've been added to a store on LocalLook!",
+        html: `<div style="font-family: sans-serif; padding: 20px;"><h2>Store Access Granted</h2><a href="https://locallookph.com/dashboard">Go to Dashboard</a></div>`
       });
     } else {
       const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email);
