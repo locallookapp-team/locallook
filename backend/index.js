@@ -36,10 +36,10 @@ app.post('/api/stores', async (req, res) => {
     await client.query('BEGIN');
 
     const storeResult = await client.query(`
-      INSERT INTO stores (store_name, store_category, description, phone, email, website, location, is_open, is_approved)
-      VALUES ($1, $2, $3, $4, $5, $6, ST_GeomFromText($7, 4326), false, true)
+      INSERT INTO stores (store_name, store_category, description, phone, email, website, location, is_open, is_approved, merchant_id)
+      VALUES ($1, $2, $3, $4, $5, $6, ST_GeomFromText($7, 4326), false, true, $8)
       RETURNING id, store_name;
-    `, [store_name, store_category, description, phone, email, website, `POINT(${lng} ${lat})`]); 
+    `, [store_name, store_category, description, phone, email, website, `POINT(${lng} ${lat})`, user_id]); 
     
     const newStoreId = storeResult.rows[0].id;
 
@@ -89,7 +89,7 @@ app.get('/api/merchant/stores/:user_id', async (req, res) => {
     await db.query(`UPDATE store_operators SET status = 'confirmed' WHERE user_id = $1 AND status = 'pending'`, [user_id]);
 
     const result = await db.query(`
-      SELECT s.id, s.store_name, s.store_category, s.industry, s.description, s.phone, s.email, s.website, s.is_open, s.theme_settings, ST_Y(s.location::geometry) as lat, ST_X(s.location::geometry) as lng, so.role
+      SELECT s.id, s.store_name, s.store_category, s.industry, s.description, s.phone, s.email, s.website, s.is_open, s.theme_settings, ST_Y(s.location::geometry) as lat, ST_X(s.location::geometry) as lng, so.role, s.merchant_id
       FROM stores s JOIN store_operators so ON s.id = so.store_id WHERE so.user_id = $1
     `, [user_id]);
     res.json(result.rows);
@@ -106,8 +106,15 @@ app.post('/api/stores/:store_id/invite', inviteLimiter, async (req, res) => {
 
     if (!email || !email.includes('@')) return res.status(400).json({ error: "Invalid email address." });
 
-    const authCheck = await client.query(`SELECT role FROM store_operators WHERE store_id = $1 AND user_id = $2`, [store_id, requester_id]);
-    if (authCheck.rows.length === 0 || authCheck.rows[0].role !== 'merchant') return res.status(403).json({ error: "Only merchants can invite." });
+    // 🚀 THE PROFESSIONAL FIX: Check the true structural owner of the store
+    const authCheck = await client.query(
+      `SELECT merchant_id FROM stores WHERE id = $1 AND merchant_id = $2`, 
+      [store_id, requester_id]
+    );
+
+    if (authCheck.rows.length === 0) {
+      return res.status(403).json({ error: "Only the store owner can invite staff." });
+    }
 
     let targetUserId;
     let inviteStatus = 'pending'; 
@@ -148,7 +155,7 @@ app.post('/api/stores/:store_id/invite', inviteLimiter, async (req, res) => {
 
 app.get('/api/stores/:store_id/operators', async (req, res) => {
   try {
-    const result = await db.query(`SELECT u.id, u.email, so.role, so.status FROM store_operators so JOIN users u ON so.user_id = u.id WHERE so.store_id = $1 AND so.role != 'merchant'`, [req.params.store_id]);
+    const result = await db.query(`SELECT u.id, u.email, so.role, so.status, so.user_id FROM store_operators so JOIN users u ON so.user_id = u.id WHERE so.store_id = $1`, [req.params.store_id]);
     res.json(result.rows);
   } catch (err) { res.status(500).send("Server Error"); }
 });
@@ -205,7 +212,7 @@ app.get('/api/stores', async (req, res) => {
 
 app.get('/api/stores/:id', async (req, res) => {
   try {
-    const result = await db.query(`SELECT id, store_name, store_category, industry, description, phone, email, website, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng FROM stores WHERE id = $1;`, [req.params.id]);
+    const result = await db.query(`SELECT id, store_name, store_category, industry, description, phone, email, website, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng, cover_image_url FROM stores WHERE id = $1;`, [req.params.id]);
     if (result.rows.length === 0) return res.status(404).json({ error: "Store not found" });
     res.json(result.rows[0]);
   } catch (err) { res.status(500).send("Server Error"); }
@@ -303,7 +310,7 @@ app.post('/api/create-checkout-session', async (req, res) => {
             line_items: [
               {
                 currency: 'PHP',
-                amount: 50000, 
+                amount: 19900, 
                 name: 'LocalLook Premium Plan - 30 Days',
                 quantity: 1
               }
