@@ -53,6 +53,13 @@ app.post('/api/stores', async (req, res) => {
       VALUES ($1, $2, 'merchant', 'confirmed');
     `, [newStoreId, user_id]);
 
+    // 🚀 NEW: Upgrades your global profile from consumer to merchant
+    await client.query(`
+      UPDATE users 
+      SET role = 'merchant' 
+      WHERE id = $1 AND role = 'consumer';
+    `, [user_id]);
+
     await client.query('COMMIT');
     res.json(storeResult.rows[0]);
   } catch (err) {
@@ -141,7 +148,7 @@ app.post('/api/stores/:store_id/invite', inviteLimiter, async (req, res) => {
       const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email);
       if (inviteError) throw new Error(inviteError.message);
       targetUserId = inviteData.user.id;
-      await client.query(`INSERT INTO users (id, email, role) VALUES ($1, $2, 'operator') ON CONFLICT (id) DO NOTHING;`, [targetUserId, email]);
+      // 🚀 REMOVED: The manual INSERT INTO users here is gone; the database trigger handles it automatically.
     }
 
     const existingOp = await client.query(`SELECT 1 FROM store_operators WHERE store_id = $1 AND user_id = $2`, [store_id, targetUserId]);
