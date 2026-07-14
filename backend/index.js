@@ -10,6 +10,7 @@ const db = require('./db');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// 🚀 CRITICAL FIX: Trust Render's proxy to prevent rate-limiter crashes
 app.set('trust proxy', 1);
 
 const supabaseAdmin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -37,6 +38,7 @@ app.post('/api/stores', async (req, res) => {
 
     await client.query('BEGIN');
 
+    // 🚀 CRITICAL FIX: Explicitly inserts user_id into the merchant_id column
     const storeResult = await client.query(`
       INSERT INTO stores (store_name, store_category, description, phone, email, website, location, is_open, is_approved, merchant_id)
       VALUES ($1, $2, $3, $4, $5, $6, ST_GeomFromText($7, 4326), false, true, $8)
@@ -45,6 +47,7 @@ app.post('/api/stores', async (req, res) => {
     
     const newStoreId = storeResult.rows[0].id;
 
+    // 🚀 CRITICAL FIX: Explicitly assigns the 'merchant' role instead of 'owner'
     await client.query(`
       INSERT INTO store_operators (store_id, user_id, role, status)
       VALUES ($1, $2, 'merchant', 'confirmed');
@@ -108,7 +111,7 @@ app.post('/api/stores/:store_id/invite', inviteLimiter, async (req, res) => {
 
     if (!email || !email.includes('@')) return res.status(400).json({ error: "Invalid email address." });
 
-    // 🚀 THE PROFESSIONAL FIX: Check the true structural owner of the store
+    // 🚀 Check the true structural owner of the store using merchant_id
     const authCheck = await client.query(
       `SELECT merchant_id FROM stores WHERE id = $1 AND merchant_id = $2`, 
       [store_id, requester_id]
@@ -128,7 +131,8 @@ app.post('/api/stores/:store_id/invite', inviteLimiter, async (req, res) => {
       targetUserId = existingUserCheck.rows[0].id;
       inviteStatus = 'confirmed'; 
       await resend.emails.send({
-        from: 'LocalLook <support@locallookph.com>', 
+        // 🚀 Updated to the verified Custom Domain
+        from: 'LocalLook <hello@locallookph.com>', 
         to: email, 
         subject: "You've been added to a store on LocalLook!",
         html: `<div style="font-family: sans-serif; padding: 20px;"><h2>Store Access Granted</h2><a href="https://locallookph.com/dashboard">Go to Dashboard</a></div>`
@@ -313,6 +317,7 @@ app.post('/api/create-checkout-session', async (req, res) => {
             line_items: [
               {
                 currency: 'PHP',
+                // 🚀 Updated Price to 199.00 PHP (represented in centavos)
                 amount: 19900, 
                 name: 'LocalLook Premium Plan - 30 Days',
                 quantity: 1
