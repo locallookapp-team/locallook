@@ -55,9 +55,10 @@ app.post('/api/stores', async (req, res) => {
 
     // 🚀 NEW: Upgrades your global profile from consumer to merchant
     await client.query(`
-      UPDATE users 
-      SET role = 'merchant' 
-      WHERE id = $1 AND role = 'consumer';
+      INSERT INTO users (id, role)
+      VALUES ($1, 'merchant')
+      ON CONFLICT (id) DO UPDATE 
+      SET role = 'merchant';
     `, [user_id]);
 
     await client.query('COMMIT');
