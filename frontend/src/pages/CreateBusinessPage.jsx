@@ -1,20 +1,42 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { renderToString } from 'react-dom/server';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { supabase } from '../supabaseClient'; 
+import { CustomMapPin } from '../components/MapMarkers';
+import { MdOutlineNearMe, MdChevronLeft } from "react-icons/md";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || '';
 if (MAPBOX_TOKEN) {
   mapboxgl.accessToken = MAPBOX_TOKEN;
 }
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://locallook-api.onrender.com';
+
+// 🚀 FIXED: Custom address parser to inject missing commas between street and barangay
 const fetchAddressFromCoords = async (lng, lat) => {
   if (!MAPBOX_TOKEN) return '';
   try {
     const res = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${MAPBOX_TOKEN}`);
     const data = await res.json();
-    return data.features?.[0]?.place_name || '';
+    const feature = data.features?.[0];
+    
+    if (!feature) return '';
+    
+    let address = feature.place_name || '';
+    
+    // Check if Mapbox concatenated the street and neighborhood without a comma
+    if (feature.text && feature.context && feature.context.length > 0) {
+      const nextPart = feature.context[0].text;
+      const missingCommaStr = `${feature.text} ${nextPart}`;
+      
+      if (address.includes(missingCommaStr)) {
+        address = address.replace(missingCommaStr, `${feature.text}, ${nextPart}`);
+      }
+    }
+    
+    return address;
   } catch (e) {
     console.error("Geocoding error:", e);
     return '';
@@ -69,6 +91,7 @@ export default function CreateBusinessPage() {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [existingStores, setExistingStores] = useState([]);
+  const [zoom, setZoom] = useState(15.5);
   
   const [newStoreData, setNewStoreData] = useState({
     store_name: '',
@@ -90,6 +113,7 @@ export default function CreateBusinessPage() {
   const mapContainer = useRef(null);
   const map = useRef(null);
   const newPinRef = useRef(null);
+  const existingMarkersRef = useRef({});
   
   const newStoreRef = useRef(newStoreData);
   useEffect(() => { newStoreRef.current = newStoreData; }, [newStoreData]);
@@ -99,7 +123,7 @@ export default function CreateBusinessPage() {
       try {
         const { data, error } = await supabase
           .from('stores')
-          .select('id, store_name, lat, lng')
+          .select('id, store_name, store_category, industry, lat, lng')
           .not('lat', 'is', null)
           .not('lng', 'is', null);
           
@@ -117,25 +141,15 @@ export default function CreateBusinessPage() {
     if (mapContainer.current && !map.current) {
       map.current = new mapboxgl.Map({
         container: mapContainer.current,
-        style: 'mapbox://styles/mapbox/streets-v12',
+        style: 'mapbox://styles/locallook/cmqttzcqe004h01rc8ya580zb',
         center: [121.9823, 12.3985], 
         zoom: 15.5,
-        pitch: 45,
+        pitch: 60,
+        attributionControl: false 
       });
       map.current.addControl(new mapboxgl.NavigationControl({ showZoom: false, visualizePitch: true }), 'bottom-right');
 
-      map.current.on('load', () => {
-        existingStores.forEach(store => {
-          if (store.lng && store.lat) {
-            const el = document.createElement('div');
-            el.innerHTML = `<div style="background-color: #94A3B8; width: 14px; height: 14px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.2); cursor: not-allowed;" title="Taken: ${store.store_name}"></div>`;
-            new mapboxgl.Marker({ element: el })
-              .setLngLat([store.lng, store.lat])
-              .setPopup(new mapboxgl.Popup({ offset: 10 }).setHTML(`<strong style="font-size:12px; font-family:sans-serif;">${store.store_name}</strong>`))
-              .addTo(map.current);
-          }
-        });
-      });
+      map.current.on('zoom', () => setZoom(map.current.getZoom()));
       
       map.current.on('click', async (e) => {
         const lng = e.lngLat.lng.toFixed(6);
@@ -147,16 +161,6 @@ export default function CreateBusinessPage() {
         }
 
         setNewStoreData(prev => ({ ...prev, lat, lng, addressText }));
-        
-        if (!newPinRef.current) {
-          const el = document.createElement('div');
-          el.innerHTML = `<div style="background-color: #2563eb; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); transform: translateY(-12px); cursor: pointer;"></div>`;
-          newPinRef.current = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
-            .setLngLat([lng, lat])
-            .addTo(map.current);
-        } else {
-          newPinRef.current.setLngLat([lng, lat]);
-        }
       });
     }
 
@@ -165,9 +169,107 @@ export default function CreateBusinessPage() {
         map.current.remove();
         map.current = null;
         newPinRef.current = null;
+        existingMarkersRef.current = {};
       }
     };
-  }, [existingStores]);
+  }, []);
+
+  useEffect(() => {
+    if (!map.current) return;
+    const isZoomedOut = zoom < 15.5;
+
+    existingStores.forEach(store => {
+      if (!store.lng || !store.lat) return;
+      const htmlString = renderToString(
+        <CustomMapPin 
+          category={store.store_category} 
+          industry={store.industry} 
+          storeName={store.store_name} 
+          showLabel={zoom >= 16.5} 
+          isDotMode={isZoomedOut} 
+          size={28} 
+        />
+      );
+
+      if (!existingMarkersRef.current[store.id]) {
+        const el = document.createElement('div');
+        el.style.opacity = '0.6'; 
+        el.style.cursor = 'not-allowed';
+        el.innerHTML = htmlString;
+        
+        const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+          .setLngLat([store.lng, store.lat])
+          .addTo(map.current);
+          
+        existingMarkersRef.current[store.id] = marker;
+      } else {
+        existingMarkersRef.current[store.id].getElement().innerHTML = htmlString;
+      }
+    });
+  }, [existingStores, zoom]);
+
+  useEffect(() => {
+    if (!map.current || !newStoreData.lat || !newStoreData.lng) return;
+
+    const isZoomedOut = zoom < 15.5;
+    const htmlString = renderToString(
+      <CustomMapPin 
+        category={newStoreData.store_category} 
+        industry={newStoreData.industry} 
+        storeName={newStoreData.store_name || "New Location"} 
+        showLabel={zoom >= 16.5} 
+        isDotMode={isZoomedOut} 
+        size={34} 
+      />
+    );
+
+    if (!newPinRef.current) {
+      const el = document.createElement('div');
+      el.style.zIndex = '99999'; 
+      el.innerHTML = htmlString;
+      
+      newPinRef.current = new mapboxgl.Marker({ element: el, anchor: 'bottom', draggable: true })
+        .setLngLat([newStoreData.lng, newStoreData.lat])
+        .addTo(map.current);
+        
+      newPinRef.current.on('dragend', async () => {
+        const lngLat = newPinRef.current.getLngLat();
+        const lng = lngLat.lng.toFixed(6);
+        const lat = lngLat.lat.toFixed(6);
+        
+        let addressText = newStoreRef.current.addressText;
+        if (newStoreRef.current.showAddress) {
+          addressText = await fetchAddressFromCoords(lng, lat);
+        }
+        setNewStoreData(prev => ({ ...prev, lat, lng, addressText }));
+      });
+    } else {
+      newPinRef.current.getElement().innerHTML = htmlString;
+      newPinRef.current.setLngLat([newStoreData.lng, newStoreData.lat]);
+    }
+  }, [newStoreData.lat, newStoreData.lng, newStoreData.store_name, newStoreData.store_category, newStoreData.industry, zoom]);
+
+
+  const handleLocateMerchant = () => {
+    if (!navigator.geolocation || !map.current) return;
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const { longitude, latitude } = pos.coords;
+        const lng = longitude.toFixed(6);
+        const lat = latitude.toFixed(6);
+        
+        map.current.flyTo({ center: [lng, lat], zoom: 18.5, speed: 1.5 });
+        
+        let addressText = newStoreRef.current.addressText;
+        if (newStoreRef.current.showAddress) {
+          addressText = await fetchAddressFromCoords(lng, lat);
+        }
+        setNewStoreData(prev => ({ ...prev, lat, lng, addressText }));
+      },
+      (err) => alert("Could not access location. Please check your browser permissions."),
+      { enableHighAccuracy: true }
+    );
+  };
 
   const handleCategoryChange = (e) => {
     const newCategory = e.target.value;
@@ -176,6 +278,20 @@ export default function CreateBusinessPage() {
       store_category: newCategory,
       industry: BUSINESS_TAXONOMY[newCategory][0] 
     });
+  };
+
+  const handleCoordChange = (field, value) => {
+    setNewStoreData(prev => ({ ...prev, [field]: value }));
+    
+    const num = parseFloat(value);
+    if (!isNaN(num)) {
+      const targetLat = field === 'lat' ? num : parseFloat(newStoreData.lat);
+      const targetLng = field === 'lng' ? num : parseFloat(newStoreData.lng);
+      
+      if (!isNaN(targetLat) && !isNaN(targetLng) && map.current) {
+         map.current.flyTo({ center: [targetLng, targetLat], zoom: 16.5, speed: 1.2 });
+      }
+    }
   };
 
   const handleCreateStore = async (e) => {
@@ -190,165 +306,193 @@ export default function CreateBusinessPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Authentication required.");
 
-      const { data: storeData, error: storeError } = await supabase
-        .from('stores')
-        .insert([{
-          store_name: newStoreData.store_name,
-          store_category: newStoreData.store_category,
-          industry: newStoreData.industry, 
-          description: newStoreData.description,
-          phone: newStoreData.phone,
-          email: newStoreData.email,
-          website: newStoreData.website,
-          lat: newStoreData.lat, 
-          lng: newStoreData.lng,
-          location: `POINT(${newStoreData.lng} ${newStoreData.lat})`,
-          theme_settings: {
-            showPhone: newStoreData.showPhone,
-            showEmail: newStoreData.showEmail,
-            showWebsite: newStoreData.showWebsite,
-            showAddress: newStoreData.showAddress,
-            addressText: newStoreData.addressText,
-            primaryColor: '#2563EB',
-            layout: 'grid',
-            categoryOrder: []
-          }
-        }])
-        .select('id')
-        .single();
+      const response = await fetch(`${API_BASE_URL}/api/stores`, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ ...newStoreData, user_id: session.user.id }) 
+      });
 
-      if (storeError) throw new Error("Failed to create store: " + storeError.message);
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || "Failed to create store");
+      }
+      
+      const createdStore = await response.json();
 
-      const { error: operatorError } = await supabase
-        .from('store_operators')
-        .insert([{
-          store_id: storeData.id,
-          user_id: session.user.id,
-          role: 'owner'
-        }]);
-
-      if (operatorError) throw new Error("Failed to link ownership: " + operatorError.message);
+      const newTheme = { 
+        primaryColor: '#2563EB', layout: 'grid', categoryOrder: [], 
+        showPhone: newStoreData.showPhone, showEmail: newStoreData.showEmail, 
+        showWebsite: newStoreData.showWebsite, showAddress: newStoreData.showAddress, 
+        addressText: newStoreData.addressText 
+      };
+      
+      await fetch(`${API_BASE_URL}/api/stores/${createdStore.id}/theme`, { 
+        method: 'PATCH', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ theme_settings: newTheme }) 
+      });
 
       window.location.href = '/dashboard';
 
     } catch (err) {
       alert(err.message);
+    } finally {
       setIsLoading(false);
     }
   };
 
-  const labelStyle = { fontSize: '11px', fontWeight: '700', color: '#64748B', textTransform: 'uppercase' };
-  const inputStyle = { padding: '10px 12px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '14px', fontWeight: '500', outline: 'none', backgroundColor: 'white', width: '100%', boxSizing: 'border-box' };
+  // 🚀 SCALED DOWN: Adjusted typography and padding to simulate 90% zoom
+  const labelStyle = { fontSize: '10px', fontWeight: '700', color: '#64748B', textTransform: 'uppercase' };
+  const inputStyle = { padding: '8px 10px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '13px', fontWeight: '500', outline: 'none', backgroundColor: 'white', width: '100%', boxSizing: 'border-box' };
 
   return (
-    <div style={{ display: 'flex', height: '100vh', width: '100%', overflow: 'hidden', backgroundColor: '#F8FAFC' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', backgroundColor: '#F8FAFC', padding: '24px', boxSizing: 'border-box' }}>
       
-      {/* LEFT PANEL */}
-      <div style={{ width: '100%', maxWidth: '380px', padding: '24px', overflowY: 'auto', borderRight: '1px solid #E2E8F0', backgroundColor: 'white', zIndex: 10, boxShadow: '4px 0 15px rgba(0,0,0,0.03)' }}>
-        <h2 style={{ marginTop: 0, color: '#0F172A', fontWeight: '800', fontSize: '22px' }}>Register Location</h2>
-        <p style={{ margin: '0 0 20px 0', color: '#64748B', fontSize: '13px', lineHeight: '1.5' }}>
-          Drop a pin on the map to claim your spot. You can see gray dots where other stores are already registered.
-        </p>
+      <style>{`
+        .mapboxgl-ctrl-bottom-left, .mapboxgl-ctrl-bottom-right, .mapboxgl-ctrl-logo, .mapboxgl-ctrl-attrib { 
+          display: none !important; 
+        }
+        .hide-scroll::-webkit-scrollbar {
+          display: none;
+        }
+        .hide-scroll {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
+
+      {/* Back Button */}
+      <div style={{ width: '100%', maxWidth: '940px', margin: '0 auto 12px auto' }}>
+         <button onClick={() => navigate('/dashboard')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px', color: '#64748B', fontWeight: 'bold', fontSize: '13px' }}>
+            <MdChevronLeft size={18} /> Back to Dashboard
+         </button>
+      </div>
+
+      <div style={{ width: '100%', maxWidth: '940px', margin: '0 auto', display: 'flex', gap: '24px', flexWrap: 'wrap', height: 'calc(100% - 32px)' }}>
         
-        <form onSubmit={handleCreateStore} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        {/* LEFT PANEL (FORM CARD) */}
+        <div className="hide-scroll" style={{ flex: '1 1 360px', backgroundColor: 'white', padding: '24px', borderRadius: '16px', boxShadow: '0 8px 24px rgba(0,0,0,0.02)', border: '1px solid #E2E8F0', overflowY: 'auto', height: '100%', boxSizing: 'border-box' }}>
+          <h2 style={{ marginTop: 0, color: '#0F172A', fontSize: '20px', fontWeight: '900' }}>Register New Location</h2>
+          <p style={{ margin: '0 0 16px 0', color: '#64748B', fontSize: '12px', lineHeight: '1.5' }}>Fill out the details and drop a pin on the map to claim your spot.</p>
           
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label style={labelStyle}>Store Name</label>
-            <input 
-              type="text" 
-              required 
-              value={newStoreData.store_name} 
-              onChange={e => setNewStoreData({...newStoreData, store_name: e.target.value})} 
-              style={inputStyle} 
-            />
-          </div>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label style={labelStyle}>Primary Category</label>
-            <select 
-              value={newStoreData.store_category} 
-              onChange={handleCategoryChange} 
-              style={inputStyle}
-            >
-              {Object.keys(BUSINESS_TAXONOMY).map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-            </select>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label style={labelStyle}>Specific Industry</label>
-            <select 
-              value={newStoreData.industry} 
-              onChange={e => setNewStoreData({...newStoreData, industry: e.target.value})} 
-              style={inputStyle}
-            >
-              {BUSINESS_TAXONOMY[newStoreData.store_category].map(ind => (
-                <option key={ind} value={ind}>{ind}</option>
-              ))}
-            </select>
-          </div>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            <label style={labelStyle}>Store Description (Optional)</label>
-            <textarea 
-              value={newStoreData.description} 
-              onChange={(e) => setNewStoreData({...newStoreData, description: e.target.value})} 
-              style={{ ...inputStyle, minHeight: '80px', fontFamily: 'inherit', resize: 'vertical' }} 
-            />
-          </div>
-          
-          <div style={{ padding: '14px', backgroundColor: '#F8FAFC', borderRadius: '8px', border: '1px solid #E2E8F0' }}>
-            <h4 style={{ margin: '0 0 10px 0', fontSize: '13px', color: '#0F172A', fontWeight: '800' }}>Profile Contact Buttons</h4>
+          <form onSubmit={handleCreateStore} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div>
+              <label style={labelStyle}>Store Name</label>
+              <input type="text" placeholder="Store Name" required value={newStoreData.store_name} onChange={e => setNewStoreData({...newStoreData, store_name: e.target.value})} style={inputStyle} />
+            </div>
             
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', marginBottom: newStoreData.showPhone ? '8px' : '6px', fontWeight: '600', color: '#475569' }}>
-              <input type="checkbox" checked={newStoreData.showPhone} onChange={(e) => setNewStoreData({...newStoreData, showPhone: e.target.checked})} /> Show Phone Number
-            </label>
-            {newStoreData.showPhone && <input type="text" placeholder="+63 900..." value={newStoreData.phone} onChange={e => setNewStoreData({...newStoreData, phone: e.target.value})} style={{ ...inputStyle, marginBottom: '12px' }} />}
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>Category</label>
+                <select required value={newStoreData.store_category} onChange={handleCategoryChange} style={inputStyle}>
+                   <option value="" disabled>Select...</option>
+                   {Object.keys(BUSINESS_TAXONOMY).map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>Industry</label>
+                <select required disabled={!newStoreData.store_category} value={newStoreData.industry} onChange={e => setNewStoreData({...newStoreData, industry: e.target.value})} style={inputStyle}>
+                   <option value="" disabled>Select...</option>
+                   {newStoreData.store_category && BUSINESS_TAXONOMY[newStoreData.store_category].map(ind => <option key={ind} value={ind}>{ind}</option>)}
+                </select>
+              </div>
+            </div>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', marginBottom: newStoreData.showEmail ? '8px' : '6px', fontWeight: '600', color: '#475569' }}>
-              <input type="checkbox" checked={newStoreData.showEmail} onChange={(e) => setNewStoreData({...newStoreData, showEmail: e.target.checked})} /> Show Email Address
-            </label>
-            {newStoreData.showEmail && <input type="email" placeholder="Email" value={newStoreData.email} onChange={e => setNewStoreData({...newStoreData, email: e.target.value})} style={{ ...inputStyle, marginBottom: '12px' }} />}
+            <div>
+              <label style={labelStyle}>Store Description (Optional)</label>
+              <textarea placeholder="Brief summary of your business..." value={newStoreData.description} onChange={(e) => setNewStoreData({...newStoreData, description: e.target.value})} style={{ ...inputStyle, minHeight: '60px', fontFamily: 'inherit' }} />
+            </div>
+            
+            <div style={{ padding: '12px', backgroundColor: '#F8FAFC', borderRadius: '10px', border: '1px solid #E2E8F0' }}>
+              <h4 style={{ margin: '0 0 8px 0', fontSize: '13px', color: '#374151' }}>Profile Contact Buttons</h4>
+              
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', cursor: 'pointer', marginBottom: newStoreData.showPhone ? '8px' : '4px', fontWeight: 'bold' }}><input type="checkbox" checked={newStoreData.showPhone} onChange={(e) => setNewStoreData({...newStoreData, showPhone: e.target.checked})} /> Show Phone Number</label>
+              {newStoreData.showPhone && (
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={labelStyle}>Phone Number</label>
+                  <input type="tel" pattern="[0-9]*" placeholder="e.g. 09123456789" value={newStoreData.phone} onChange={e => setNewStoreData({...newStoreData, phone: e.target.value.replace(/\D/g, '')})} style={inputStyle} />
+                </div>
+              )}
+              
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', cursor: 'pointer', marginBottom: newStoreData.showEmail ? '8px' : '4px', fontWeight: 'bold' }}><input type="checkbox" checked={newStoreData.showEmail} onChange={(e) => setNewStoreData({...newStoreData, showEmail: e.target.checked})} /> Show Email Address</label>
+              {newStoreData.showEmail && (
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={labelStyle}>Business Email</label>
+                  <input type="email" placeholder="store@example.com" value={newStoreData.email} onChange={e => setNewStoreData({...newStoreData, email: e.target.value})} style={inputStyle} />
+                </div>
+              )}
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', marginBottom: newStoreData.showWebsite ? '8px' : '6px', fontWeight: '600', color: '#475569' }}>
-              <input type="checkbox" checked={newStoreData.showWebsite} onChange={(e) => setNewStoreData({...newStoreData, showWebsite: e.target.checked})} /> Show Website Link
-            </label>
-            {newStoreData.showWebsite && <input type="url" placeholder="URL" value={newStoreData.website} onChange={e => setNewStoreData({...newStoreData, website: e.target.value})} style={{ ...inputStyle, marginBottom: '12px' }} />}
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', cursor: 'pointer', marginBottom: newStoreData.showWebsite ? '8px' : '4px', fontWeight: 'bold' }}><input type="checkbox" checked={newStoreData.showWebsite} onChange={(e) => setNewStoreData({...newStoreData, showWebsite: e.target.checked})} /> Show Website Link</label>
+              {newStoreData.showWebsite && (
+                <div style={{ marginBottom: '12px' }}>
+                  <label style={labelStyle}>Website URL</label>
+                  <input type="url" placeholder="https://yourstore.com" value={newStoreData.website} onChange={e => setNewStoreData({...newStoreData, website: e.target.value})} style={inputStyle} />
+                </div>
+              )}
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', marginBottom: newStoreData.showAddress ? '8px' : '0', fontWeight: '600', color: '#475569' }}>
-              <input type="checkbox" checked={newStoreData.showAddress} onChange={async (e) => {
-                const checked = e.target.checked; 
-                let text = newStoreData.addressText;
-                if (checked && !text && newStoreData.lng) {
-                  text = await fetchAddressFromCoords(newStoreData.lng, newStoreData.lat);
-                }
-                setNewStoreData({...newStoreData, showAddress: checked, addressText: text});
-              }} /> Show Exact Street Address
-            </label>
-            {newStoreData.showAddress && <input type="text" placeholder="Auto-detects when you drop a pin" value={newStoreData.addressText} onChange={(e) => setNewStoreData({...newStoreData, addressText: e.target.value})} style={{ ...inputStyle, marginTop: '6px' }} />}
-          </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', cursor: 'pointer', marginBottom: newStoreData.showAddress ? '8px' : '0', fontWeight: 'bold' }}><input type="checkbox" checked={newStoreData.showAddress} onChange={async (e) => { const checked = e.target.checked; let text = newStoreData.addressText; if (checked && !text && newStoreData.lng) text = await fetchAddressFromCoords(newStoreData.lng, newStoreData.lat); setNewStoreData({...newStoreData, showAddress: checked, addressText: text}); }} /> Show Exact Street Address</label>
+              {newStoreData.showAddress && (
+                <div style={{ marginTop: '8px' }}>
+                  <label style={labelStyle}>Store Address</label>
+                  <input type="text" placeholder="Auto-detects when you drop a pin" value={newStoreData.addressText} onChange={(e) => setNewStoreData({...newStoreData, addressText: e.target.value})} style={inputStyle} />
+                </div>
+              )}
+            </div>
 
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <input type="text" readOnly placeholder="Latitude" value={newStoreData.lat} style={{ ...inputStyle, flex: 1, backgroundColor: '#F1F5F9', color: '#64748B' }} />
-            <input type="text" readOnly placeholder="Longitude" value={newStoreData.lng} style={{ ...inputStyle, flex: 1, backgroundColor: '#F1F5F9', color: '#64748B' }} />
-          </div>
+            <button type="submit" disabled={isLoading} style={{ padding: '12px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: isLoading ? 'not-allowed' : 'pointer', marginTop: '8px', transition: 'background-color 0.2s', fontSize: '13px' }}>
+              {isLoading ? 'Creating Store...' : 'Confirm Store Location'}
+            </button>
+          </form>
+        </div>
+
+        {/* RIGHT PANEL (MAP CARD) */}
+        <div style={{ flex: '1 1 400px', display: 'flex', flexDirection: 'column', height: '100%' }}>
           
-          <button 
-            type="submit" 
-            disabled={isLoading} 
-            style={{ padding: '12px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '8px', fontWeight: '800', fontSize: '14px', cursor: isLoading ? 'not-allowed' : 'pointer', marginTop: '6px', transition: 'background-color 0.2s', boxShadow: '0 2px 8px rgba(37, 99, 235, 0.2)' }}
-          >
-            {isLoading ? 'Creating Store...' : 'Confirm Store Location'}
-          </button>
-        </form>
-      </div>
+          <div style={{ padding: '12px 16px', backgroundColor: 'white', borderRadius: '16px 16px 0 0', border: '1px solid #E2E8F0', borderBottom: 'none' }}>
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#0F172A', fontWeight: '800' }}>Drop a Pin Location</h3>
+            
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={labelStyle}>Latitude</label>
+                <input 
+                  type="number" 
+                  step="any" 
+                  placeholder="e.g. 12.3985" 
+                  value={newStoreData.lat} 
+                  onChange={(e) => handleCoordChange('lat', e.target.value)} 
+                  style={{...inputStyle, fontSize: '12px', padding: '6px 8px'}} 
+                />
+              </div>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <label style={labelStyle}>Longitude</label>
+                <input 
+                  type="number" 
+                  step="any" 
+                  placeholder="e.g. 121.9823" 
+                  value={newStoreData.lng} 
+                  onChange={(e) => handleCoordChange('lng', e.target.value)} 
+                  style={{...inputStyle, fontSize: '12px', padding: '6px 8px'}} 
+                />
+              </div>
+            </div>
+          </div>
 
-      {/* RIGHT PANEL: The Interactive Map */}
-      <div style={{ flexGrow: 1, position: 'relative' }}>
-        <div ref={mapContainer} style={{ position: 'absolute', inset: 0 }} />
+          <div style={{ flexGrow: 1, position: 'relative', minHeight: '350px', borderRadius: '0 0 16px 16px', overflow: 'hidden', border: '1px solid #E2E8F0' }}>
+            <div ref={mapContainer} style={{ position: 'absolute', inset: 0 }} />
+            
+            <div style={{ position: 'absolute', bottom: '16px', right: '16px', zIndex: 10 }}>
+               <button 
+                 type="button" 
+                 onClick={handleLocateMerchant} 
+                 style={{ width: '40px', height: '40px', backgroundColor: '#FFFFFF', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', cursor: 'pointer' }}
+               >
+                 <MdOutlineNearMe size={20} color="#2563EB" style={{ transform: 'translate(-1px, 1px)' }} />
+               </button>
+            </div>
+          </div>
+        </div>
+
       </div>
-      
     </div>
   );
 }

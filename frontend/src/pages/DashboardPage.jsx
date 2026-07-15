@@ -8,7 +8,7 @@ import {
   MdDragIndicator, MdSmartphone, MdChevronLeft, MdChevronRight, MdOutlineNearMe, 
   MdEdit, MdDelete, MdAdd, MdCameraAlt, MdDashboard, MdPeople, MdSecurity, 
   MdLocalOffer, MdRocketLaunch, MdPayment, MdRestaurantMenu, MdCheckCircle, 
-  MdCancel, MdWarning, MdClose, MdSettings
+  MdCancel, MdWarning, MdClose, MdSettings, MdStorefront
 } from "react-icons/md";
 
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
@@ -84,7 +84,6 @@ export default function DashboardPage() {
   const [stores, setStores] = useState([]);
   const [activeStore, setActiveStore] = useState(null);
   const [activeTab, setActiveTab] = useState('menu'); 
-  const [isAddingStore, setIsAddingStore] = useState(false);
   const [items, setItems] = useState([]);
   const [storeOperators, setStoreOperators] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -101,11 +100,6 @@ export default function DashboardPage() {
     showPhone: false, showEmail: false, showWebsite: false, showAddress: false, addressText: '', theme_settings: {} 
   });
   
-  const [newStoreData, setNewStoreData] = useState({ 
-    store_name: '', store_category: '', industry: '', description: '', phone: '', email: '', website: '', lat: '', lng: '',
-    showPhone: false, showEmail: false, showWebsite: false, showAddress: false, addressText: ''
-  });
-
   const [isDeleteStoreModalOpen, setIsDeleteStoreModalOpen] = useState(false);
   const [deleteConfirmationText, setDeleteConfirmationText] = useState('');
 
@@ -143,12 +137,6 @@ export default function DashboardPage() {
   const [voucherCode, setVoucherCode] = useState('');
   const [voucherLoading, setVoucherLoading] = useState(false);
   const [voucherMessage, setVoucherMessage] = useState(null);
-
-  const addMapContainer = useRef(null);
-  const addMap = useRef(null);
-  const addPinRef = useRef(null);
-  const newStoreRef = useRef(newStoreData);
-  useEffect(() => { newStoreRef.current = newStoreData; }, [newStoreData]);
 
   const editMapContainer = useRef(null);
   const editMap = useRef(null);
@@ -212,7 +200,6 @@ export default function DashboardPage() {
         const data = await res.json();
         setStores(data);
         if (data.length > 0 && !activeStore) setActiveStore(data[0]); 
-        if (data.length === 0) setIsAddingStore(true);
       }
     } catch (err) { console.error("Failed to fetch stores:", err); } finally { setLoading(false); }
   };
@@ -225,7 +212,7 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
-    if (activeStore?.id && !isAddingStore) {
+    if (activeStore?.id) {
       fetch(`${API_BASE_URL}/api/stores/${activeStore.id}`)
         .then(res => res.json())
         .then(data => { 
@@ -245,7 +232,7 @@ export default function DashboardPage() {
       fetchSubscription(activeStore.id);
       setActiveTab('menu'); 
     }
-  }, [activeStore?.id, isAddingStore]);
+  }, [activeStore?.id]);
 
   useEffect(() => {
     const uniqueCats = [...new Set(items.map(i => i.item_category || 'Uncategorized'))];
@@ -257,9 +244,14 @@ export default function DashboardPage() {
   }, [items]);
 
   useEffect(() => {
-    if (!isAddingStore && isEditStoreModalOpen && editMapContainer.current && !editMap.current) {
+    if (isEditStoreModalOpen && editMapContainer.current && !editMap.current) {
       editMap.current = new mapboxgl.Map({
-        container: editMapContainer.current, style: 'mapbox://styles/mapbox/streets-v12', center: [editStoreData.lng || 121.9823, editStoreData.lat || 12.3985], zoom: 15.5, pitch: 45,
+        container: editMapContainer.current, 
+        style: 'mapbox://styles/locallook/cmqttzcqe004h01rc8ya580zb', 
+        center: [editStoreData.lng || 121.9823, editStoreData.lat || 12.3985], 
+        zoom: 15.5, 
+        pitch: 45,
+        attributionControl: false 
       });
       
       if (editStoreData.lng && editStoreData.lat) {
@@ -283,29 +275,7 @@ export default function DashboardPage() {
     }
 
     return () => { if (!isEditStoreModalOpen && editMap.current) { editMap.current.remove(); editMap.current = null; editPinRef.current = null; } };
-  }, [isAddingStore, isEditStoreModalOpen, editStoreData.lng, editStoreData.lat]);
-
-  useEffect(() => {
-    if (isAddingStore && addMapContainer.current && !addMap.current) {
-      addMap.current = new mapboxgl.Map({
-        container: addMapContainer.current, style: 'mapbox://styles/mapbox/streets-v12', center: [121.9823, 12.3985], zoom: 15.5, pitch: 45,
-      });
-      
-      addMap.current.on('click', async (e) => {
-        const lng = e.lngLat.lng.toFixed(6); const lat = e.lngLat.lat.toFixed(6);
-        let addressText = newStoreRef.current.addressText;
-        if (newStoreRef.current.showAddress) addressText = await fetchAddressFromCoords(lng, lat);
-        setNewStoreData(prev => ({ ...prev, lat, lng, addressText }));
-
-        if (!addPinRef.current) {
-          const el = document.createElement('div');
-          el.innerHTML = `<div style="background-color: #2563eb; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); transform: translateY(-12px);"></div>`;
-          addPinRef.current = new mapboxgl.Marker({ element: el, anchor: 'bottom' }).setLngLat([lng, lat]).addTo(addMap.current);
-        } else { addPinRef.current.setLngLat([lng, lat]); }
-      });
-    }
-    return () => { if (!isAddingStore && addMap.current) { addMap.current.remove(); addMap.current = null; addPinRef.current = null; } };
-  }, [isAddingStore]);
+  }, [isEditStoreModalOpen, editStoreData.lng, editStoreData.lat]);
 
   const handleLocateMerchant = (mapRef, isEditing) => {
     if (!navigator.geolocation || !mapRef.current) return;
@@ -320,11 +290,6 @@ export default function DashboardPage() {
           if (editStoreRef.current.showAddress) addressText = await fetchAddressFromCoords(lng, lat);
           setEditStoreData(prev => ({ ...prev, lat, lng, addressText }));
           if (editPinRef.current) editPinRef.current.setLngLat([lng, lat]);
-        } else {
-          let addressText = newStoreRef.current.addressText;
-          if (newStoreRef.current.showAddress) addressText = await fetchAddressFromCoords(lng, lat);
-          setNewStoreData(prev => ({ ...prev, lat, lng, addressText }));
-          if (addPinRef.current) addPinRef.current.setLngLat([lng, lat]);
         }
       },
       (err) => alert("Could not access location. Check permissions."),
@@ -333,13 +298,12 @@ export default function DashboardPage() {
   };
 
   const handleScroll = () => {
-    if (activeTab !== 'menu' || isAddingStore || !scrollContainerRef.current) return;
+    if (activeTab !== 'menu' || !scrollContainerRef.current) return;
     const containerTop = scrollContainerRef.current.getBoundingClientRect().top;
     let currentActive = activeCategory; let minDistance = Infinity;
     categoryOrder.forEach(cat => {
       const el = sectionRefs.current[cat];
       if (el) {
-        // Offset mapping to account for the 70px height of the top header + sticky space
         const distance = Math.abs(el.getBoundingClientRect().top - containerTop - 140); 
         if (distance < minDistance) { minDistance = distance; currentActive = cat; }
       }
@@ -410,25 +374,6 @@ export default function DashboardPage() {
     if (response.ok) { setActiveStore({ ...activeStore, is_open: nextStatus }); setStores(stores.map(s => s.id === activeStore.id ? { ...s, is_open: nextStatus } : s)); }
   };
 
-  const handleCreateStore = async (e) => {
-    e.preventDefault();
-    if (!newStoreData.lat || !newStoreData.lng) return alert("Please drop a pin on the map!");
-    setIsUploading(true);
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/stores`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...newStoreData, user_id: user.id }) });
-      if (!response.ok) throw new Error("Failed to create store");
-      const createdStore = await response.json();
-      
-      const newTheme = { primaryColor: '#2563EB', layout: 'grid', categoryOrder: [], showPhone: newStoreData.showPhone, showEmail: newStoreData.showEmail, showWebsite: newStoreData.showWebsite, showAddress: newStoreData.showAddress, addressText: newStoreData.addressText };
-      await fetch(`${API_BASE_URL}/api/stores/${createdStore.id}/theme`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme_settings: newTheme }) });
-
-      await fetchStores(user.id);
-      setActiveStore(createdStore);
-      setIsAddingStore(false);
-      setNewStoreData({ store_name: '', store_category: '', industry: '', description: '', phone: '', email: '', website: '', lat: '', lng: '', showPhone: false, showEmail: false, showWebsite: false, showAddress: false, addressText: '' });
-    } catch (err) { alert(err.message); } finally { setIsUploading(false); }
-  };
-
   const handleUpdateSettings = async (e) => {
     e.preventDefault(); if (!editStoreData.lat || !editStoreData.lng) return alert("Please drop a pin on the map!"); setIsUploading(true);
     try {
@@ -465,7 +410,7 @@ export default function DashboardPage() {
       if (response.ok) { 
         const updatedStores = stores.filter(s => s.id !== activeStore.id); 
         setStores(updatedStores); 
-        if (updatedStores.length > 0) { setActiveStore(updatedStores[0]); } else { setActiveStore(null); setIsAddingStore(true); }
+        if (updatedStores.length > 0) { setActiveStore(updatedStores[0]); } else { setActiveStore(null); }
         setIsDeleteStoreModalOpen(false); 
         setIsEditStoreModalOpen(false);
       }
@@ -563,7 +508,7 @@ export default function DashboardPage() {
     try {
       const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/staff/${staffId}`, { method: 'DELETE' });
       if (!response.ok) throw new Error("Failed to remove staff");
-      setStoreOperators(storeOperators.filter(op => op.id !== staffId));
+      setStoreOperators(storeOperators.filter(op => op.user_id !== staffId));
     } catch (error) { alert("Error: " + error.message); }
   };
 
@@ -587,6 +532,13 @@ export default function DashboardPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', backgroundColor: '#F8FAFC', fontFamily: 'Inter, sans-serif', overflowY: 'auto', position: 'relative' }}>
       
+      {/* 🚀 Global CSS overrides to hide Mapbox watermarks */}
+      <style>{`
+        .mapboxgl-ctrl-bottom-left, .mapboxgl-ctrl-bottom-right, .mapboxgl-ctrl-logo, .mapboxgl-ctrl-attrib { 
+          display: none !important; 
+        }
+      `}</style>
+
       {/* 🚀 Modals */}
       {imageToCrop && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', flexDirection: 'column' }}>
@@ -786,8 +738,8 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* 🚀 TOP HEADER: Horizontal Scrollable Store Selector (Drag Enabled) */}
-      <div style={{ height: '70px', boxSizing: 'border-box', position: 'sticky', top: 0, zIndex: 40, backgroundColor: '#FFFFFF', padding: '0 30px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #E2E8F0', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
+      {/* 🚀 TOP HEADER */}
+      <div style={{ height: '70px', flexShrink: 0, boxSizing: 'border-box', zIndex: 40, backgroundColor: '#FFFFFF', padding: '0 30px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #E2E8F0', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px', overflow: 'hidden', flexGrow: 1, marginRight: '20px' }}>
           <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '900', color: '#0F172A', paddingRight: '15px', borderRight: '1px solid #E2E8F0', flexShrink: 0 }}>Hub</h2>
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center', overflow: 'hidden', flexGrow: 1 }}>
@@ -804,9 +756,11 @@ export default function DashboardPage() {
               style={{ display: 'flex', gap: '8px', overflowX: 'auto', scrollbarWidth: 'none', padding: '5px 0', width: '100%', cursor: 'grab', userSelect: 'none' }}
             >
               {stores.map(s => (
-                <button key={s.id} onClick={() => { setActiveStore(s); setIsAddingStore(false); }} style={{ flexShrink: 0, padding: '8px 16px', borderRadius: '20px', backgroundColor: activeStore?.id === s.id && !isAddingStore ? '#2563EB' : 'transparent', color: activeStore?.id === s.id && !isAddingStore ? 'white' : '#64748B', border: activeStore?.id === s.id && !isAddingStore ? '1px solid transparent' : '1px solid #E2E8F0', fontWeight: '700', fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap', boxShadow: activeStore?.id === s.id && !isAddingStore ? '0 4px 10px rgba(37,99,235,0.2)' : 'none' }}>{s.store_name}</button>
+                <button key={s.id} onClick={() => setActiveStore(s)} style={{ flexShrink: 0, padding: '8px 16px', borderRadius: '20px', backgroundColor: activeStore?.id === s.id ? '#2563EB' : 'transparent', color: activeStore?.id === s.id ? 'white' : '#64748B', border: activeStore?.id === s.id ? '1px solid transparent' : '1px solid #E2E8F0', fontWeight: '700', fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap', boxShadow: activeStore?.id === s.id ? '0 4px 10px rgba(37,99,235,0.2)' : 'none' }}>{s.store_name}</button>
               ))}
-              <button onClick={() => { setIsAddingStore(true); setActiveStore(null); }} style={{ flexShrink: 0, padding: '8px 16px', borderRadius: '20px', backgroundColor: isAddingStore ? '#2563EB' : '#EFF6FF', color: isAddingStore ? 'white' : '#2563EB', border: isAddingStore ? '1px solid transparent' : '1px dashed #BFDBFE', fontWeight: '700', fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '4px' }}><MdAdd size={16} /> Add Store</button>
+              
+              {/* 🚀 Add Store button now securely navigates to the dedicated Create Business route */}
+              <button onClick={() => navigate('/create-business')} style={{ flexShrink: 0, padding: '8px 16px', borderRadius: '20px', backgroundColor: '#EFF6FF', color: '#2563EB', border: '1px dashed #BFDBFE', fontWeight: '700', fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '4px' }}><MdAdd size={16} /> Add Store</button>
             </div>
             {showStoreRight && (
               <button onClick={() => storeScrollRef.current.scrollBy({ left: 200, behavior: 'smooth' })} style={{ position: 'absolute', right: 0, zIndex: 5, background: 'linear-gradient(to left, white 70%, transparent)', border: 'none', height: '100%', padding: '0 0 0 10px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><MdChevronRight size={24} color="#0F172A" /></button>
@@ -818,97 +772,24 @@ export default function DashboardPage() {
 
 
       {/* 🚀 MAIN CONTENT AREA */}
-      <div ref={scrollContainerRef} onScroll={handleScroll} style={{ flexGrow: 1, padding: '30px', paddingBottom: '90px', position: 'relative', overflowY: 'auto' }}>
+      <div ref={scrollContainerRef} onScroll={handleScroll} style={{ flexGrow: 1, padding: '30px', paddingBottom: '90px', position: 'relative', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
         
-        {/* ADD STORE VIEW */}
-        {isAddingStore && (
-          <div style={{ width: '100%', maxWidth: '1000px', margin: '0 auto', display: 'flex', gap: '30px', flexWrap: 'wrap' }}>
-            <div style={{ flex: '1 1 400px', backgroundColor: 'white', padding: '30px', borderRadius: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.02)', border: '1px solid #E2E8F0' }}>
-              <h2 style={{ marginTop: 0, color: '#0F172A', fontSize: '24px', fontWeight: '900' }}>Register New Location</h2>
-              <form onSubmit={handleCreateStore} style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '20px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748B', marginBottom: '4px' }}>Store Name</label>
-                  <input type="text" placeholder="Store Name" required value={newStoreData.store_name} onChange={e => setNewStoreData({...newStoreData, store_name: e.target.value})} style={{ width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #E2E8F0', boxSizing: 'border-box' }} />
-                </div>
-                
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748B', marginBottom: '4px' }}>Category</label>
-                    <select required value={newStoreData.store_category} onChange={e => setNewStoreData({...newStoreData, store_category: e.target.value, industry: ''})} style={{ width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #E2E8F0', backgroundColor: 'white', boxSizing: 'border-box' }}>
-                       <option value="" disabled>Select...</option>
-                       {Object.keys(BUSINESS_TAXONOMY).map(cat => <option key={cat} value={cat}>{cat}</option>)}
-                    </select>
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748B', marginBottom: '4px' }}>Industry</label>
-                    <select required disabled={!newStoreData.store_category} value={newStoreData.industry} onChange={e => setNewStoreData({...newStoreData, industry: e.target.value})} style={{ width: '100%', padding: '12px', borderRadius: '10px', border: '1px solid #E2E8F0', backgroundColor: 'white', boxSizing: 'border-box' }}>
-                       <option value="" disabled>Select...</option>
-                       {newStoreData.store_category && BUSINESS_TAXONOMY[newStoreData.store_category].map(ind => <option key={ind} value={ind}>{ind}</option>)}
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748B', marginBottom: '4px' }}>Store Description (Optional)</label>
-                  <textarea placeholder="Brief summary of your business..." value={newStoreData.description} onChange={(e) => setNewStoreData({...newStoreData, description: e.target.value})} style={{ padding: '12px', border: '1px solid #E2E8F0', borderRadius: '10px', width: '100%', boxSizing: 'border-box', minHeight: '80px', fontFamily: 'inherit' }} />
-                </div>
-                
-                <div style={{ padding: '15px', backgroundColor: '#F8FAFC', borderRadius: '12px', border: '1px solid #E2E8F0' }}>
-                  <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#374151' }}>Profile Contact Buttons</h4>
-                  
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', marginBottom: newStoreData.showPhone ? '10px' : '5px', fontWeight: 'bold' }}><input type="checkbox" checked={newStoreData.showPhone} onChange={(e) => setNewStoreData({...newStoreData, showPhone: e.target.checked})} /> Show Phone Number</label>
-                  {newStoreData.showPhone && (
-                    <div style={{ marginBottom: '15px' }}>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748B', marginBottom: '4px' }}>Phone Number</label>
-                      <input type="tel" pattern="[0-9]*" placeholder="e.g. 09123456789" value={newStoreData.phone} onChange={e => setNewStoreData({...newStoreData, phone: e.target.value.replace(/\D/g, '')})} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #E2E8F0', width: '100%', boxSizing: 'border-box' }} />
-                    </div>
-                  )}
-                  
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', marginBottom: newStoreData.showEmail ? '10px' : '5px', fontWeight: 'bold' }}><input type="checkbox" checked={newStoreData.showEmail} onChange={(e) => setNewStoreData({...newStoreData, showEmail: e.target.checked})} /> Show Email Address</label>
-                  {newStoreData.showEmail && (
-                    <div style={{ marginBottom: '15px' }}>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748B', marginBottom: '4px' }}>Business Email</label>
-                      <input type="email" placeholder="store@example.com" value={newStoreData.email} onChange={e => setNewStoreData({...newStoreData, email: e.target.value})} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #E2E8F0', width: '100%', boxSizing: 'border-box' }} />
-                    </div>
-                  )}
-
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', marginBottom: newStoreData.showWebsite ? '10px' : '5px', fontWeight: 'bold' }}><input type="checkbox" checked={newStoreData.showWebsite} onChange={(e) => setNewStoreData({...newStoreData, showWebsite: e.target.checked})} /> Show Website Link</label>
-                  {newStoreData.showWebsite && (
-                    <div style={{ marginBottom: '15px' }}>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748B', marginBottom: '4px' }}>Website URL</label>
-                      <input type="url" placeholder="https://yourstore.com" value={newStoreData.website} onChange={e => setNewStoreData({...newStoreData, website: e.target.value})} style={{ padding: '10px', borderRadius: '8px', border: '1px solid #E2E8F0', width: '100%', boxSizing: 'border-box' }} />
-                    </div>
-                  )}
-
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', marginBottom: newStoreData.showAddress ? '10px' : '0', fontWeight: 'bold' }}><input type="checkbox" checked={newStoreData.showAddress} onChange={async (e) => { const checked = e.target.checked; let text = newStoreData.addressText; if (checked && !text && newStoreData.lng) text = await fetchAddressFromCoords(newStoreData.lng, newStoreData.lat); setNewStoreData({...newStoreData, showAddress: checked, addressText: text}); }} /> Show Exact Street Address</label>
-                  {newStoreData.showAddress && (
-                    <div style={{ marginTop: '10px' }}>
-                      <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748B', marginBottom: '4px' }}>Store Address</label>
-                      <input type="text" placeholder="Auto-detects when you drop a pin" value={newStoreData.addressText} onChange={(e) => setNewStoreData({...newStoreData, addressText: e.target.value})} style={{ padding: '10px', border: '1px solid #E2E8F0', borderRadius: '8px', width: '100%', boxSizing: 'border-box' }} />
-                    </div>
-                  )}
-                </div>
-
-                <button type="submit" disabled={isUploading} style={{ padding: '14px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer', marginTop: '10px' }}>{isUploading ? 'Saving...' : 'Confirm Store'}</button>
-              </form>
-            </div>
-
-            <div style={{ flex: '1 1 400px', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ padding: '20px', backgroundColor: 'white', borderRadius: '20px 20px 0 0', border: '1px solid #E2E8F0', borderBottom: 'none' }}>
-                <h3 style={{ margin: 0, fontSize: '16px', color: '#0F172A', fontWeight: '800' }}>Drop a Pin Location</h3>
+        {/* EMPTY STATE (If User has no stores) */}
+        {stores.length === 0 && (
+           <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
+              <div style={{ width: '80px', height: '80px', backgroundColor: '#EFF6FF', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: '20px' }}>
+                <MdStorefront size={40} color="#2563EB" />
               </div>
-              <div style={{ flexGrow: 1, position: 'relative', minHeight: '400px', borderRadius: '0 0 20px 20px', overflow: 'hidden', border: '1px solid #E2E8F0' }}>
-                <div ref={addMapContainer} style={{ position: 'absolute', inset: 0 }} />
-                <div style={{ position: 'absolute', bottom: '20px', right: '20px', zIndex: 10 }}>
-                   <button type="button" onClick={() => handleLocateMerchant(addMap, false)} style={{ width: '44px', height: '44px', backgroundColor: '#FFFFFF', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.15)', cursor: 'pointer' }}><MdOutlineNearMe size={24} color="#2563EB" style={{ transform: 'translate(-1px, 1px)' }} /></button>
-                </div>
-              </div>
-            </div>
-          </div>
+              <h2 style={{ margin: '0 0 10px 0', color: '#0F172A', fontSize: '24px', fontWeight: '900' }}>Welcome to LocalLook Hub</h2>
+              <p style={{ margin: '0 0 30px 0', color: '#64748B', fontSize: '15px', maxWidth: '400px', lineHeight: '1.5' }}>You haven't registered any locations yet. Register your business to start building your digital storefront.</p>
+              <button onClick={() => navigate('/create-business')} style={{ padding: '14px 28px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '800', fontSize: '15px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 15px rgba(37, 99, 235, 0.2)' }}>
+                <MdAdd size={20} /> Register a Store
+              </button>
+           </div>
         )}
 
         {/* DASHBOARD VIEW */}
-        {!isAddingStore && activeStore && (
+        {activeStore && (
           <div style={{ width: '100%', maxWidth: '1000px', margin: '0 auto' }}>
             
             <div style={{ width: '100%', height: '240px', borderRadius: '24px', overflow: 'hidden', backgroundImage: `url(${getStoreCoverImage(activeStore)})`, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative', marginBottom: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.08)' }}>
@@ -1008,7 +889,7 @@ export default function DashboardPage() {
                     <button onClick={openAddModal} disabled={isMenuLocked} style={{ padding: '10px 20px', backgroundColor: isMenuLocked ? '#94A3B8' : '#2563EB', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: isMenuLocked ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}><MdAdd size={18} /> Add Item</button>
                   </div>
 
-                  {/* 🚀 STICKY CATEGORIES HEADER (Pinned under Store Header) */}
+                  {/* STICKY CATEGORIES HEADER */}
                   {categoryOrder.length > 0 && (
                     <div style={{ position: 'sticky', top: '70px', zIndex: 30, backgroundColor: '#F8FAFC', padding: '10px 0', margin: '0 -10px', paddingLeft: '10px', paddingRight: '10px' }}>
                       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={[restrictToHorizontalAxis]}>
@@ -1071,29 +952,50 @@ export default function DashboardPage() {
                   </div>
                 )}
                 
+                {/* 🚀 FIXED: Securely mapped Store Operators table to guarantee Owner visibility */}
                 <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                  <thead><tr style={{ borderBottom: '2px solid #E2E8F0', color: '#64748B', fontSize: '13px' }}><th style={{ padding: '12px 0' }}>User Email</th><th style={{ padding: '12px 0' }}>Status</th><th style={{ padding: '12px 0', textAlign: 'right' }}>Action</th></tr></thead>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid #E2E8F0', color: '#64748B', fontSize: '13px' }}>
+                      <th style={{ padding: '12px 0' }}>User Email</th>
+                      <th style={{ padding: '12px 0' }}>Status</th>
+                      <th style={{ padding: '12px 0', textAlign: 'right' }}>Action</th>
+                    </tr>
+                  </thead>
                   <tbody>
-                    {storeOperators.map((op, idx) => {
-                      // 🚀 Identify if the current row belongs to the merchant/owner
-                      const isCurrentUserOwner = activeStore.role === 'merchant' && op.email === user?.email;
-                      const isOwner = op.role === 'merchant' || isCurrentUserOwner;
+                    {/* Explicitly render the Store Owner row if the logged in user is the owner */}
+                    {activeStore.merchant_id === user?.id && (
+                      <tr style={{ borderBottom: '1px solid #F1F5F9' }}>
+                        <td style={{ padding: '16px 0', fontWeight: '600', color: '#0F172A' }}>{user?.email}</td>
+                        <td style={{ padding: '16px 0' }}>
+                          <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '12px', backgroundColor: '#EFF6FF', color: '#2563EB', fontWeight: 'bold' }}>
+                            STORE OWNER
+                          </span>
+                        </td>
+                        <td style={{ padding: '16px 0', textAlign: 'right' }}></td>
+                      </tr>
+                    )}
+                    
+                    {/* Render actual Staff Members */}
+                    {storeOperators.filter(op => op.user_id !== activeStore.merchant_id).map((op, idx) => (
+                      <tr key={op.id || idx} style={{ borderBottom: '1px solid #F1F5F9' }}>
+                        <td style={{ padding: '16px 0', fontWeight: '600', color: '#0F172A' }}>{op.email}</td>
+                        <td style={{ padding: '16px 0' }}>
+                          <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '12px', backgroundColor: op.status === 'pending' ? '#FEF3C7' : '#D1FAE5', color: op.status === 'pending' ? '#D97706' : '#059669', fontWeight: 'bold' }}>
+                            {op.status === 'pending' ? 'PENDING' : 'ACTIVE STAFF'}
+                          </span>
+                        </td>
+                        <td style={{ padding: '16px 0', textAlign: 'right' }}>
+                          {activeStore.merchant_id === user?.id && op.status !== 'pending' && (
+                             <button onClick={() => handleRemoveStaff(op.user_id, op.email)} style={{ padding: '6px 12px', backgroundColor: '#FEE2E2', color: '#DC2626', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' }}>Remove</button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
 
-                      return (
-                        <tr key={op.id || idx} style={{ borderBottom: '1px solid #F1F5F9' }}>
-                          <td style={{ padding: '16px 0', fontWeight: '600', color: '#0F172A' }}>{op.email}</td>
-                          <td style={{ padding: '16px 0' }}>
-                            <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '12px', backgroundColor: isOwner ? '#EFF6FF' : (op.status === 'pending' ? '#FEF3C7' : '#D1FAE5'), color: isOwner ? '#2563EB' : (op.status === 'pending' ? '#D97706' : '#059669'), fontWeight: 'bold' }}>
-                              {isOwner ? 'STORE OWNER' : (op.status === 'pending' ? 'PENDING' : 'ACTIVE STAFF')}
-                            </span>
-                          </td>
-                          <td style={{ padding: '16px 0', textAlign: 'right' }}>
-                            {!isOwner && op.status !== 'pending' && <button onClick={() => handleRemoveStaff(op.id, op.email)} style={{ padding: '6px 12px', backgroundColor: '#FEE2E2', color: '#DC2626', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' }}>Remove</button>}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {storeOperators.length === 0 && <tr><td colSpan="3" style={{ padding: '20px 0', textAlign: 'center', color: '#94A3B8' }}>No staff members added yet.</td></tr>}
+                    {/* Empty state for staff */}
+                    {storeOperators.filter(op => op.user_id !== activeStore.merchant_id).length === 0 && activeStore.merchant_id === user?.id && (
+                      <tr><td colSpan="3" style={{ padding: '20px 0', textAlign: 'center', color: '#94A3B8' }}>No staff members added yet.</td></tr>
+                    )}
                   </tbody>
                 </table>
               </div>
