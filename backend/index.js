@@ -119,7 +119,7 @@ app.post('/api/stores/:store_id/invite', inviteLimiter, async (req, res) => {
 
     if (!email || !email.includes('@')) return res.status(400).json({ error: "Invalid email address." });
 
-    // 🚀 Check the true structural owner of the store using merchant_id
+    // Verify ownership
     const authCheck = await client.query(
       `SELECT merchant_id FROM stores WHERE id = $1 AND merchant_id = $2`, 
       [store_id, requester_id]
@@ -136,33 +136,59 @@ app.post('/api/stores/:store_id/invite', inviteLimiter, async (req, res) => {
     await client.query('BEGIN');
 
     if (existingUserCheck.rows.length > 0) {
+      // User is fully registered in the database
       targetUserId = existingUserCheck.rows[0].id;
       inviteStatus = 'confirmed'; 
-      await resend.emails.send({
-        // 🚀 Updated to the verified Custom Domain
-        from: 'LocalLook <hello@locallookph.com>', 
-        to: email, 
-        subject: "You've been added to a store on LocalLook!",
-        html: `<div style="font-family: sans-serif; padding: 20px;"><h2>Store Access Granted</h2><a href="https://locallookph.com/dashboard">Go to Dashboard</a></div>`
-      });
+      
+      try {
+        await resend.emails.send({
+          from: 'LocalLook <hello@locallookph.com>', 
+          to: email, 
+          subject: "You've been added to a store on LocalLook!",
+          html: `<div style="font-family: sans-serif; padding: 20px;"><h2>Store Access Granted</h2><a href="https://locallookph.com/dashboard">Go to Dashboard</a></div>`
+        });
+      } catch (resendErr) {
+        console.warn("Resend email failed, but operator was still added:", resendErr);
+      }
+      
     } else {
+      // User is new to the database, trigger Supabase Invite
       const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email);
-      if (inviteError) throw new Error(inviteError.message);
+      
+      if (inviteError) {
+         const errMsg = inviteError.message?.toLowerCase() || "";
+         
+         // 🚀 Translate obscure Supabase errors into human-readable text
+         if (errMsg.includes("rate limit") || inviteError.status === 429) {
+            throw new Error("Supabase free tier limit: You can only send 3 invites per hour. Please wait.");
+         } else if (errMsg.includes("already registered") || inviteError.status === 422) {
+            throw new Error("Ghost Account: This email is in the system but missing from the database. Ask them to log in once to repair their account.");
+         } else {
+            throw new Error(inviteError.message || "Failed to trigger Supabase invite.");
+         }
+      }
+      
       targetUserId = inviteData.user.id;
-      // 🚀 REMOVED: The manual INSERT INTO users here is gone; the database trigger handles it automatically.
     }
 
+    // Attach to the store as an operator
     const existingOp = await client.query(`SELECT 1 FROM store_operators WHERE store_id = $1 AND user_id = $2`, [store_id, targetUserId]);
     if (existingOp.rows.length === 0) {
       await client.query(`INSERT INTO store_operators (store_id, user_id, role, status) VALUES ($1, $2, 'operator', $3);`, [store_id, targetUserId, inviteStatus]);
     } else {
       throw new Error("This user is already an operator.");
     }
+    
     await client.query('COMMIT');
-    res.json({ message: "Invite processed!" });
+    res.json({ message: inviteStatus === 'confirmed' ? "Existing user added successfully!" : "Invite sent successfully!" });
+    
   } catch (err) {
     await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
+    
+    // 🚀 Force the error to be a string so React never renders {} again
+    const safeErrorMsg = err instanceof Error ? err.message : String(err);
+    res.status(500).json({ error: safeErrorMsg });
+    
   } finally {
     client.release();
   }
@@ -325,7 +351,6 @@ app.post('/api/create-checkout-session', async (req, res) => {
             line_items: [
               {
                 currency: 'PHP',
-                // 🚀 Updated Price to 199.00 PHP (represented in centavos)
                 amount: 19900, 
                 name: 'LocalLook Premium Plan - 30 Days',
                 quantity: 1
