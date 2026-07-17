@@ -5,7 +5,11 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { supabase } from '../supabaseClient';
 import { CustomMapPin } from '../components/MapMarkers';
-import { MdSearch, MdNotificationsNone, MdTune, MdExpandMore, MdLocationOn, MdStorefront, MdFastfood, MdClose, MdStar, MdChevronLeft, MdChevronRight, MdOutlineNearMe } from "react-icons/md";
+import { 
+  MdSearch, MdNotificationsNone, MdTune, MdExpandMore, MdLocationOn, 
+  MdStorefront, MdFastfood, MdClose, MdStar, MdChevronLeft, 
+  MdChevronRight, MdOutlineNearMe, MdCheck, MdClear 
+} from "react-icons/md";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || '';
 if (MAPBOX_TOKEN) { mapboxgl.accessToken = MAPBOX_TOKEN; }
@@ -78,6 +82,10 @@ export default function MapPage() {
 
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
+
+  // 🚀 New Notification States
+  const [invitations, setInvitations] = useState([]);
+  const [isNotifDropdownOpen, setIsNotifDropdownOpen] = useState(false);
 
   const navigate = useNavigate();
   
@@ -152,6 +160,7 @@ export default function MapPage() {
     );
   };
 
+  // 🚀 Fetch User & Invitations
   useEffect(() => {
     const fetchUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -160,11 +169,44 @@ export default function MapPage() {
         try {
           const res = await fetch(`${API_BASE_URL}/api/users/${session.user.id}`);
           if (res.ok) setProfile(await res.json());
+
+          const inviteRes = await supabase
+            .from('store_invitations')
+            .select('id, store_id, email, status, stores(store_name)')
+            .eq('email', session.user.email)
+            .eq('status', 'pending');
+          if (inviteRes.data) setInvitations(inviteRes.data);
+
         } catch (err) { console.error(err); }
       }
     };
     fetchUser();
   }, []);
+
+  const handleAcceptInvite = async (inviteId) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/invitations/${inviteId}/accept`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: session.user.id, email: session.user.email })
+      });
+      if (res.ok) {
+        setInvitations(prev => prev.filter(inv => inv.id !== inviteId));
+        alert("Invitation accepted! You now have store access.");
+        navigate('/dashboard');
+      } else {
+        const errorData = await res.json();
+        alert(errorData.error || "Failed to accept invite.");
+      }
+    } catch (err) { alert("An error occurred while accepting."); }
+  };
+
+  const handleDeclineInvite = async (inviteId) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/invitations/${inviteId}/decline`, { method: 'POST' });
+      if (res.ok) setInvitations(prev => prev.filter(inv => inv.id !== inviteId));
+    } catch (err) { console.error(err); }
+  };
 
   const fetchStoresInBounds = async () => {
     if (!map.current) return [];
@@ -360,7 +402,6 @@ export default function MapPage() {
     });
   }, [mapStores, isMapLoaded, zoom, selectedStore]); 
 
-  // 🚀 FIXED: Completely resolved the right-side cutoff and compacted the bottom area
   useEffect(() => {
     if (!map.current) return;
     const onPopupClose = () => setSelectedStore(null);
@@ -649,9 +690,44 @@ export default function MapPage() {
                 )}
               </div>
               
-              <div style={{ pointerEvents: 'auto', width: '40px', height: '40px', display: 'flex', justifyContent: 'center', alignItems: 'center', border: '1px solid #E2E8F0', borderRadius: '50%', cursor: 'pointer', position: 'relative', backgroundColor: '#FFFFFF' }}>
-                <MdNotificationsNone size={20} color="#475569" />
-                {session && <div style={{ position: 'absolute', top: '10px', right: '10px', width: '6px', height: '6px', backgroundColor: '#EF4444', borderRadius: '50%' }} />}
+              {/* 🚀 Interactive Notification Dropdown */}
+              <div style={{ position: 'relative', pointerEvents: 'auto' }}>
+                <div onClick={() => setIsNotifDropdownOpen(!isNotifDropdownOpen)} style={{ width: '40px', height: '40px', display: 'flex', justifyContent: 'center', alignItems: 'center', border: '1px solid #E2E8F0', borderRadius: '50%', cursor: 'pointer', backgroundColor: '#FFFFFF' }}>
+                  <MdNotificationsNone size={20} color={isNotifDropdownOpen ? '#2563EB' : '#475569'} />
+                  {invitations.length > 0 && <div style={{ position: 'absolute', top: '0', right: '-2px', backgroundColor: '#EF4444', color: 'white', fontSize: '10px', fontWeight: '900', padding: '2px 6px', borderRadius: '10px' }}>{invitations.length}</div>}
+                </div>
+
+                {isNotifDropdownOpen && (
+                  <>
+                    <div onClick={() => setIsNotifDropdownOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 999997 }} />
+                    <div style={{ position: 'absolute', top: '100%', right: '0', marginTop: '10px', width: '280px', backgroundColor: 'white', border: '1px solid #E2E8F0', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', zIndex: 1001, overflow: 'hidden' }}>
+                      <div style={{ padding: '12px 16px', backgroundColor: '#F8FAFC', borderBottom: '1px solid #F1F5F9', fontWeight: '800', fontSize: '12px', color: '#0F172A' }}>
+                        Pending Invites
+                      </div>
+                      <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
+                        {invitations.length === 0 ? (
+                          <div style={{ padding: '20px', textAlign: 'center', fontSize: '12px', color: '#94A3B8', fontWeight: '500' }}>No pending invitations.</div>
+                        ) : (
+                          invitations.map(invite => (
+                            <div key={invite.id} style={{ padding: '12px 16px', borderBottom: '1px solid #F1F5F9' }}>
+                              <p style={{ margin: '0 0 8px 0', fontSize: '12px', color: '#475569', lineHeight: '1.4' }}>
+                                You were invited to manage <strong style={{ color: '#0F172A' }}>{invite.stores?.store_name}</strong>.
+                              </p>
+                              <div style={{ display: 'flex', gap: '8px' }}>
+                                <button onClick={() => handleAcceptInvite(invite.id)} style={{ flex: 1, padding: '6px', backgroundColor: '#10B981', color: 'white', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                                  <MdCheck size={14} /> Accept
+                                </button>
+                                <button onClick={() => handleDeclineInvite(invite.id)} style={{ padding: '6px', backgroundColor: '#FEE2E2', color: '#DC2626', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  <MdClear size={14} />
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
               
               <div style={{ pointerEvents: 'auto' }}>

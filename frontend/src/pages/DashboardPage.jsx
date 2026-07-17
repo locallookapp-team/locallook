@@ -741,7 +741,7 @@ export default function DashboardPage() {
       {/* 🚀 TOP HEADER */}
       <div style={{ height: '70px', flexShrink: 0, boxSizing: 'border-box', zIndex: 40, backgroundColor: '#FFFFFF', padding: '0 30px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #E2E8F0', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px', overflow: 'hidden', flexGrow: 1, marginRight: '20px' }}>
-          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '900', color: '#0F172A', paddingRight: '15px', borderRight: '1px solid #E2E8F0', flexShrink: 0 }}>Hub</h2>
+          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '900', color: '#0F172A', paddingRight: '15px', borderRight: '1px solid #E2E8F0', flexShrink: 0 }}>Merchant's Hub</h2>
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center', overflow: 'hidden', flexGrow: 1 }}>
             {showStoreLeft && (
               <button onClick={() => storeScrollRef.current.scrollBy({ left: -200, behavior: 'smooth' })} style={{ position: 'absolute', left: 0, zIndex: 5, background: 'linear-gradient(to right, white 70%, transparent)', border: 'none', height: '100%', padding: '0 10px 0 0', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><MdChevronLeft size={24} color="#0F172A" /></button>
