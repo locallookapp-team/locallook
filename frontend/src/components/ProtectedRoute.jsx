@@ -14,27 +14,30 @@ export default function ProtectedRoute({ children, allowedRoles }) {
         return;
       }
 
+      // If no specific roles are required, they just need to be logged in (e.g., Consumer profile)
       if (!allowedRoles || allowedRoles.length === 0) {
         setStatus('authorized');
         return;
       }
 
       try {
-        // 🚀 We only check if they are requesting merchant access
+        // 🚀 Require KYC Identity Verification for merchant/operator access
         if (allowedRoles.includes('merchant') || allowedRoles.includes('operator')) {
           
-          // Check if they are associated with ANY business
-          const { data } = await supabase
-            .from('store_operators')
-            .select('id')
-            .eq('user_id', session.user.id)
-            .limit(1)
+          // Check the user's secure identity verification status
+          const { data: kycProfile } = await supabase
+            .from('merchant_profiles')
+            .select('kyc_status')
+            .eq('id', session.user.id)
             .maybeSingle(); 
 
-          if (data) {
-            setStatus('authorized'); // They own/operate at least one store
+          // If they haven't submitted an ID or it isn't approved, lock the door
+          if (!kycProfile || kycProfile.kyc_status !== 'approved') {
+            setStatus('kyc_required'); 
           } else {
-            setStatus('unauthorized'); // They don't have any businesses
+            // Identity is verified! Let them into the dashboard.
+            // (If they have 0 stores, the Dashboard handles the empty state perfectly)
+            setStatus('authorized'); 
           }
         } else {
           setStatus('unauthorized'); 
@@ -49,16 +52,27 @@ export default function ProtectedRoute({ children, allowedRoles }) {
   }, [allowedRoles]);
 
   if (status === 'loading') {
-    return <div style={{ display: 'flex', height: '100vh', justifyContent: 'center', alignItems: 'center', color: '#64748B' }}>Verifying access...</div>;
+    return (
+      <div style={{ display: 'flex', height: '100vh', justifyContent: 'center', alignItems: 'center', color: '#64748B', fontWeight: 'bold' }}>
+        Verifying security clearance...
+      </div>
+    );
   }
 
+  // Kick out users who aren't logged in
   if (status === 'unauthenticated') {
     return <Navigate to="/login" replace />;
   }
 
+  // 🚀 Kick unverified merchants to the ID Upload screen
+  if (status === 'kyc_required') {
+    return <Navigate to="/identity-verification" replace />;
+  }
+
+  // General unauthorized fallback
   if (status === 'unauthorized') {
     return <Navigate to="/" replace />; 
   }
 
   return children;
-}
+}s

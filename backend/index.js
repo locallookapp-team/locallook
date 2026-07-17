@@ -86,6 +86,44 @@ app.patch('/api/admin/stores/:id/status', verifySuperAdmin, async (req, res) => 
   }
 });
 
+// --- ADMIN: Update Store Approval Status & Notify Owner ---
+app.patch('/api/admin/stores/:id/status', verifySuperAdmin, async (req, res) => {
+  const storeId = req.params.id;
+  const { is_approved } = req.body;
+
+  try {
+    // 1. Update the store status
+    const { data: storeData, error: storeError } = await supabase
+      .from('stores')
+      .update({ is_approved })
+      .eq('id', storeId)
+      .select()
+      .single();
+
+    if (storeError) throw storeError;
+
+    // 2. Generate the automated notification for the store owner
+    if (storeData.owner_id) {
+      const statusMessage = is_approved 
+        ? 'Your store has been officially approved! You are now live on the platform.' 
+        : 'Your store has been temporarily suspended. Please contact support.';
+
+      await supabase.from('notifications').insert([
+        {
+          user_id: storeData.owner_id,
+          title: is_approved ? 'Store Approved 🚀' : 'Store Suspended ⚠️',
+          message: statusMessage
+        }
+      ]);
+    }
+
+    res.json({ message: 'Store status updated successfully', store: storeData });
+  } catch (error) {
+    console.error("Error updating store status:", error);
+    res.status(500).json({ error: 'Failed to update store status' });
+  }
+});
+
 app.post('/api/stores', async (req, res) => {
   const client = await db.connect();
   try {
