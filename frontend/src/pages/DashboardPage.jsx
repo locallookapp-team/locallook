@@ -8,7 +8,7 @@ import {
   MdDragIndicator, MdSmartphone, MdChevronLeft, MdChevronRight, MdOutlineNearMe, 
   MdEdit, MdDelete, MdAdd, MdCameraAlt, MdDashboard, MdPeople, MdSecurity, 
   MdLocalOffer, MdRocketLaunch, MdPayment, MdRestaurantMenu, MdCheckCircle, 
-  MdCancel, MdWarning, MdClose, MdSettings, MdStorefront
+  MdCancel, MdWarning, MdClose, MdSettings, MdStorefront, MdVerifiedUser, MdUploadFile
 } from "react-icons/md";
 
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
@@ -74,6 +74,108 @@ function SortableCategory({ id, activeCategory, brandColor, onClick }) {
       <button onClick={() => onClick(id)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '20px', whiteSpace: 'nowrap', border: 'none', fontWeight: 'bold', fontSize: '13px', transition: isDragging ? 'none' : 'all 0.2s', backgroundColor: activeCategory === id ? brandColor : 'white', color: activeCategory === id ? 'white' : '#475569', boxShadow: isDragging ? '0 10px 25px rgba(0,0,0,0.15)' : (activeCategory === id ? `0 4px 10px ${brandColor}40` : '0 1px 3px rgba(0,0,0,0.1)'), cursor: isDragging ? 'grabbing' : 'grab', opacity: isDragging ? 0.95 : 1, touchAction: 'none' }}>
         <MdDragIndicator size={16} style={{ opacity: 0.7, marginLeft: '-4px' }} />{id}
       </button>
+    </div>
+  );
+}
+
+// --- NEW VERIFICATION COMPONENT ---
+function VerificationPanel({ storeId, isVerified }) {
+  const [uploading, setUploading] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const handleFileUpload = async (event, documentType) => {
+    try {
+      setUploading(true);
+      setMessage('');
+      
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${storeId}/${documentType}-${Math.random()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('merchant-documents')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const updateData = {};
+      updateData[documentType] = filePath; 
+
+      const { error: updateError } = await supabase
+        .from('stores')
+        .update(updateData)
+        .eq('id', storeId);
+
+      if (updateError) throw updateError;
+
+      setMessage(`${documentType === 'dti_permit_url' ? 'DTI Permit' : 'BIR COR'} uploaded successfully. Awaiting Admin review.`);
+    } catch (error) {
+      console.error('Upload error:', error);
+      setMessage('Error uploading document. Please try again.');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  if (isVerified) {
+    return (
+      <div style={{ padding: '20px', backgroundColor: '#ECFDF5', border: '1px solid #10B981', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <MdVerifiedUser size={32} color="#10B981" />
+        <div>
+          <h3 style={{ margin: '0 0 4px 0', color: '#065F46', fontSize: '16px' }}>Officially Verified</h3>
+          <p style={{ margin: 0, color: '#047857', fontSize: '13px' }}>Your business documents have been reviewed and approved.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: '24px', backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
+      <h3 style={{ margin: '0 0 16px 0', color: '#0F172A', fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <MdVerifiedUser size={20} color="#64748B" /> Get Verified Status
+      </h3>
+      <p style={{ fontSize: '13px', color: '#64748B', marginBottom: '20px' }}>
+        Upload your legal documents to receive the verified badge on the map and unlock premium platform features.
+      </p>
+
+      {message && (
+        <div style={{ padding: '10px', backgroundColor: '#EFF6FF', color: '#1E3A8A', borderRadius: '6px', fontSize: '12px', marginBottom: '16px', fontWeight: '600' }}>
+          {message}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ border: '1px dashed #CBD5E1', padding: '16px', borderRadius: '8px', textAlign: 'center', backgroundColor: '#F8FAFC' }}>
+          <label style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+            <MdUploadFile size={24} color="#2563EB" />
+            <span style={{ fontSize: '13px', fontWeight: '700', color: '#0F172A' }}>Upload DTI / Mayor's Permit</span>
+            <input 
+              type="file" 
+              accept="image/*,.pdf" 
+              onChange={(e) => handleFileUpload(e, 'dti_permit_url')} 
+              disabled={uploading}
+              style={{ display: 'none' }} 
+            />
+          </label>
+        </div>
+
+        <div style={{ border: '1px dashed #CBD5E1', padding: '16px', borderRadius: '8px', textAlign: 'center', backgroundColor: '#F8FAFC' }}>
+          <label style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+            <MdUploadFile size={24} color="#2563EB" />
+            <span style={{ fontSize: '13px', fontWeight: '700', color: '#0F172A' }}>Upload BIR Certificate of Registration</span>
+            <input 
+              type="file" 
+              accept="image/*,.pdf" 
+              onChange={(e) => handleFileUpload(e, 'bir_cor_url')} 
+              disabled={uploading}
+              style={{ display: 'none' }} 
+            />
+          </label>
+        </div>
+      </div>
     </div>
   );
 }
@@ -532,14 +634,12 @@ export default function DashboardPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', backgroundColor: '#F8FAFC', fontFamily: 'Inter, sans-serif', overflowY: 'auto', position: 'relative' }}>
       
-      {/* 🚀 Global CSS overrides to hide Mapbox watermarks */}
       <style>{`
         .mapboxgl-ctrl-bottom-left, .mapboxgl-ctrl-bottom-right, .mapboxgl-ctrl-logo, .mapboxgl-ctrl-attrib { 
           display: none !important; 
         }
       `}</style>
 
-      {/* 🚀 Modals */}
       {imageToCrop && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', flexDirection: 'column' }}>
           <div style={{ position: 'relative', flexGrow: 1 }}><Cropper image={imageToCrop} crop={crop} zoom={zoom} aspect={cropType === 'cover' ? 16 / 9 : 4 / 3} onCropChange={setCrop} onCropComplete={onCropComplete} onZoomChange={setZoom} /></div>
@@ -587,7 +687,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* 🚀 Edit Store Profile Modal */}
       {isEditStoreModalOpen && activeStore && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
           <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '20px', width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
@@ -738,7 +837,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* 🚀 TOP HEADER */}
       <div style={{ height: '70px', flexShrink: 0, boxSizing: 'border-box', zIndex: 40, backgroundColor: '#FFFFFF', padding: '0 30px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #E2E8F0', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px', overflow: 'hidden', flexGrow: 1, marginRight: '20px' }}>
           <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '900', color: '#0F172A', paddingRight: '15px', borderRight: '1px solid #E2E8F0', flexShrink: 0 }}>Merchant's Hub</h2>
@@ -758,8 +856,6 @@ export default function DashboardPage() {
               {stores.map(s => (
                 <button key={s.id} onClick={() => setActiveStore(s)} style={{ flexShrink: 0, padding: '8px 16px', borderRadius: '20px', backgroundColor: activeStore?.id === s.id ? '#2563EB' : 'transparent', color: activeStore?.id === s.id ? 'white' : '#64748B', border: activeStore?.id === s.id ? '1px solid transparent' : '1px solid #E2E8F0', fontWeight: '700', fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap', boxShadow: activeStore?.id === s.id ? '0 4px 10px rgba(37,99,235,0.2)' : 'none' }}>{s.store_name}</button>
               ))}
-              
-              {/* 🚀 Add Store button now securely navigates to the dedicated Create Business route */}
               <button onClick={() => navigate('/create-business')} style={{ flexShrink: 0, padding: '8px 16px', borderRadius: '20px', backgroundColor: '#EFF6FF', color: '#2563EB', border: '1px dashed #BFDBFE', fontWeight: '700', fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '4px' }}><MdAdd size={16} /> Add Store</button>
             </div>
             {showStoreRight && (
@@ -770,11 +866,8 @@ export default function DashboardPage() {
         <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#EF4444', fontWeight: '700', cursor: 'pointer', fontSize: '14px', flexShrink: 0 }}>Sign Out</button>
       </div>
 
-
-      {/* 🚀 MAIN CONTENT AREA */}
       <div ref={scrollContainerRef} onScroll={handleScroll} style={{ flexGrow: 1, padding: '30px', paddingBottom: '90px', position: 'relative', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
         
-        {/* EMPTY STATE (If User has no stores) */}
         {stores.length === 0 && (
            <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
               <div style={{ width: '80px', height: '80px', backgroundColor: '#EFF6FF', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: '20px' }}>
@@ -788,7 +881,6 @@ export default function DashboardPage() {
            </div>
         )}
 
-        {/* DASHBOARD VIEW */}
         {activeStore && (
           <div style={{ width: '100%', maxWidth: '1000px', margin: '0 auto' }}>
             
@@ -823,8 +915,13 @@ export default function DashboardPage() {
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', borderBottom: '1px solid #E2E8F0', paddingBottom: '10px' }}>
               <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', scrollbarWidth: 'none' }}>
-                {['menu', 'staff', 'preview'].map(tab => {
-                  const labels = { menu: <><MdDashboard size={18} /> Dashboard & Menu</>, staff: <><MdPeople size={18} /> Staff Access</>, preview: <><MdSmartphone size={18} /> Live Preview</> };
+                {['menu', 'staff', 'verification', 'preview'].map(tab => {
+                  const labels = { 
+                    menu: <><MdDashboard size={18} /> Dashboard & Menu</>, 
+                    staff: <><MdPeople size={18} /> Staff Access</>, 
+                    verification: <><MdVerifiedUser size={18} /> Verification</>,
+                    preview: <><MdSmartphone size={18} /> Live Preview</> 
+                  };
                   const isActive = activeTab === tab;
                   
                   return (
@@ -850,11 +947,9 @@ export default function DashboardPage() {
               </button>
             </div>
 
-            {/* TAB 1: DASHBOARD */}
             {activeTab === 'menu' && (
               <div>
                 
-                {/* Store Branding Section (Visible only to owners/merchants) */}
                 {activeStore.merchant_id === user?.id && (
                   <div style={{ display: 'flex', gap: '20px', marginBottom: '30px', flexWrap: 'wrap' }}>
                     <div style={{ flex: 1, backgroundColor: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.02)', border: '1px solid #E2E8F0', minWidth: '300px' }}>
@@ -871,7 +966,6 @@ export default function DashboardPage() {
                   </div>
                 )}
 
-                {/* Manage Items */}
                 <div style={{ position: 'relative' }}>
                   {isMenuLocked && (
                     <div style={{ position: 'absolute', inset: 0, zIndex: 10, backgroundColor: 'rgba(248, 250, 252, 0.7)', backdropFilter: 'blur(6px)', display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: '20px', flexDirection: 'column' }}>
@@ -889,7 +983,6 @@ export default function DashboardPage() {
                     <button onClick={openAddModal} disabled={isMenuLocked} style={{ padding: '10px 20px', backgroundColor: isMenuLocked ? '#94A3B8' : '#2563EB', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: isMenuLocked ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}><MdAdd size={18} /> Add Item</button>
                   </div>
 
-                  {/* STICKY CATEGORIES HEADER */}
                   {categoryOrder.length > 0 && (
                     <div style={{ position: 'sticky', top: '70px', zIndex: 30, backgroundColor: '#F8FAFC', padding: '10px 0', margin: '0 -10px', paddingLeft: '10px', paddingRight: '10px' }}>
                       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={[restrictToHorizontalAxis]}>
@@ -937,7 +1030,6 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* TAB 2: STAFF ACCESS */}
             {activeTab === 'staff' && (
               <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '20px', border: '1px solid #E2E8F0' }}>
                 <h3 style={{ margin: '0 0 10px 0', color: '#0F172A', fontSize: '18px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}><MdSecurity color="#2563EB" /> Operator Access</h3>
@@ -952,7 +1044,6 @@ export default function DashboardPage() {
                   </div>
                 )}
                 
-                {/* 🚀 FIXED: Securely mapped Store Operators table to guarantee Owner visibility */}
                 <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                   <thead>
                     <tr style={{ borderBottom: '2px solid #E2E8F0', color: '#64748B', fontSize: '13px' }}>
@@ -962,7 +1053,6 @@ export default function DashboardPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {/* Explicitly render the Store Owner row if the logged in user is the owner */}
                     {activeStore.merchant_id === user?.id && (
                       <tr style={{ borderBottom: '1px solid #F1F5F9' }}>
                         <td style={{ padding: '16px 0', fontWeight: '600', color: '#0F172A' }}>{user?.email}</td>
@@ -975,7 +1065,6 @@ export default function DashboardPage() {
                       </tr>
                     )}
                     
-                    {/* Render actual Staff Members */}
                     {storeOperators.filter(op => op.user_id !== activeStore.merchant_id).map((op, idx) => (
                       <tr key={op.id || idx} style={{ borderBottom: '1px solid #F1F5F9' }}>
                         <td style={{ padding: '16px 0', fontWeight: '600', color: '#0F172A' }}>{op.email}</td>
@@ -992,7 +1081,6 @@ export default function DashboardPage() {
                       </tr>
                     ))}
 
-                    {/* Empty state for staff */}
                     {storeOperators.filter(op => op.user_id !== activeStore.merchant_id).length === 0 && activeStore.merchant_id === user?.id && (
                       <tr><td colSpan="3" style={{ padding: '20px 0', textAlign: 'center', color: '#94A3B8' }}>No staff members added yet.</td></tr>
                     )}
@@ -1001,7 +1089,11 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* TAB 3: LIVE PREVIEW */}
+            {/* TAB 3: VERIFICATION */}
+            {activeTab === 'verification' && (
+              <VerificationPanel storeId={activeStore.id} isVerified={activeStore.is_verified} />
+            )}
+
             {activeTab === 'preview' && (
               <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px', backgroundColor: '#F1F5F9', borderRadius: '24px', border: '1px dashed #CBD5E1' }}>
                 <div style={{ width: '375px', height: '700px', backgroundColor: 'white', borderRadius: '40px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', border: '8px solid #0F172A', overflowY: 'auto', position: 'relative', display: 'flex', flexDirection: 'column' }}>

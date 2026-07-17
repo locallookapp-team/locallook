@@ -89,6 +89,7 @@ const BUSINESS_TAXONOMY = {
 
 export default function CreateBusinessPage() {
   const navigate = useNavigate();
+  const [isVerifying, setIsVerifying] = useState(true); // 🚀 Identity Verification Guard
   const [isLoading, setIsLoading] = useState(false);
   const [existingStores, setExistingStores] = useState([]);
   const [zoom, setZoom] = useState(15.5);
@@ -118,7 +119,34 @@ export default function CreateBusinessPage() {
   const newStoreRef = useRef(newStoreData);
   useEffect(() => { newStoreRef.current = newStoreData; }, [newStoreData]);
 
+  // 🚀 KYC IDENTITY VERIFICATION CHECK
   useEffect(() => {
+    const checkKycStatus = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        navigate('/login');
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('merchant_profiles')
+        .select('kyc_status')
+        .eq('id', session.user.id)
+        .maybeSingle();
+
+      if (!data || data.kyc_status !== 'approved') {
+        navigate('/identity-verification');
+      } else {
+        setIsVerifying(false);
+      }
+    };
+
+    checkKycStatus();
+  }, [navigate]);
+
+  useEffect(() => {
+    if (isVerifying) return; // Do not fetch map data if we are still verifying identity
+
     const fetchExistingLocations = async () => {
       try {
         const { data, error } = await supabase
@@ -135,9 +163,11 @@ export default function CreateBusinessPage() {
       }
     };
     fetchExistingLocations();
-  }, []);
+  }, [isVerifying]);
 
   useEffect(() => {
+    if (isVerifying) return; // Wait until identity is cleared before rendering map
+
     if (mapContainer.current && !map.current) {
       map.current = new mapboxgl.Map({
         container: mapContainer.current,
@@ -172,7 +202,7 @@ export default function CreateBusinessPage() {
         existingMarkersRef.current = {};
       }
     };
-  }, []);
+  }, [isVerifying]);
 
   useEffect(() => {
     if (!map.current) return;
@@ -341,9 +371,16 @@ export default function CreateBusinessPage() {
     }
   };
 
-  // 🚀 SCALED DOWN: Adjusted typography and padding to simulate 90% zoom
   const labelStyle = { fontSize: '10px', fontWeight: '700', color: '#64748B', textTransform: 'uppercase' };
   const inputStyle = { padding: '8px 10px', borderRadius: '8px', border: '1px solid #CBD5E1', fontSize: '13px', fontWeight: '500', outline: 'none', backgroundColor: 'white', width: '100%', boxSizing: 'border-box' };
+
+  if (isVerifying) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: '#F8FAFC', color: '#64748B', fontWeight: 'bold' }}>
+        Verifying security clearance...
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100%', backgroundColor: '#F8FAFC', padding: '24px', boxSizing: 'border-box' }}>

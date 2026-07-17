@@ -12,7 +12,8 @@ import UpdatePasswordPage from './pages/UpdatePasswordPage';
 import BrowsePage from './pages/BrowsePage'; 
 import ProfilePage from './pages/ProfilePage'; 
 import CreateBusinessPage from './pages/CreateBusinessPage'; 
-import TestPages from './pages/TestPages'; // 🚀 Added this import!
+import IdentityVerificationPage from './pages/IdentityVerificationPage'; // 🚀 Added this import!
+import TestPages from './pages/TestPages'; 
 
 import AppLayout from './components/AppLayout'; 
 import ProtectedRoute from './components/ProtectedRoute'; 
@@ -38,6 +39,9 @@ function App() {
 
         {/* 🚀 CONSUMER PROTECTED ROUTES (Requires Login, any role) */}
         <Route path="/profile" element={<ProtectedRoute><AppLayout><ProfilePage /></AppLayout></ProtectedRoute>} />
+        
+        {/* 🚀 IDENTITY VERIFICATION ROUTE */}
+        <Route path="/identity-verification" element={<ProtectedRoute><AppLayout><IdentityVerificationPage /></AppLayout></ProtectedRoute>} />
         
         {/* The new upgrade path! */}
         <Route path="/create-business" element={<ProtectedRoute><AppLayout><CreateBusinessPage /></AppLayout></ProtectedRoute>} />

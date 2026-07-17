@@ -66,6 +66,26 @@ app.get('/api/admin/stores', verifySuperAdmin, async (req, res) => {
   }
 });
 
+// --- ADMIN: Update Store Approval Status ---
+app.patch('/api/admin/stores/:id/status', verifySuperAdmin, async (req, res) => {
+  const storeId = req.params.id;
+  const { is_approved } = req.body;
+
+  try {
+    const { data, error } = await supabase
+      .from('stores')
+      .update({ is_approved })
+      .eq('id', storeId)
+      .select();
+
+    if (error) throw error;
+    res.json({ message: 'Store status updated successfully', store: data[0] });
+  } catch (error) {
+    console.error("Error updating store status:", error);
+    res.status(500).json({ error: 'Failed to update store status' });
+  }
+});
+
 app.post('/api/stores', async (req, res) => {
   const client = await db.connect();
   try {

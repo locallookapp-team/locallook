@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
+import NotificationBell from './NotificationBell'; // 🚀 Imported Universal Component
 import { 
   MdExplore, MdGridView, MdBookmarkBorder, MdStarBorder, 
   MdAddBusiness, MdSpaceDashboard, MdOutlineSettings, MdOutlineHelpOutline, 
-  MdLocationOn, MdLogin, MdMenu, MdClose, MdNotificationsNone, MdCheck, MdClear 
+  MdLocationOn, MdLogin, MdMenu, MdClose 
 } from "react-icons/md";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://locallook-api.onrender.com';
@@ -18,10 +19,6 @@ export default function AppLayout({ children }) {
   const [displayName, setDisplayName] = useState('');
   
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  
-  // 🚀 New States for Notification Bell
-  const [invitations, setInvitations] = useState([]);
-  const [isNotifOpen, setIsNotifOpen] = useState(false);
 
   useEffect(() => {
     const fetchSession = async () => {
@@ -32,7 +29,6 @@ export default function AppLayout({ children }) {
         setDisplayName(session.user.user_metadata?.full_name || session.user.email.split('@')[0]);
         const { data } = await supabase.from('store_operators').select('id').eq('user_id', session.user.id).limit(1).maybeSingle();
         setIsMerchant(!!data); 
-        fetchInvitations(session.user.email);
       }
     };
 
@@ -44,65 +40,13 @@ export default function AppLayout({ children }) {
         setDisplayName(newSession.user.user_metadata?.full_name || newSession.user.email.split('@')[0]);
         const { data } = await supabase.from('store_operators').select('id').eq('user_id', newSession.user.id).limit(1).maybeSingle();
         setIsMerchant(!!data);
-        fetchInvitations(newSession.user.email);
       } else {
         setIsMerchant(false);
-        setInvitations([]);
       }
     });
 
     return () => { authListener.subscription.unsubscribe(); };
   }, []);
-
-  // 🚀 Fetch Pending Invitations
-  const fetchInvitations = async (email) => {
-    try {
-      const { data, error } = await supabase
-        .from('store_invitations')
-        .select('id, store_id, email, status, stores(store_name)')
-        .eq('email', email)
-        .eq('status', 'pending');
-        
-      if (data && !error) setInvitations(data);
-    } catch (err) {
-      console.error("Error fetching invites:", err);
-    }
-  };
-
-  // 🚀 Handle Accept Invite
-  const handleAcceptInvite = async (inviteId) => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/invitations/${inviteId}/accept`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_id: session.user.id, email: session.user.email })
-      });
-      
-      if (res.ok) {
-        setInvitations(prev => prev.filter(inv => inv.id !== inviteId));
-        setIsMerchant(true); // Upgrade UI instantly
-        alert("Invitation accepted! You now have store access.");
-        navigate('/dashboard');
-      } else {
-        const errorData = await res.json();
-        alert(errorData.error || "Failed to accept invite.");
-      }
-    } catch (err) {
-      alert("An error occurred while accepting.");
-    }
-  };
-
-  // 🚀 Handle Decline Invite
-  const handleDeclineInvite = async (inviteId) => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/invitations/${inviteId}/decline`, { method: 'POST' });
-      if (res.ok) {
-        setInvitations(prev => prev.filter(inv => inv.id !== inviteId));
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
@@ -190,46 +134,8 @@ export default function AppLayout({ children }) {
 
           <div style={{ display: 'flex', flexDirection: 'column', position: 'relative' }}>
             
-            {/* 🚀 Notification Dropdown Logic */}
-            <div style={{ position: 'relative' }}>
-              <div onClick={() => setIsNotifOpen(!isNotifOpen)} className={`nav-item ${isNotifOpen ? 'active' : ''}`} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                  <span style={{ color: isNotifOpen ? '#2563EB' : '#94A3B8' }}><MdNotificationsNone size={20} /></span> Notifications
-                </div>
-                {invitations.length > 0 && (
-                  <span style={{ backgroundColor: '#EF4444', color: 'white', fontSize: '10px', fontWeight: '900', padding: '2px 6px', borderRadius: '10px' }}>{invitations.length}</span>
-                )}
-              </div>
-
-              {isNotifOpen && (
-                <div style={{ position: 'absolute', bottom: '100%', left: '0', width: '260px', backgroundColor: 'white', border: '1px solid #E2E8F0', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', zIndex: 1001, overflow: 'hidden', marginBottom: '8px' }}>
-                  <div style={{ padding: '12px 16px', backgroundColor: '#F8FAFC', borderBottom: '1px solid #F1F5F9', fontWeight: '800', fontSize: '12px', color: '#0F172A' }}>
-                    Pending Invites
-                  </div>
-                  <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
-                    {invitations.length === 0 ? (
-                      <div style={{ padding: '20px', textAlign: 'center', fontSize: '12px', color: '#94A3B8', fontWeight: '500' }}>No pending invitations.</div>
-                    ) : (
-                      invitations.map(invite => (
-                        <div key={invite.id} style={{ padding: '12px 16px', borderBottom: '1px solid #F1F5F9' }}>
-                          <p style={{ margin: '0 0 8px 0', fontSize: '12px', color: '#475569', lineHeight: '1.4' }}>
-                            You were invited to manage <strong style={{ color: '#0F172A' }}>{invite.stores?.store_name}</strong>.
-                          </p>
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            <button onClick={() => handleAcceptInvite(invite.id)} style={{ flex: 1, padding: '6px', backgroundColor: '#10B981', color: 'white', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
-                              <MdCheck size={14} /> Accept
-                            </button>
-                            <button onClick={() => handleDeclineInvite(invite.id)} style={{ padding: '6px', backgroundColor: '#FEE2E2', color: '#DC2626', border: 'none', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <MdClear size={14} />
-                            </button>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
+            {/* 🚀 Inserted the new universal Notification Bell here */}
+            <NotificationBell session={session} isSidebarMode={true} onInviteAccepted={() => setIsMerchant(true)} />
 
             <div className="nav-item"><span style={{ color: '#94A3B8' }}><MdOutlineSettings size={20} /></span> Settings</div>
             <div className="nav-item"><span style={{ color: '#94A3B8' }}><MdOutlineHelpOutline size={20} /></span> Help</div>
