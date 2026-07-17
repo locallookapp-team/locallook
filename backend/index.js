@@ -26,6 +26,46 @@ const apiLimiter = rateLimit({
 const inviteLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, message: { error: "Too many invites." } });
 app.use('/api/', apiLimiter); 
 
+// 🚀 SUPER ADMIN GATEKEEPER MIDDLEWARE
+const verifySuperAdmin = async (req, res, next) => {
+  const adminId = req.headers['x-admin-id'];
+  
+  if (!adminId) {
+    return res.status(401).json({ error: "Unauthorized: Admin ID missing." });
+  }
+
+  try {
+    const result = await db.query('SELECT role FROM users WHERE id = $1', [adminId]);
+    
+    if (result.rows.length === 0 || result.rows[0].role !== 'super_admin') {
+      return res.status(403).json({ error: "Forbidden: Super Admin clearance required." });
+    }
+    
+    // User is a super_admin, allow the request to proceed
+    next();
+  } catch (err) {
+    console.error("Admin Verification Error:", err);
+    res.status(500).json({ error: "Server error verifying administrative rights." });
+  }
+};
+
+// 🚀 ADMIN PANEL ROUTES
+app.get('/api/admin/stores', verifySuperAdmin, async (req, res) => {
+  try {
+    // Fetches all stores, regardless of distance or approval status
+    const result = await db.query(`
+      SELECT s.id, s.store_name, s.store_category, s.is_approved, s.is_open, u.email as owner_email
+      FROM stores s
+      LEFT JOIN users u ON s.merchant_id = u.id
+      ORDER BY s.created_at DESC;
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Admin Store Fetch Error:", err);
+    res.status(500).json({ error: "Failed to fetch stores." });
+  }
+});
+
 app.post('/api/stores', async (req, res) => {
   const client = await db.connect();
   try {
