@@ -10,7 +10,6 @@ const db = require('./db');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 🚀 CRITICAL FIX: Trust Render's proxy to prevent rate-limiter crashes
 app.set('trust proxy', 1);
 
 const supabaseAdmin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
@@ -38,7 +37,6 @@ app.post('/api/stores', async (req, res) => {
 
     await client.query('BEGIN');
 
-    // 🚀 CRITICAL FIX: Explicitly inserts user_id into the merchant_id column
     const storeResult = await client.query(`
       INSERT INTO stores (store_name, store_category, description, phone, email, website, location, is_open, is_approved, merchant_id)
       VALUES ($1, $2, $3, $4, $5, $6, ST_GeomFromText($7, 4326), false, true, $8)
@@ -47,13 +45,11 @@ app.post('/api/stores', async (req, res) => {
     
     const newStoreId = storeResult.rows[0].id;
 
-    // 🚀 CRITICAL FIX: Explicitly assigns the 'merchant' role instead of 'owner'
     await client.query(`
       INSERT INTO store_operators (store_id, user_id, role, status)
       VALUES ($1, $2, 'merchant', 'confirmed');
     `, [newStoreId, user_id]);
 
-    // 🚀 NEW: Upgrades your global profile from consumer to merchant
     await client.query(`
       INSERT INTO users (id, role)
       VALUES ($1, 'merchant')
@@ -99,11 +95,9 @@ app.delete('/api/stores/:id', async (req, res) => {
 app.get('/api/merchant/stores/:user_id', async (req, res) => {
   try {
     const { user_id } = req.params;
-    await db.query(`UPDATE store_operators SET status = 'confirmed' WHERE user_id = $1 AND status = 'pending'`, [user_id]);
-
     const result = await db.query(`
       SELECT s.id, s.store_name, s.store_category, s.industry, s.description, s.phone, s.email, s.website, s.is_open, s.theme_settings, ST_Y(s.location::geometry) as lat, ST_X(s.location::geometry) as lng, so.role, s.merchant_id
-      FROM stores s JOIN store_operators so ON s.id = so.store_id WHERE so.user_id = $1
+      FROM stores s JOIN store_operators so ON s.id = so.store_id WHERE so.user_id = $1 AND so.status = 'confirmed'
     `, [user_id]);
     res.json(result.rows);
   } catch (err) {
@@ -111,6 +105,7 @@ app.get('/api/merchant/stores/:user_id', async (req, res) => {
   }
 });
 
+// 🚀 NEW APPLICATION-LEVEL INVITE ROUTE
 app.post('/api/stores/:store_id/invite', inviteLimiter, async (req, res) => {
   const client = await db.connect();
   try {
@@ -119,92 +114,134 @@ app.post('/api/stores/:store_id/invite', inviteLimiter, async (req, res) => {
 
     if (!email || !email.includes('@')) return res.status(400).json({ error: "Invalid email address." });
 
-    // Verify ownership
+    // Verify ownership and get store name for the email
     const authCheck = await client.query(
-      `SELECT merchant_id FROM stores WHERE id = $1 AND merchant_id = $2`, 
+      `SELECT merchant_id, store_name FROM stores WHERE id = $1 AND merchant_id = $2`, 
       [store_id, requester_id]
     );
 
     if (authCheck.rows.length === 0) {
       return res.status(403).json({ error: "Only the store owner can invite staff." });
     }
-
-    let targetUserId;
-    let inviteStatus = 'pending'; 
-    const existingUserCheck = await client.query(`SELECT id FROM users WHERE email = $1`, [email]);
+    const storeName = authCheck.rows[0].store_name;
 
     await client.query('BEGIN');
 
-    if (existingUserCheck.rows.length > 0) {
-      // User is fully registered in the database
-      targetUserId = existingUserCheck.rows[0].id;
-      inviteStatus = 'confirmed'; 
-      
-      try {
-        await resend.emails.send({
-          from: 'LocalLook <hello@locallookph.com>', 
-          to: email, 
-          subject: "You've been added to a store on LocalLook!",
-          html: `<div style="font-family: sans-serif; padding: 20px;"><h2>Store Access Granted</h2><a href="https://locallookph.com/dashboard">Go to Dashboard</a></div>`
-        });
-      } catch (resendErr) {
-        console.warn("Resend email failed, but operator was still added:", resendErr);
-      }
-      
-    } else {
-      // User is new to the database, trigger Supabase Invite
-      const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.inviteUserByEmail(email);
-      
-      if (inviteError) {
-         const errMsg = inviteError.message?.toLowerCase() || "";
-         
-         // 🚀 Translate obscure Supabase errors into human-readable text
-         if (errMsg.includes("rate limit") || inviteError.status === 429) {
-            throw new Error("Supabase free tier limit: You can only send 3 invites per hour. Please wait.");
-         } else if (errMsg.includes("already registered") || inviteError.status === 422) {
-            throw new Error("Ghost Account: This email is in the system but missing from the database. Ask them to log in once to repair their account.");
-         } else {
-            throw new Error(inviteError.message || "Failed to trigger Supabase invite.");
-         }
-      }
-      
-      targetUserId = inviteData.user.id;
+    // Check if the user is already an active operator
+    const existingOpCheck = await client.query(
+      `SELECT 1 FROM store_operators so JOIN users u ON so.user_id = u.id WHERE so.store_id = $1 AND u.email = $2`,
+      [store_id, email]
+    );
+    if (existingOpCheck.rows.length > 0) {
+      throw new Error("This user is already an active staff member at this store.");
     }
 
-    // Attach to the store as an operator
-    const existingOp = await client.query(`SELECT 1 FROM store_operators WHERE store_id = $1 AND user_id = $2`, [store_id, targetUserId]);
-    if (existingOp.rows.length === 0) {
-      await client.query(`INSERT INTO store_operators (store_id, user_id, role, status) VALUES ($1, $2, 'operator', $3);`, [store_id, targetUserId, inviteStatus]);
-    } else {
-      throw new Error("This user is already an operator.");
+    // Insert into the new store_invitations table
+    const inviteInsert = await client.query(
+      `INSERT INTO store_invitations (store_id, email, status) VALUES ($1, $2, 'pending') ON CONFLICT (store_id, email) DO NOTHING RETURNING id;`,
+      [store_id, email]
+    );
+
+    if (inviteInsert.rows.length === 0) {
+       throw new Error("A pending invitation has already been sent to this email.");
     }
+
+    // Send the customized Application-Level Email via Resend
+    await resend.emails.send({
+      from: 'LocalLook <invitation@locallookph.com>', 
+      to: email, 
+      subject: `You've been invited to manage ${storeName}!`,
+      html: `<div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; border: 1px solid #E2E8F0; border-radius: 12px;">
+               <h2 style="color: #0F172A; margin-top: 0;">Store Access Invitation</h2>
+               <p style="color: #475569; line-height: 1.6;">You have been invited to join the staff team for <strong>${storeName}</strong> on LocalLook.</p>
+               <p style="color: #475569; line-height: 1.6;">Click the secure link below to sign up for an account. Once logged in, click the notification bell to accept your invite!</p>
+               <br/>
+               <a href="https://locallookph.com/dashboard" style="display: inline-block; padding: 12px 24px; background-color: #2563EB; color: white; text-decoration: none; border-radius: 8px; font-weight: bold;">Log In or Sign Up</a>
+               <br/><br/>
+               <p style="color: #94A3B8; font-size: 12px;"><em>Tip: Use "Sign in with Google" to automatically sync your profile picture and name!</em></p>
+             </div>`
+    });
     
     await client.query('COMMIT');
-    res.json({ message: inviteStatus === 'confirmed' ? "Existing user added successfully!" : "Invite sent successfully!" });
+    res.json({ message: "Invitation sent successfully!" });
     
   } catch (err) {
     await client.query('ROLLBACK');
-    
-    // 🚀 Force the error to be a string so React never renders {} again
     const safeErrorMsg = err instanceof Error ? err.message : String(err);
     res.status(500).json({ error: safeErrorMsg });
-    
   } finally {
     client.release();
   }
 });
 
+// 🚀 ACCEPT INVITATION ENDPOINT (Ready for Notification Bell)
+app.post('/api/invitations/:invite_id/accept', async (req, res) => {
+  const client = await db.connect();
+  try {
+    const { invite_id } = req.params;
+    const { user_id, email } = req.body; 
+
+    await client.query('BEGIN');
+
+    const inviteCheck = await client.query(`SELECT store_id, email FROM store_invitations WHERE id = $1 AND status = 'pending'`, [invite_id]);
+    if (inviteCheck.rows.length === 0) throw new Error("Invalid or expired invitation.");
+    
+    const invite = inviteCheck.rows[0];
+    if (invite.email !== email) throw new Error("This invite was sent to a different email address.");
+
+    await client.query(`INSERT INTO store_operators (store_id, user_id, role, status) VALUES ($1, $2, 'operator', 'confirmed') ON CONFLICT DO NOTHING`, [invite.store_id, user_id]);
+    await client.query(`DELETE FROM store_invitations WHERE id = $1`, [invite_id]);
+
+    await client.query('COMMIT');
+    res.json({ message: "Invitation accepted!" });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// 🚀 DECLINE INVITATION ENDPOINT
+app.post('/api/invitations/:invite_id/decline', async (req, res) => {
+  try {
+    await db.query(`DELETE FROM store_invitations WHERE id = $1`, [req.params.invite_id]);
+    res.json({ message: "Invitation declined." });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 🚀 UNIFIED STAFF FETCHING: Pulls from both operators and pending invitations
 app.get('/api/stores/:store_id/operators', async (req, res) => {
   try {
-    const result = await db.query(`SELECT u.id, u.email, so.role, so.status, so.user_id FROM store_operators so JOIN users u ON so.user_id = u.id WHERE so.store_id = $1`, [req.params.store_id]);
-    res.json(result.rows);
+    const store_id = req.params.store_id;
+    
+    const confirmedOps = await db.query(`
+      SELECT u.id, u.email, so.role, so.status, so.user_id 
+      FROM store_operators so JOIN users u ON so.user_id = u.id 
+      WHERE so.store_id = $1
+    `, [store_id]);
+    
+    const pendingInvites = await db.query(`
+      SELECT id as user_id, email, 'operator' as role, 'pending' as status 
+      FROM store_invitations 
+      WHERE store_id = $1
+    `, [store_id]);
+
+    res.json([...confirmedOps.rows, ...pendingInvites.rows]);
   } catch (err) { res.status(500).send("Server Error"); }
 });
 
-app.delete('/api/stores/:store_id/staff/:staff_id', async (req, res) => {
+// 🚀 UNIFIED STAFF DELETION: Removes from operators OR invitations based on UUID
+app.delete('/api/stores/:store_id/staff/:identifier', async (req, res) => {
   try {
-    await db.query(`DELETE FROM store_operators WHERE store_id = $1 AND user_id = $2 RETURNING *`, [req.params.store_id, req.params.staff_id]);
-    res.status(200).json({ message: "Staff removed." });
+    const { store_id, identifier } = req.params;
+    
+    await db.query(`DELETE FROM store_operators WHERE store_id = $1 AND user_id = $2`, [store_id, identifier]);
+    await db.query(`DELETE FROM store_invitations WHERE store_id = $1 AND id = $2`, [store_id, identifier]);
+    
+    res.status(200).json({ message: "Staff/Invite removed successfully." });
   } catch (error) { res.status(500).json({ error: error.message }); }
 });
 
@@ -358,8 +395,8 @@ app.post('/api/create-checkout-session', async (req, res) => {
             ],
             payment_method_types: ['gcash', 'paymaya', 'grab_pay', 'card'],
             reference_number: store_id, 
-            success_url: 'https://locallook.vercel.app/dashboard?payment=success',
-            cancel_url: 'https://locallook.vercel.app/dashboard?payment=cancelled'
+            success_url: 'https://locallookph.com/dashboard?payment=success',
+            cancel_url: 'https://locallookph.com/dashboard?payment=cancelled'
           }
         }
       })
