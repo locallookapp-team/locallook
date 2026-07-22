@@ -1,7 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import { MdNotificationsNone, MdNotificationsActive, MdCheck, MdClear } from 'react-icons/md';
+import { 
+  MdNotificationsNone, 
+  MdNotificationsActive, 
+  MdCheck, 
+  MdClear,
+  MdWarning, 
+  MdCheckCircle, 
+  MdCampaign, 
+  MdNotifications 
+} from 'react-icons/md';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://locallook-api.onrender.com';
 
@@ -15,6 +24,20 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
   const [unreadNotesCount, setUnreadNotesCount] = useState(0);
 
   const totalUnread = invitations.length + unreadNotesCount;
+
+  // --- Dynamic Styling Helper ---
+  const getNotificationStyle = (type) => {
+    switch (type) {
+      case 'moderation':
+        return { color: '#DC2626', bg: '#FEF2F2', icon: <MdWarning size={16} color="#DC2626" /> };
+      case 'success':
+        return { color: '#10B981', bg: '#F0FDF4', icon: <MdCheckCircle size={16} color="#10B981" /> };
+      case 'announcement':
+        return { color: '#3B82F6', bg: '#EFF6FF', icon: <MdCampaign size={16} color="#3B82F6" /> };
+      default:
+        return { color: '#64748B', bg: '#F8FAFC', icon: <MdNotifications size={16} color="#64748B" /> };
+    }
+  };
 
   // --- Fetch Initial Data & Subscribe ---
   useEffect(() => {
@@ -46,21 +69,62 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
 
     fetchAllNotifications();
 
-    // 3. Real-Time Subscription for New Alerts
-    const channel = supabase
-      .channel('realtime-notifications')
-      .on('postgres_changes', { 
-        event: 'INSERT', 
-        schema: 'public', 
-        table: 'notifications', 
-        filter: `user_id=eq.${session.user.id}` 
-      }, (payload) => {
+    // ---------------------------------------------------------
+    // 🚀 ROBUST ENTERPRISE SUBSCRIPTION PATTERN (REAL-TIME KILL SWITCH)
+    // ---------------------------------------------------------
+    const CHANNEL_NAME = `public-notifications-${isSidebarMode ? 'sidebar' : 'topnav'}`;
+
+    // STEP 1: Pre-cleanup. Kill any lingering ghost channels in memory from HMR reloads.
+    const existingChannels = supabase.getChannels();
+    existingChannels.forEach(c => {
+      if (c.topic === `realtime:${CHANNEL_NAME}`) {
+        supabase.removeChannel(c);
+      }
+    });
+
+    // STEP 2: Create the fresh channel as a separate variable
+    const channel = supabase.channel(CHANNEL_NAME);
+
+    // STEP 3: Attach the listener to ALL events (*)
+    channel.on('postgres_changes', { 
+      event: '*', 
+      schema: 'public', 
+      table: 'notifications', 
+      filter: `user_id=eq.${session.user.id}` 
+    }, (payload) => {
+      
+      // Handle New Notifications
+      if (payload.eventType === 'INSERT') {
         setSystemNotes(prev => [payload.new, ...prev]);
         setUnreadNotesCount(prev => prev + 1);
-      })
-      .subscribe();
+      }
+      
+      // Handle Master Broadcast Edits
+      if (payload.eventType === 'UPDATE') {
+        setSystemNotes(prev => 
+          prev.map(note => note.id === payload.new.id ? payload.new : note)
+        );
+      }
+      
+      // Handle Master Broadcast Retractions (The Kill Switch)
+      if (payload.eventType === 'DELETE') {
+        setSystemNotes(prev => {
+          const filteredNotes = prev.filter(note => note.id !== payload.old.id);
+          // Recalculate unread count based on the new array to keep the badge accurate
+          setUnreadNotesCount(filteredNotes.filter(n => !n.is_read).length);
+          return filteredNotes;
+        });
+      }
 
-    return () => { supabase.removeChannel(channel); };
+    });
+
+    // STEP 4: Only after setup is complete, subscribe
+    channel.subscribe();
+
+    // STEP 5: Standard React unmount cleanup
+    return () => { 
+      supabase.removeChannel(channel); 
+    };
   }, [session]);
 
   // --- Click Outside to Close ---
@@ -144,7 +208,7 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
         <div style={{ 
           position: 'absolute', 
           top: isSidebarMode ? 'auto' : '100%', 
-          bottom: isSidebarMode ? '100%' : 'auto', // Opens upward if in sidebar to prevent cutting off
+          bottom: isSidebarMode ? '100%' : 'auto', 
           left: isSidebarMode ? '0' : 'auto', 
           right: isSidebarMode ? 'auto' : '0', 
           marginTop: isSidebarMode ? '0' : '10px',
@@ -193,18 +257,38 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
               {systemNotes.length === 0 ? (
                 <div style={{ padding: '24px', textAlign: 'center', fontSize: '13px', color: '#94A3B8', fontWeight: '500' }}>You're all caught up!</div>
               ) : (
-                systemNotes.map(note => (
-                  <div key={note.id} style={{ padding: '14px 16px', borderBottom: '1px solid #F1F5F9', backgroundColor: note.is_read ? '#FFFFFF' : '#F0FDF4' }}>
-                    <div style={{ fontWeight: '800', fontSize: '13px', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      {!note.is_read && <div style={{ width: '6px', height: '6px', backgroundColor: '#10B981', borderRadius: '50%' }}></div>}
-                      {note.title}
+                systemNotes.map(note => {
+                  const style = getNotificationStyle(note.type);
+                  
+                  return (
+                    <div 
+                      key={note.id} 
+                      onClick={() => {
+                        if (note.action_url) {
+                          navigate(note.action_url);
+                          setIsOpen(false);
+                        }
+                      }}
+                      style={{ 
+                        padding: '14px 16px', 
+                        borderBottom: '1px solid #F1F5F9', 
+                        backgroundColor: note.is_read ? '#FFFFFF' : style.bg,
+                        cursor: note.action_url ? 'pointer' : 'default',
+                        transition: 'background-color 0.2s'
+                      }}
+                    >
+                      <div style={{ fontWeight: '800', fontSize: '13px', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {!note.is_read && <div style={{ width: '6px', height: '6px', backgroundColor: '#10B981', borderRadius: '50%', flexShrink: 0 }}></div>}
+                        {style.icon}
+                        {note.title}
+                      </div>
+                      <div style={{ fontSize: '12.5px', color: '#475569', marginTop: '4px', lineHeight: '1.4', whiteSpace: 'pre-wrap' }}>{note.message}</div>
+                      <div style={{ fontSize: '10px', color: '#94A3B8', marginTop: '6px', fontWeight: '600' }}>
+                        {new Date(note.created_at).toLocaleDateString()}
+                      </div>
                     </div>
-                    <div style={{ fontSize: '12.5px', color: '#475569', marginTop: '4px', lineHeight: '1.4' }}>{note.message}</div>
-                    <div style={{ fontSize: '10px', color: '#94A3B8', marginTop: '6px', fontWeight: '600' }}>
-                      {new Date(note.created_at).toLocaleDateString()}
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>

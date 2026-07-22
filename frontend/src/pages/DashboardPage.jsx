@@ -78,7 +78,6 @@ function SortableCategory({ id, activeCategory, brandColor, onClick }) {
   );
 }
 
-// --- NEW VERIFICATION COMPONENT ---
 function VerificationPanel({ storeId, isVerified }) {
   const [uploading, setUploading] = useState(false);
   const [message, setMessage] = useState('');
@@ -234,7 +233,11 @@ export default function DashboardPage() {
 
   const [subscription, setSubscription] = useState({ plan_type: 'free', end_date: null });
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+  
+  // NEW PROMO CODE STATE FOR CHECKOUT
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [checkoutPromoCode, setCheckoutPromoCode] = useState('');
+
   const [isVoucherModalOpen, setIsVoucherModalOpen] = useState(false);
   const [voucherCode, setVoucherCode] = useState('');
   const [voucherLoading, setVoucherLoading] = useState(false);
@@ -245,6 +248,26 @@ export default function DashboardPage() {
   const editPinRef = useRef(null);
   const editStoreRef = useRef(editStoreData);
   useEffect(() => { editStoreRef.current = editStoreData; }, [editStoreData]);
+
+  const getAuthHeaders = async (isJson = true) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers = { 'Authorization': `Bearer ${session?.access_token}` };
+    if (isJson) headers['Content-Type'] = 'application/json';
+    return headers;
+  };
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const paymentStatus = params.get('payment');
+    
+    if (paymentStatus === 'success') {
+      alert("Payment Successful! Your premium features have been unlocked.");
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (paymentStatus === 'cancelled') {
+      alert("Payment was cancelled or failed. Please try again.");
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
 
   const handleHeaderMouseDown = (e) => {
     storeDragState.current.isDown = true;
@@ -330,7 +353,14 @@ export default function DashboardPage() {
         }).catch(err => console.error(err));
 
       fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/items`).then(res => res.json()).then(data => setItems(data)).catch(err => console.error(err));
-      fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/operators`).then(res => res.ok ? res.json() : []).then(data => setStoreOperators(data)).catch(err => console.error(err));
+      
+      getAuthHeaders().then(headers => {
+        fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/operators`, { headers })
+          .then(res => res.ok ? res.json() : [])
+          .then(data => setStoreOperators(data))
+          .catch(err => console.error(err));
+      });
+
       fetchSubscription(activeStore.id);
       setActiveTab('menu'); 
     }
@@ -461,7 +491,12 @@ export default function DashboardPage() {
       const { error: uploadError } = await supabase.storage.from('store-covers').upload(filePath, file);
       if (uploadError) throw uploadError;
       const { data: { publicUrl } } = supabase.storage.from('store-covers').getPublicUrl(filePath);
-      const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cover_image_url: publicUrl }) });
+      
+      const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}`, { 
+        method: 'PATCH', 
+        headers: await getAuthHeaders(), 
+        body: JSON.stringify({ cover_image_url: publicUrl }) 
+      });
       if (!response.ok) throw new Error("Failed to update store in database");
       setActiveStore({ ...activeStore, cover_image_url: publicUrl }); 
       setStores(stores.map(s => s.id === activeStore.id ? { ...s, cover_image_url: publicUrl } : s)); 
@@ -472,7 +507,11 @@ export default function DashboardPage() {
 
   const toggleStoreStatus = async () => {
     const nextStatus = !activeStore.is_open;
-    const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/toggle`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_open: nextStatus }) });
+    const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/toggle`, { 
+      method: 'PATCH', 
+      headers: await getAuthHeaders(), 
+      body: JSON.stringify({ is_open: nextStatus }) 
+    });
     if (response.ok) { setActiveStore({ ...activeStore, is_open: nextStatus }); setStores(stores.map(s => s.id === activeStore.id ? { ...s, is_open: nextStatus } : s)); }
   };
 
@@ -480,7 +519,8 @@ export default function DashboardPage() {
     e.preventDefault(); if (!editStoreData.lat || !editStoreData.lng) return alert("Please drop a pin on the map!"); setIsUploading(true);
     try {
       const response = await fetch(`${API_BASE_URL}/api/stores/${editStoreData.id}`, {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        method: 'PATCH', 
+        headers: await getAuthHeaders(), 
         body: JSON.stringify({ 
           store_name: editStoreData.store_name, store_category: editStoreData.store_category, industry: editStoreData.industry, description: editStoreData.description, 
           phone: editStoreData.phone, email: editStoreData.email, website: editStoreData.website, lat: editStoreData.lat, lng: editStoreData.lng, location: `POINT(${editStoreData.lng} ${editStoreData.lat})`
@@ -489,7 +529,13 @@ export default function DashboardPage() {
       if (response.ok) {
         const updatedStore = await response.json();
         const themeUpdate = { ...storeTheme, categoryOrder, showPhone: editStoreData.showPhone, showEmail: editStoreData.showEmail, showWebsite: editStoreData.showWebsite, showAddress: editStoreData.showAddress, addressText: editStoreData.addressText };
-        await fetch(`${API_BASE_URL}/api/stores/${editStoreData.id}/theme`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme_settings: themeUpdate }) });
+        
+        await fetch(`${API_BASE_URL}/api/stores/${editStoreData.id}/theme`, { 
+          method: 'PATCH', 
+          headers: await getAuthHeaders(), 
+          body: JSON.stringify({ theme_settings: themeUpdate }) 
+        });
+
         const fullyUpdatedStore = { ...updatedStore, theme_settings: themeUpdate };
         setStores(stores.map(s => s.id === fullyUpdatedStore.id ? { ...s, ...fullyUpdatedStore } : s)); setActiveStore({ ...activeStore, ...fullyUpdatedStore }); 
         setIsEditStoreModalOpen(false);
@@ -500,7 +546,11 @@ export default function DashboardPage() {
   const handleSaveTheme = async () => {
     setIsSavingTheme(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/theme`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ theme_settings: { ...storeTheme, categoryOrder } }) });
+      const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/theme`, { 
+        method: 'PATCH', 
+        headers: await getAuthHeaders(), 
+        body: JSON.stringify({ theme_settings: { ...storeTheme, categoryOrder } }) 
+      });
       if (!response.ok) throw new Error("Failed to save theme");
     } catch (err) { alert(err.message); } finally { setIsSavingTheme(false); }
   };
@@ -508,7 +558,10 @@ export default function DashboardPage() {
   const handleDeleteStore = async () => {
     if (deleteConfirmationText !== activeStore.store_name) return; setIsUploading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}`, { method: 'DELETE' });
+      const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}`, { 
+        method: 'DELETE',
+        headers: await getAuthHeaders(false) 
+      });
       if (response.ok) { 
         const updatedStores = stores.filter(s => s.id !== activeStore.id); 
         setStores(updatedStores); 
@@ -530,11 +583,20 @@ export default function DashboardPage() {
       await supabase.storage.from('item-images').upload(filePath, newItem.imageFile); finalImageUrl = supabase.storage.from('item-images').getPublicUrl(filePath).data.publicUrl;
     }
     const payload = { item_name: newItem.name, description: newItem.description, price: parseFloat(newItem.price), image_url: finalImageUrl, item_category: newItem.category };
+    
     if (editingItemId) {
-      const response = await fetch(`${API_BASE_URL}/api/items/${editingItemId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const response = await fetch(`${API_BASE_URL}/api/items/${editingItemId}`, { 
+        method: 'PATCH', 
+        headers: await getAuthHeaders(), 
+        body: JSON.stringify(payload) 
+      });
       if (response.ok) { const updatedItem = await response.json(); setItems(items.map(i => i.id === editingItemId ? updatedItem : i)); closeItemModal(); }
     } else {
-      const response = await fetch(`${API_BASE_URL}/api/items`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ store_id: activeStore.id, ...payload }) });
+      const response = await fetch(`${API_BASE_URL}/api/items`, { 
+        method: 'POST', 
+        headers: await getAuthHeaders(),
+        body: JSON.stringify({ store_id: activeStore.id, ...payload }) 
+      });
       if (response.ok) { const addedItem = await response.json(); setItems([addedItem, ...items]); closeItemModal(); }
     }
     setIsUploading(false);
@@ -543,7 +605,10 @@ export default function DashboardPage() {
   const handleDeleteItem = async (itemId, itemName) => {
     if (!window.confirm(`Delete "${itemName}" permanently?`)) return;
     try {
-      const response = await fetch(`${API_BASE_URL}/api/items/${itemId}`, { method: 'DELETE' });
+      const response = await fetch(`${API_BASE_URL}/api/items/${itemId}`, { 
+        method: 'DELETE',
+        headers: await getAuthHeaders(false) 
+      });
       if (response.ok) { setItems(items.filter(item => item.id !== itemId)); if (editingItemId === itemId) closeItemModal(); }
     } catch (err) { alert("Failed to delete item."); }
   };
@@ -552,41 +617,42 @@ export default function DashboardPage() {
     if (!voucherCode.trim()) return;
     setVoucherLoading(true); setVoucherMessage(null);
     try {
-      const { data: voucher, error: vErr } = await supabase.from('vouchers').select('*').eq('code', voucherCode.toUpperCase()).single();
-      if (vErr || !voucher) throw new Error("Invalid voucher code.");
+      const response = await fetch(`${API_BASE_URL}/api/vouchers/redeem`, {
+        method: 'POST',
+        headers: await getAuthHeaders(),
+        body: JSON.stringify({ 
+          store_id: activeStore.id, 
+          voucher_code: voucherCode 
+        })
+      });
+
+      const data = await response.json();
       
-      if (voucher.max_uses && voucher.current_uses >= voucher.max_uses) throw new Error("Voucher has reached its limit.");
-      if (voucher.valid_until && new Date(voucher.valid_until) < new Date()) throw new Error("Voucher expired.");
-
-      const { data: existing } = await supabase.from('voucher_redemptions').select('*').eq('store_id', activeStore.id).eq('voucher_id', voucher.id).maybeSingle();
-      if (existing) throw new Error("Voucher already claimed for this store.");
-
-      let newEndDate = new Date();
-      if (subscription?.plan_type === 'premium' && subscription.end_date && new Date(subscription.end_date) > new Date()) {
-          newEndDate = new Date(subscription.end_date);
-      }
-      newEndDate.setDate(newEndDate.getDate() + Number(voucher.discount_value));
-
-      if (subscription?.id) {
-         await supabase.from('subscriptions').update({ plan_type: 'premium', status: 'active', end_date: newEndDate.toISOString() }).eq('id', subscription.id);
-      } else {
-         await supabase.from('subscriptions').insert([{ store_id: activeStore.id, plan_type: 'premium', status: 'active', end_date: newEndDate.toISOString() }]);
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to redeem voucher.");
       }
 
-      await supabase.from('voucher_redemptions').insert([{ store_id: activeStore.id, voucher_id: voucher.id }]);
-      await supabase.from('vouchers').update({ current_uses: voucher.current_uses + 1 }).eq('id', voucher.id);
-
-      setVoucherMessage({ type: 'success', text: `Success! Added ${voucher.discount_value} days to premium.` });
+      setVoucherMessage({ type: 'success', text: data.message });
       fetchSubscription(activeStore.id);
       setTimeout(() => setIsVoucherModalOpen(false), 2000);
-    } catch (err) { setVoucherMessage({ type: 'error', text: err.message }); } finally { setVoucherLoading(false); }
+    } catch (err) { 
+      setVoucherMessage({ type: 'error', text: err.message }); 
+    } finally { 
+      setVoucherLoading(false); 
+    }
   };
 
+  // --- UPDATED: Passing the discount code to the backend checkout session ---
   const handleProceedToPayment = async () => {
     setIsProcessingPayment(true);
     try {
       const res = await fetch(`${API_BASE_URL}/api/create-checkout-session`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ store_id: activeStore.id })
+        method: 'POST', 
+        headers: await getAuthHeaders(),
+        body: JSON.stringify({ 
+          store_id: activeStore.id,
+          voucher_code: checkoutPromoCode.trim() || null 
+        })
       });
       const data = await res.json();
       if (data.checkoutUrl) window.location.href = data.checkoutUrl;
@@ -597,7 +663,11 @@ export default function DashboardPage() {
   const handleInviteOperator = async (e) => {
     e.preventDefault(); setIsInviting(true); setInviteMessage(null); 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/invite`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: inviteEmail, requester_id: user.id }) });
+      const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/invite`, { 
+        method: 'POST', 
+        headers: await getAuthHeaders(),
+        body: JSON.stringify({ email: inviteEmail, requester_id: user.id }) 
+      });
       const data = await response.json(); if (!response.ok) throw new Error(data.error || "Failed to invite operator");
       setInviteMessage({ type: 'success', text: data.message });
       setStoreOperators([...storeOperators, { email: inviteEmail, status: data.message.includes('Existing') ? 'confirmed' : 'pending', role: 'operator' }]);
@@ -608,7 +678,10 @@ export default function DashboardPage() {
   const handleRemoveStaff = async (staffId, staffEmail) => {
     if (!window.confirm(`Are you sure you want to remove ${staffEmail} from this store?`)) return;
     try {
-      const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/staff/${staffId}`, { method: 'DELETE' });
+      const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/staff/${staffId}`, { 
+        method: 'DELETE',
+        headers: await getAuthHeaders(false)
+      });
       if (!response.ok) throw new Error("Failed to remove staff");
       setStoreOperators(storeOperators.filter(op => op.user_id !== staffId));
     } catch (error) { alert("Error: " + error.message); }
@@ -654,10 +727,10 @@ export default function DashboardPage() {
       {isVoucherModalOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
           <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '20px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
-            <h2 style={{ margin: '0 0 15px 0', fontSize: '20px', color: '#0F172A', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}><MdLocalOffer color="#2563EB" /> Redeem Voucher</h2>
+            <h2 style={{ margin: '0 0 15px 0', fontSize: '20px', color: '#0F172A', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}><MdLocalOffer color="#2563EB" /> Redeem Free Days</h2>
             <input 
               type="text" 
-              placeholder="ENTER VIP CODE" 
+              placeholder="ENTER FREE DAYS CODE" 
               value={voucherCode} 
               onChange={e => setVoucherCode(e.target.value.toUpperCase())} 
               style={{ width: '100%', padding: '12px', border: '1px solid #E2E8F0', borderRadius: '10px', boxSizing: 'border-box', marginBottom: '15px', textTransform: 'uppercase' }} 
@@ -680,9 +753,28 @@ export default function DashboardPage() {
           <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '20px', width: '100%', maxWidth: '450px', textAlign: 'center', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
             <h2 style={{ margin: '0 0 10px 0', fontSize: '24px', color: '#0F172A', fontWeight: '900', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>Unlock Premium <MdRocketLaunch color="#2563EB" /></h2>
             <p style={{ color: '#64748B', marginBottom: '25px', fontSize: '14px', lineHeight: '1.5' }}>Get full access to edit your menu, customize your store branding, and accept online orders.</p>
-            <button onClick={() => { setIsUpgradeModalOpen(false); setIsVoucherModalOpen(true); }} style={{ width: '100%', padding: '14px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer', marginBottom: '15px', fontSize: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}><MdLocalOffer size={18} /> Redeem Voucher Code</button>
+            
+            {/* NEW: Checkout Promo Code Input */}
+            <div style={{ marginBottom: '15px', textAlign: 'left' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#64748B', marginBottom: '8px' }}>Have a percentage or fixed discount code?</label>
+              <input 
+                type="text" 
+                placeholder="e.g. SUMMER20" 
+                value={checkoutPromoCode} 
+                onChange={e => setCheckoutPromoCode(e.target.value.toUpperCase())} 
+                style={{ width: '100%', padding: '12px', border: '1px solid #E2E8F0', borderRadius: '10px', boxSizing: 'border-box', textTransform: 'uppercase' }} 
+              />
+            </div>
+
             <button onClick={handleProceedToPayment} disabled={isProcessingPayment} style={{ width: '100%', padding: '14px', backgroundColor: '#F8FAFC', color: '#0F172A', border: '1px solid #E2E8F0', borderRadius: '12px', fontWeight: 'bold', cursor: isProcessingPayment ? 'not-allowed' : 'pointer', fontSize: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}><MdPayment size={18} /> {isProcessingPayment ? 'Redirecting...' : 'Pay via GCash / Maya'}</button>
-            <button onClick={() => setIsUpgradeModalOpen(false)} style={{ marginTop: '20px', background: 'none', border: 'none', color: '#94A3B8', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
+            
+            <div style={{ margin: '20px 0', borderTop: '1px solid #E2E8F0', position: 'relative' }}>
+               <span style={{ position: 'absolute', top: '-10px', left: '50%', transform: 'translateX(-50%)', backgroundColor: 'white', padding: '0 10px', fontSize: '12px', color: '#94A3B8', fontWeight: 'bold' }}>OR</span>
+            </div>
+
+            <button onClick={() => { setIsUpgradeModalOpen(false); setIsVoucherModalOpen(true); }} style={{ width: '100%', padding: '14px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer', marginBottom: '5px', fontSize: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}><MdLocalOffer size={18} /> Claim Free Days</button>
+            
+            <button onClick={() => setIsUpgradeModalOpen(false)} style={{ marginTop: '15px', background: 'none', border: 'none', color: '#94A3B8', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
           </div>
         </div>
       )}
@@ -1115,7 +1207,7 @@ export default function DashboardPage() {
                        <span style={{ color: storeTheme.primaryColor, fontWeight: 'bold', fontSize: '13px' }}>View All</span>
                      </div>
                      {items.slice(0, 3).map(item => (
-                       <div key={item.id} style={{ display: 'flex', gap: '15px', padding: '15px', backgroundColor: 'white', borderRadius: '16px', marginBottom: '10px', boxShadow: '0 2px 5px rgba(0,0,0,0.02)' }}>
+                       <div key={item.id} style={{ display: 'flex', gap: '15px', padding: '15px', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', backgroundColor: 'white', borderRadius: '16px', marginBottom: '10px', boxShadow: '0 2px 5px rgba(0,0,0,0.02)' }}>
                           {item.image_url ? <img src={item.image_url} alt="item" style={{ width: '60px', height: '60px', borderRadius: '10px', objectFit: 'cover' }} /> : <div style={{ width: '60px', height: '60px', backgroundColor: '#F1F5F9', borderRadius: '10px', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#CBD5E1' }}><MdRestaurantMenu size={24} /></div>}
                           <div style={{ flexGrow: 1 }}>
                              <h4 style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#0F172A' }}>{item.item_name}</h4>
