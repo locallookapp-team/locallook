@@ -1,5 +1,7 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const { Resend } = require('resend');
 const rateLimit = require('express-rate-limit'); 
@@ -12,47 +14,110 @@ const PORT = process.env.PORT || 3000;
 
 app.set('trust proxy', 1);
 
+// --- 1. SECURITY HEADERS & STRICT CORS ---
+app.use(helmet());
+
+const allowedOrigins = [
+  'https://locallookph.com',
+  'http://localhost:5173',
+  'http://localhost:3000'
+];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Blocked by CORS security policy.'));
+    }
+  },
+  credentials: true
+}));
+
+app.use(express.json()); 
+
+// --- 2. RATE LIMITERS ---
+const apiLimiter = rateLimit({ 
+  windowMs: 15 * 60 * 1000,
+  max: 500, 
+  message: { error: "Too many requests from this IP. Please try again later." } 
+});
+
+const inviteLimiter = rateLimit({ 
+  windowMs: 60 * 60 * 1000, 
+  max: 10, 
+  message: { error: "Too many invites sent. Please wait an hour." } 
+});
+
+const checkoutLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: "Too many payment attempts. Try again later." }
+});
+
+const voucherLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5, // Strictly limit guesses to prevent promo code brute-forcing
+  message: { error: "Too many voucher attempts. Please try again later." }
+});
+
+app.use('/api/', apiLimiter); 
+
+// --- 3. SUPABASE & SERVICES INITIALIZATION ---
 const supabaseAdmin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-app.use(cors()); 
-app.use(express.json()); 
-
-const apiLimiter = rateLimit({ 
-  windowMs: 15 * 60 * 1000,
-  max: 2000, 
-  message: { error: "Too many requests." } 
-});
-const inviteLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 10, message: { error: "Too many invites." } });
-app.use('/api/', apiLimiter); 
-
-// 🚀 SUPER ADMIN GATEKEEPER MIDDLEWARE
-const verifySuperAdmin = async (req, res, next) => {
-  const adminId = req.headers['x-admin-id'];
-  
-  if (!adminId) {
-    return res.status(401).json({ error: "Unauthorized: Admin ID missing." });
+// --- 4. AUTHENTICATION MIDDLEWARES ---
+const verifyUser = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: "Unauthorized: Missing authentication token." });
   }
 
+  const token = authHeader.split(' ')[1];
+  const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+
+  if (error || !user) {
+    return res.status(401).json({ error: "Unauthorized: Invalid or expired token." });
+  }
+
+  req.user = user;
+  next();
+};
+
+const verifySuperAdmin = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: "Unauthorized: Missing authentication token." });
+  }
+
+  const token = authHeader.split(' ')[1];
+  const { data: { user }, error } = await supabaseAdmin.auth.getUser(token);
+
+  if (error || !user) return res.status(401).json({ error: "Unauthorized: Invalid token." });
+
   try {
-    const result = await db.query('SELECT role FROM users WHERE id = $1', [adminId]);
-    
+    const result = await db.query('SELECT role FROM users WHERE id = $1', [user.id]);
     if (result.rows.length === 0 || result.rows[0].role !== 'super_admin') {
       return res.status(403).json({ error: "Forbidden: Super Admin clearance required." });
     }
-    
-    // User is a super_admin, allow the request to proceed
+    req.user = user;
     next();
   } catch (err) {
-    console.error("Admin Verification Error:", err);
     res.status(500).json({ error: "Server error verifying administrative rights." });
   }
 };
 
-// 🚀 ADMIN PANEL ROUTES
+const isStoreOperator = async (storeId, userId) => {
+  const check = await db.query('SELECT 1 FROM store_operators WHERE store_id = $1 AND user_id = $2', [storeId, userId]);
+  return check.rows.length > 0;
+};
+
+// ---------------------------------------------------------
+// 🚀 ADMIN PANEL ROUTES (Protected)
+// ---------------------------------------------------------
 app.get('/api/admin/stores', verifySuperAdmin, async (req, res) => {
   try {
-    // Fetches all stores, regardless of distance or approval status
     const result = await db.query(`
       SELECT s.id, s.store_name, s.store_category, s.is_approved, s.is_open, u.email as owner_email
       FROM stores s
@@ -61,39 +126,16 @@ app.get('/api/admin/stores', verifySuperAdmin, async (req, res) => {
     `);
     res.json(result.rows);
   } catch (err) {
-    console.error("Admin Store Fetch Error:", err);
     res.status(500).json({ error: "Failed to fetch stores." });
   }
 });
 
-// --- ADMIN: Update Store Approval Status ---
 app.patch('/api/admin/stores/:id/status', verifySuperAdmin, async (req, res) => {
   const storeId = req.params.id;
   const { is_approved } = req.body;
 
   try {
-    const { data, error } = await supabase
-      .from('stores')
-      .update({ is_approved })
-      .eq('id', storeId)
-      .select();
-
-    if (error) throw error;
-    res.json({ message: 'Store status updated successfully', store: data[0] });
-  } catch (error) {
-    console.error("Error updating store status:", error);
-    res.status(500).json({ error: 'Failed to update store status' });
-  }
-});
-
-// --- ADMIN: Update Store Approval Status & Notify Owner ---
-app.patch('/api/admin/stores/:id/status', verifySuperAdmin, async (req, res) => {
-  const storeId = req.params.id;
-  const { is_approved } = req.body;
-
-  try {
-    // 1. Update the store status
-    const { data: storeData, error: storeError } = await supabase
+    const { data: storeData, error: storeError } = await supabaseAdmin
       .from('stores')
       .update({ is_approved })
       .eq('id', storeId)
@@ -102,39 +144,39 @@ app.patch('/api/admin/stores/:id/status', verifySuperAdmin, async (req, res) => 
 
     if (storeError) throw storeError;
 
-    // 2. Generate the automated notification for the store owner
-    if (storeData.owner_id) {
+    if (storeData.merchant_id) {
       const statusMessage = is_approved 
         ? 'Your store has been officially approved! You are now live on the platform.' 
         : 'Your store has been temporarily suspended. Please contact support.';
 
-      await supabase.from('notifications').insert([
-        {
-          user_id: storeData.owner_id,
-          title: is_approved ? 'Store Approved 🚀' : 'Store Suspended ⚠️',
-          message: statusMessage
-        }
-      ]);
+      await supabaseAdmin.from('notifications').insert([{
+        user_id: storeData.merchant_id,
+        title: is_approved ? 'Store Approved 🚀' : 'Store Suspended ⚠️',
+        message: statusMessage,
+        type: is_approved ? 'success' : 'moderation'
+      }]);
     }
 
     res.json({ message: 'Store status updated successfully', store: storeData });
   } catch (error) {
-    console.error("Error updating store status:", error);
     res.status(500).json({ error: 'Failed to update store status' });
   }
 });
 
-app.post('/api/stores', async (req, res) => {
+// ---------------------------------------------------------
+// 🚀 STORE MANAGEMENT ROUTES
+// ---------------------------------------------------------
+app.post('/api/stores', verifyUser, async (req, res) => {
   const client = await db.connect();
   try {
-    const { store_name, store_category, description, phone, email, website, lat, lng, user_id } = req.body;
+    const { store_name, store_category, description, phone, email, website, lat, lng } = req.body;
+    const user_id = req.user.id; 
     
-    if (!store_name || !store_category || !lat || !lng || !user_id) {
-      return res.status(400).json({ error: "Missing required store fields or location." });
+    if (!store_name || !store_category || !lat || !lng) {
+      return res.status(400).json({ error: "Missing required fields." });
     }
 
     await client.query('BEGIN');
-
     const storeResult = await client.query(`
       INSERT INTO stores (store_name, store_category, description, phone, email, website, location, is_open, is_approved, merchant_id)
       VALUES ($1, $2, $3, $4, $5, $6, ST_GeomFromText($7, 4326), false, true, $8)
@@ -142,20 +184,10 @@ app.post('/api/stores', async (req, res) => {
     `, [store_name, store_category, description, phone, email, website, `POINT(${lng} ${lat})`, user_id]); 
     
     const newStoreId = storeResult.rows[0].id;
-
-    await client.query(`
-      INSERT INTO store_operators (store_id, user_id, role, status)
-      VALUES ($1, $2, 'merchant', 'confirmed');
-    `, [newStoreId, user_id]);
-
-    await client.query(`
-      INSERT INTO users (id, role)
-      VALUES ($1, 'merchant')
-      ON CONFLICT (id) DO UPDATE 
-      SET role = 'merchant';
-    `, [user_id]);
-
+    await client.query(`INSERT INTO store_operators (store_id, user_id, role, status) VALUES ($1, $2, 'merchant', 'confirmed');`, [newStoreId, user_id]);
+    await client.query(`INSERT INTO users (id, role) VALUES ($1, 'merchant') ON CONFLICT (id) DO UPDATE SET role = 'merchant';`, [user_id]);
     await client.query('COMMIT');
+    
     res.json(storeResult.rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -165,260 +197,54 @@ app.post('/api/stores', async (req, res) => {
   }
 });
 
-app.patch('/api/stores/:id', async (req, res) => {
+app.patch('/api/stores/:id', verifyUser, async (req, res) => {
   try {
+    if (!(await isStoreOperator(req.params.id, req.user.id))) return res.status(403).json({ error: "Unauthorized access to store." });
+
     const { store_name, store_category, description, phone, email, website, lat, lng } = req.body;
     const result = await db.query(`
       UPDATE stores 
       SET store_name = $1, store_category = $2, description = $3, phone = $4, email = $5, website = $6, location = ST_GeomFromText($7, 4326) 
-      WHERE id = $8 
-      RETURNING id, store_name, store_category, description, phone, email, website, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng
+      WHERE id = $8 RETURNING *
     `, [store_name, store_category, description, phone, email, website, `POINT(${lng} ${lat})`, req.params.id]);
     res.json(result.rows[0]);
-  } catch (err) {
-    res.status(500).send("Server Error");
-  }
+  } catch (err) { res.status(500).send("Server Error"); }
 });
 
-app.delete('/api/stores/:id', async (req, res) => {
+app.delete('/api/stores/:id', verifyUser, async (req, res) => {
   try {
+    if (!(await isStoreOperator(req.params.id, req.user.id))) return res.status(403).json({ error: "Unauthorized access to store." });
+    
     const result = await db.query('DELETE FROM stores WHERE id = $1 RETURNING *', [req.params.id]);
     if (result.rowCount === 0) return res.status(404).json({ error: "Store not found" });
     res.json({ message: "Store deleted successfully" });
-  } catch (err) {
-    res.status(500).send("Server Error");
-  }
-});
-
-app.get('/api/merchant/stores/:user_id', async (req, res) => {
-  try {
-    const { user_id } = req.params;
-    const result = await db.query(`
-      SELECT s.id, s.store_name, s.store_category, s.industry, s.description, s.phone, s.email, s.website, s.is_open, s.theme_settings, ST_Y(s.location::geometry) as lat, ST_X(s.location::geometry) as lng, so.role, s.merchant_id
-      FROM stores s JOIN store_operators so ON s.id = so.store_id WHERE so.user_id = $1 AND so.status = 'confirmed'
-    `, [user_id]);
-    res.json(result.rows);
-  } catch (err) {
-    res.status(500).send("Server Error");
-  }
-});
-
-// 🚀 NEW APPLICATION-LEVEL INVITE ROUTE
-app.post('/api/stores/:store_id/invite', inviteLimiter, async (req, res) => {
-  const client = await db.connect();
-  try {
-    const { store_id } = req.params;
-    const { email, requester_id } = req.body;
-
-    if (!email || !email.includes('@')) return res.status(400).json({ error: "Invalid email address." });
-
-    // Verify ownership and get store name for the email
-    const authCheck = await client.query(
-      `SELECT merchant_id, store_name FROM stores WHERE id = $1 AND merchant_id = $2`, 
-      [store_id, requester_id]
-    );
-
-    if (authCheck.rows.length === 0) {
-      return res.status(403).json({ error: "Only the store owner can invite staff." });
-    }
-    const storeName = authCheck.rows[0].store_name;
-
-    await client.query('BEGIN');
-
-    // Check if the user is already an active operator
-    const existingOpCheck = await client.query(
-      `SELECT 1 FROM store_operators so JOIN users u ON so.user_id = u.id WHERE so.store_id = $1 AND u.email = $2`,
-      [store_id, email]
-    );
-    if (existingOpCheck.rows.length > 0) {
-      throw new Error("This user is already an active staff member at this store.");
-    }
-
-    // Insert into the new store_invitations table
-    const inviteInsert = await client.query(
-      `INSERT INTO store_invitations (store_id, email, status) VALUES ($1, $2, 'pending') ON CONFLICT (store_id, email) DO NOTHING RETURNING id;`,
-      [store_id, email]
-    );
-
-    if (inviteInsert.rows.length === 0) {
-       throw new Error("A pending invitation has already been sent to this email.");
-    }
-
-    // Send the customized Application-Level Email via Resend
-    await resend.emails.send({
-      from: 'LocalLook <invitation@locallookph.com>', 
-      to: email, 
-      subject: `You've been invited to manage ${storeName}!`,
-      html: `<div style="font-family: sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; border: 1px solid #E2E8F0; border-radius: 12px;">
-               <h2 style="color: #0F172A; margin-top: 0;">Store Access Invitation</h2>
-               <p style="color: #475569; line-height: 1.6;">You have been invited to join the staff team for <strong>${storeName}</strong> on LocalLook.</p>
-               <p style="color: #475569; line-height: 1.6;">Click the secure link below to sign up for an account. Once logged in, click the notification bell to accept your invite!</p>
-               <br/>
-               <a href="https://locallookph.com/dashboard" style="display: inline-block; padding: 12px 24px; background-color: #2563EB; color: white; text-decoration: none; border-radius: 8px; font-weight: bold;">Log In or Sign Up</a>
-               <br/><br/>
-               <p style="color: #94A3B8; font-size: 12px;"><em>Tip: Use "Sign in with Google" to automatically sync your profile picture and name!</em></p>
-             </div>`
-    });
-    
-    await client.query('COMMIT');
-    res.json({ message: "Invitation sent successfully!" });
-    
-  } catch (err) {
-    await client.query('ROLLBACK');
-    const safeErrorMsg = err instanceof Error ? err.message : String(err);
-    res.status(500).json({ error: safeErrorMsg });
-  } finally {
-    client.release();
-  }
-});
-
-// 🚀 ACCEPT INVITATION ENDPOINT (Ready for Notification Bell)
-app.post('/api/invitations/:invite_id/accept', async (req, res) => {
-  const client = await db.connect();
-  try {
-    const { invite_id } = req.params;
-    const { user_id, email } = req.body; 
-
-    await client.query('BEGIN');
-
-    const inviteCheck = await client.query(`SELECT store_id, email FROM store_invitations WHERE id = $1 AND status = 'pending'`, [invite_id]);
-    if (inviteCheck.rows.length === 0) throw new Error("Invalid or expired invitation.");
-    
-    const invite = inviteCheck.rows[0];
-    if (invite.email !== email) throw new Error("This invite was sent to a different email address.");
-
-    await client.query(`INSERT INTO store_operators (store_id, user_id, role, status) VALUES ($1, $2, 'operator', 'confirmed') ON CONFLICT DO NOTHING`, [invite.store_id, user_id]);
-    await client.query(`DELETE FROM store_invitations WHERE id = $1`, [invite_id]);
-
-    await client.query('COMMIT');
-    res.json({ message: "Invitation accepted!" });
-  } catch (err) {
-    await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
-  } finally {
-    client.release();
-  }
-});
-
-// 🚀 DECLINE INVITATION ENDPOINT
-app.post('/api/invitations/:invite_id/decline', async (req, res) => {
-  try {
-    await db.query(`DELETE FROM store_invitations WHERE id = $1`, [req.params.invite_id]);
-    res.json({ message: "Invitation declined." });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 🚀 UNIFIED STAFF FETCHING: Pulls from both operators and pending invitations
-app.get('/api/stores/:store_id/operators', async (req, res) => {
-  try {
-    const store_id = req.params.store_id;
-    
-    const confirmedOps = await db.query(`
-      SELECT u.id, u.email, so.role, so.status, so.user_id 
-      FROM store_operators so JOIN users u ON so.user_id = u.id 
-      WHERE so.store_id = $1
-    `, [store_id]);
-    
-    const pendingInvites = await db.query(`
-      SELECT id as user_id, email, 'operator' as role, 'pending' as status 
-      FROM store_invitations 
-      WHERE store_id = $1
-    `, [store_id]);
-
-    res.json([...confirmedOps.rows, ...pendingInvites.rows]);
   } catch (err) { res.status(500).send("Server Error"); }
 });
 
-// 🚀 UNIFIED STAFF DELETION: Removes from operators OR invitations based on UUID
-app.delete('/api/stores/:store_id/staff/:identifier', async (req, res) => {
+app.patch('/api/stores/:id/theme', verifyUser, async (req, res) => {
   try {
-    const { store_id, identifier } = req.params;
-    
-    await db.query(`DELETE FROM store_operators WHERE store_id = $1 AND user_id = $2`, [store_id, identifier]);
-    await db.query(`DELETE FROM store_invitations WHERE store_id = $1 AND id = $2`, [store_id, identifier]);
-    
-    res.status(200).json({ message: "Staff/Invite removed successfully." });
-  } catch (error) { res.status(500).json({ error: error.message }); }
-});
-
-app.get('/api/stores', async (req, res) => {
-  try {
-    const { minLng, minLat, maxLng, maxLat, userLat, userLng, radius } = req.query;
-    
-    let selectClause = `SELECT id, store_name, store_category, industry, description, phone, email, website, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng`;
-    let fromClause = ` FROM stores`;
-    let whereClauses = [];
-    let queryParams = [];
-    let paramIndex = 1;
-    let orderByClause = '';
-
-    if (userLat && userLng) {
-      selectClause += `, ST_Distance(location::geography, ST_SetSRID(ST_MakePoint($${paramIndex}, $${paramIndex+1}), 4326)::geography) AS distance_meters`;
-      queryParams.push(userLng, userLat);
-      paramIndex += 2;
-      
-      const searchRadius = radius ? parseInt(radius) : 5000; 
-      whereClauses.push(`ST_DWithin(location::geography, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, $${paramIndex})`);
-      queryParams.push(searchRadius);
-      paramIndex++;
-      
-      orderByClause = ` ORDER BY distance_meters ASC`;
-    } 
-    else if (minLng && minLat && maxLng && maxLat) {
-      whereClauses.push(`location && ST_MakeEnvelope($${paramIndex}, $${paramIndex+1}, $${paramIndex+2}, $${paramIndex+3}, 4326)`);
-      queryParams.push(minLng, minLat, maxLng, maxLat);
-      paramIndex += 4;
-    }
-
-    let query = selectClause + fromClause;
-    if (whereClauses.length > 0) {
-      query += ` WHERE ` + whereClauses.join(' AND ');
-    }
-    query += orderByClause;
-
-    const result = await db.query(query, queryParams);
-    res.json(result.rows);
-  } catch (err) { 
-    console.error("Store Fetch Error:", err);
-    res.status(500).send("Server Error"); 
-  }
-});
-
-app.get('/api/stores/:id', async (req, res) => {
-  try {
-    const result = await db.query(`SELECT id, store_name, store_category, industry, description, phone, email, website, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng, cover_image_url FROM stores WHERE id = $1;`, [req.params.id]);
-    if (result.rows.length === 0) return res.status(404).json({ error: "Store not found" });
-    res.json(result.rows[0]);
-  } catch (err) { res.status(500).send("Server Error"); }
-});
-
-app.patch('/api/stores/:id/theme', async (req, res) => {
-  try {
+    if (!(await isStoreOperator(req.params.id, req.user.id))) return res.status(403).json({ error: "Unauthorized." });
     const result = await db.query(`UPDATE stores SET theme_settings = $1 WHERE id = $2 RETURNING id, theme_settings`, [req.body.theme_settings, req.params.id]);
     res.json(result.rows[0]);
   } catch (err) { res.status(500).send("Server Error"); }
 });
 
-app.patch('/api/stores/:id/toggle', async (req, res) => {
+app.patch('/api/stores/:id/toggle', verifyUser, async (req, res) => {
   try {
+    if (!(await isStoreOperator(req.params.id, req.user.id))) return res.status(403).json({ error: "Unauthorized." });
     const result = await db.query('UPDATE stores SET is_open = $1 WHERE id = $2 RETURNING id, is_open', [req.body.is_open, req.params.id]);
     res.json(result.rows[0]);
   } catch (err) { res.status(500).send("Server Error"); }
 });
 
-app.get('/api/stores/:store_id/items', async (req, res) => {
-  try {
-    const result = await db.query('SELECT * FROM items WHERE store_id = $1 ORDER BY created_at DESC', [req.params.store_id]);
-    res.json(result.rows);
-  } catch (err) { res.status(500).send("Server Error"); }
-});
-
-app.post('/api/items', async (req, res) => {
+// ---------------------------------------------------------
+// 🚀 ITEM MANAGEMENT ROUTES
+// ---------------------------------------------------------
+app.post('/api/items', verifyUser, async (req, res) => {
   try {
     const { store_id, item_name, description, price, image_url, item_category } = req.body;
-    
+    if (!(await isStoreOperator(store_id, req.user.id))) return res.status(403).json({ error: "Unauthorized." });
+
     if (!store_id || !item_name || isNaN(parseFloat(price))) {
       return res.status(400).json({ error: "Invalid item data. Name and valid price are required." });
     }
@@ -431,8 +257,12 @@ app.post('/api/items', async (req, res) => {
   } catch (err) { res.status(500).send("Server Error"); }
 });
 
-app.patch('/api/items/:id', async (req, res) => {
+app.patch('/api/items/:id', verifyUser, async (req, res) => {
   try {
+    const itemCheck = await db.query('SELECT store_id FROM items WHERE id = $1', [req.params.id]);
+    if (itemCheck.rows.length === 0) return res.status(404).json({error: "Not found"});
+    if (!(await isStoreOperator(itemCheck.rows[0].store_id, req.user.id))) return res.status(403).json({ error: "Unauthorized." });
+
     const { item_name, description, price, item_category, image_url } = req.body;
     let query = `UPDATE items SET item_name = $1, description = $2, price = $3, item_category = $4`;
     let values = [item_name, description, price, item_category];
@@ -443,10 +273,316 @@ app.patch('/api/items/:id', async (req, res) => {
   } catch (err) { res.status(500).send("Server Error"); }
 });
 
-app.delete('/api/items/:id', async (req, res) => {
+app.delete('/api/items/:id', verifyUser, async (req, res) => {
   try {
+    const itemCheck = await db.query('SELECT store_id FROM items WHERE id = $1', [req.params.id]);
+    if (itemCheck.rows.length === 0) return res.status(404).json({error: "Not found"});
+    if (!(await isStoreOperator(itemCheck.rows[0].store_id, req.user.id))) return res.status(403).json({ error: "Unauthorized." });
+
     await db.query('DELETE FROM items WHERE id = $1 RETURNING *', [req.params.id]);
     res.json({ message: "Item deleted successfully" });
+  } catch (err) { res.status(500).send("Server Error"); }
+});
+
+// ---------------------------------------------------------
+// 🚀 INVITATIONS & STAFF (Protected)
+// ---------------------------------------------------------
+app.post('/api/stores/:store_id/invite', inviteLimiter, verifyUser, async (req, res) => {
+  const client = await db.connect();
+  try {
+    const { store_id } = req.params;
+    const { email } = req.body;
+    const requester_id = req.user.id;
+
+    if (!email || !email.includes('@')) return res.status(400).json({ error: "Invalid email address." });
+
+    const authCheck = await client.query(`SELECT store_name FROM stores WHERE id = $1 AND merchant_id = $2`, [store_id, requester_id]);
+    if (authCheck.rows.length === 0) return res.status(403).json({ error: "Only the store owner can invite staff." });
+    
+    const storeName = authCheck.rows[0].store_name;
+    await client.query('BEGIN');
+
+    const existingOpCheck = await client.query(`SELECT 1 FROM store_operators so JOIN users u ON so.user_id = u.id WHERE so.store_id = $1 AND u.email = $2`, [store_id, email]);
+    if (existingOpCheck.rows.length > 0) throw new Error("This user is already an active staff member at this store.");
+
+    const inviteInsert = await client.query(`INSERT INTO store_invitations (store_id, email, status) VALUES ($1, $2, 'pending') ON CONFLICT (store_id, email) DO NOTHING RETURNING id;`, [store_id, email]);
+    if (inviteInsert.rows.length === 0) throw new Error("A pending invitation has already been sent to this email.");
+
+    await resend.emails.send({
+      from: 'LocalLook <invitation@locallookph.com>', 
+      to: email, 
+      subject: `You've been invited to manage ${storeName}!`,
+      html: `<div style="font-family: sans-serif; padding: 20px;">
+               <h2>Store Access Invitation</h2>
+               <p>You have been invited to join the staff team for <strong>${storeName}</strong> on LocalLook.</p>
+               <a href="https://locallookph.com/dashboard">Log In or Sign Up</a>
+             </div>`
+    });
+    
+    await client.query('COMMIT');
+    res.json({ message: "Invitation sent successfully!" });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/invitations/:invite_id/accept', verifyUser, async (req, res) => {
+  const client = await db.connect();
+  try {
+    const { invite_id } = req.params;
+    const user_id = req.user.id; 
+    const email = req.user.email; 
+
+    await client.query('BEGIN');
+    const inviteCheck = await client.query(`SELECT store_id, email FROM store_invitations WHERE id = $1 AND status = 'pending'`, [invite_id]);
+    if (inviteCheck.rows.length === 0) throw new Error("Invalid or expired invitation.");
+    if (inviteCheck.rows[0].email !== email) throw new Error("This invite was sent to a different email address.");
+
+    await client.query(`INSERT INTO store_operators (store_id, user_id, role, status) VALUES ($1, $2, 'operator', 'confirmed') ON CONFLICT DO NOTHING`, [inviteCheck.rows[0].store_id, user_id]);
+    await client.query(`DELETE FROM store_invitations WHERE id = $1`, [invite_id]);
+    await client.query('COMMIT');
+    res.json({ message: "Invitation accepted!" });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+app.post('/api/invitations/:invite_id/decline', verifyUser, async (req, res) => {
+  try {
+    await db.query(`DELETE FROM store_invitations WHERE id = $1`, [req.params.invite_id]);
+    res.json({ message: "Invitation declined." });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/api/stores/:store_id/operators', verifyUser, async (req, res) => {
+  try {
+    if (!(await isStoreOperator(req.params.store_id, req.user.id))) return res.status(403).json({ error: "Unauthorized." });
+    
+    const store_id = req.params.store_id;
+    const confirmedOps = await db.query(`SELECT u.id, u.email, so.role, so.status, so.user_id FROM store_operators so JOIN users u ON so.user_id = u.id WHERE so.store_id = $1`, [store_id]);
+    const pendingInvites = await db.query(`SELECT id as user_id, email, 'operator' as role, 'pending' as status FROM store_invitations WHERE store_id = $1`, [store_id]);
+    res.json([...confirmedOps.rows, ...pendingInvites.rows]);
+  } catch (err) { res.status(500).send("Server Error"); }
+});
+
+app.delete('/api/stores/:store_id/staff/:identifier', verifyUser, async (req, res) => {
+  try {
+    if (!(await isStoreOperator(req.params.store_id, req.user.id))) return res.status(403).json({ error: "Unauthorized." });
+    const { store_id, identifier } = req.params;
+    
+    await db.query(`DELETE FROM store_operators WHERE store_id = $1 AND user_id = $2`, [store_id, identifier]);
+    await db.query(`DELETE FROM store_invitations WHERE store_id = $1 AND id = $2`, [store_id, identifier]);
+    res.status(200).json({ message: "Staff/Invite removed successfully." });
+  } catch (error) { res.status(500).json({ error: error.message }); }
+});
+
+// ---------------------------------------------------------
+// 🚀 VOUCHER REDEMPTION (ACID Compliant Database Transaction)
+// ---------------------------------------------------------
+app.post('/api/vouchers/redeem', voucherLimiter, verifyUser, async (req, res) => {
+  const client = await db.connect();
+  try {
+    const { store_id, voucher_code } = req.body;
+    const user_id = req.user.id;
+
+    if (!store_id || !voucher_code) {
+      return res.status(400).json({ error: "Store ID and Voucher Code are required." });
+    }
+
+    const authCheck = await client.query('SELECT 1 FROM store_operators WHERE store_id = $1 AND user_id = $2', [store_id, user_id]);
+    if (authCheck.rows.length === 0) {
+      return res.status(403).json({ error: "Unauthorized access to store." });
+    }
+
+    await client.query('BEGIN');
+
+    const voucherResult = await client.query(
+      `SELECT * FROM vouchers WHERE code = $1 FOR UPDATE`, 
+      [voucher_code.toUpperCase()]
+    );
+
+    if (voucherResult.rows.length === 0) throw new Error("Invalid voucher code.");
+    const voucher = voucherResult.rows[0];
+
+    if (voucher.max_uses && voucher.current_uses >= voucher.max_uses) {
+      throw new Error("This voucher has reached its maximum usage limit.");
+    }
+    if (voucher.valid_until && new Date(voucher.valid_until) < new Date()) {
+      throw new Error("This voucher has expired.");
+    }
+    
+    // Strict Check: Direct redemption modal is only for 'free_days'
+    if (voucher.discount_type !== 'free_days') {
+      throw new Error("This voucher provides a payment discount. Please apply it during checkout instead of direct redemption.");
+    }
+
+    const existingRedemption = await client.query(
+      `SELECT 1 FROM voucher_redemptions WHERE store_id = $1 AND voucher_id = $2`,
+      [store_id, voucher.id]
+    );
+    if (existingRedemption.rows.length > 0) {
+      throw new Error("Your store has already claimed this voucher.");
+    }
+
+    const subResult = await client.query(
+      `SELECT id, plan_type, end_date FROM subscriptions WHERE store_id = $1 ORDER BY created_at DESC LIMIT 1`, 
+      [store_id]
+    );
+    
+    let newEndDate = new Date();
+    const currentSub = subResult.rows[0];
+    
+    if (currentSub && currentSub.plan_type === 'premium' && currentSub.end_date && new Date(currentSub.end_date) > new Date()) {
+      newEndDate = new Date(currentSub.end_date);
+    }
+    
+    newEndDate.setDate(newEndDate.getDate() + Number(voucher.discount_value));
+
+    if (currentSub) {
+      await client.query(
+        `UPDATE subscriptions SET plan_type = 'premium', status = 'active', end_date = $1 WHERE id = $2`,
+        [newEndDate.toISOString(), currentSub.id]
+      );
+    } else {
+      await client.query(
+        `INSERT INTO subscriptions (store_id, plan_type, status, end_date) VALUES ($1, 'premium', 'active', $2)`,
+        [store_id, newEndDate.toISOString()]
+      );
+    }
+
+    await client.query(
+      `INSERT INTO voucher_redemptions (store_id, voucher_id) VALUES ($1, $2)`,
+      [store_id, voucher.id]
+    );
+
+    await client.query(
+      `INSERT INTO transaction_logs (store_id, voucher_id, event_type, amount, reference_number) VALUES ($1, $2, 'VOUCHER_REDEEMED', 0, $3)`,
+      [store_id, voucher.id, voucher.code]
+    );
+
+    await client.query(
+      `UPDATE vouchers SET current_uses = current_uses + 1 WHERE id = $1`,
+      [voucher.id]
+    );
+
+    await client.query('COMMIT');
+    res.json({ message: `Success! Applied ${voucher.discount_value} free days to your account.` });
+
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(400).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
+
+// ---------------------------------------------------------
+// 🚀 SAVED PLACES & REVIEWS (Protected IDORs)
+// ---------------------------------------------------------
+app.post('/api/saved-places/toggle', verifyUser, async (req, res) => {
+  try {
+    const { store_id } = req.body;
+    const user_id = req.user.id; 
+    
+    const check = await db.query('SELECT id FROM saved_places WHERE store_id = $1 AND user_id = $2', [store_id, user_id]);
+    if (check.rows.length > 0) {
+      await db.query('DELETE FROM saved_places WHERE id = $1', [check.rows[0].id]);
+      res.json({ saved: false, message: "Removed from saved places." });
+    } else {
+      await db.query('INSERT INTO saved_places (store_id, user_id) VALUES ($1, $2)', [store_id, user_id]);
+      res.json({ saved: true, message: "Added to saved places." });
+    }
+  } catch (err) { res.status(500).send("Server Error"); }
+});
+
+app.post('/api/reviews', verifyUser, async (req, res) => {
+  try {
+    const { store_id, rating, comment } = req.body;
+    const user_id = req.user.id; 
+    
+    if (!store_id || !rating) return res.status(400).json({ error: "Missing required fields." });
+
+    const result = await db.query(`INSERT INTO reviews (store_id, user_id, rating, comment) VALUES ($1, $2, $3, $4) RETURNING *;`, [store_id, user_id, rating, comment]); 
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).send("Server Error"); }
+});
+
+// ---------------------------------------------------------
+// 🚀 USER PROFILE (Protected)
+// ---------------------------------------------------------
+app.patch('/api/users/:id', verifyUser, async (req, res) => {
+  try {
+    if (req.user.id !== req.params.id) return res.status(403).json({ error: "Cannot modify another user's profile." });
+
+    const { display_name, avatar_url } = req.body;
+    const result = await db.query(`UPDATE users SET display_name = $1, avatar_url = $2 WHERE id = $3 RETURNING id, email, role, display_name, avatar_url`, [display_name, avatar_url, req.params.id]);
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).send("Server Error"); }
+});
+
+// ---------------------------------------------------------
+// 🚀 PUBLIC ENDPOINTS (Read-Only)
+// ---------------------------------------------------------
+app.get('/api/merchant/stores/:user_id', async (req, res) => {
+  try {
+    const { user_id } = req.params;
+    const result = await db.query(`
+      SELECT s.id, s.store_name, s.store_category, s.industry, s.description, s.phone, s.email, s.website, s.is_open, s.theme_settings, ST_Y(s.location::geometry) as lat, ST_X(s.location::geometry) as lng, so.role, s.merchant_id
+      FROM stores s JOIN store_operators so ON s.id = so.store_id WHERE so.user_id = $1 AND so.status = 'confirmed'
+    `, [user_id]);
+    res.json(result.rows);
+  } catch (err) { res.status(500).send("Server Error"); }
+});
+
+app.get('/api/stores', async (req, res) => {
+  try {
+    const { minLng, minLat, maxLng, maxLat, userLat, userLng, radius } = req.query;
+    let selectClause = `SELECT id, store_name, store_category, industry, description, phone, email, website, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng`;
+    let fromClause = ` FROM stores`;
+    let whereClauses = [];
+    let queryParams = [];
+    let paramIndex = 1;
+    let orderByClause = '';
+
+    if (userLat && userLng) {
+      selectClause += `, ST_Distance(location::geography, ST_SetSRID(ST_MakePoint($${paramIndex}, $${paramIndex+1}), 4326)::geography) AS distance_meters`;
+      queryParams.push(userLng, userLat);
+      paramIndex += 2;
+      const searchRadius = radius ? parseInt(radius) : 5000; 
+      whereClauses.push(`ST_DWithin(location::geography, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, $${paramIndex})`);
+      queryParams.push(searchRadius);
+      paramIndex++;
+      orderByClause = ` ORDER BY distance_meters ASC`;
+    } else if (minLng && minLat && maxLng && maxLat) {
+      whereClauses.push(`location && ST_MakeEnvelope($${paramIndex}, $${paramIndex+1}, $${paramIndex+2}, $${paramIndex+3}, 4326)`);
+      queryParams.push(minLng, minLat, maxLng, maxLat);
+      paramIndex += 4;
+    }
+
+    let query = selectClause + fromClause + (whereClauses.length > 0 ? ` WHERE ` + whereClauses.join(' AND ') : '') + orderByClause;
+    const result = await db.query(query, queryParams);
+    res.json(result.rows);
+  } catch (err) { res.status(500).send("Server Error"); }
+});
+
+app.get('/api/stores/:id', async (req, res) => {
+  try {
+    const result = await db.query(`SELECT id, store_name, store_category, industry, description, phone, email, website, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng, cover_image_url FROM stores WHERE id = $1;`, [req.params.id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: "Store not found" });
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).send("Server Error"); }
+});
+
+app.get('/api/stores/:store_id/items', async (req, res) => {
+  try {
+    const result = await db.query('SELECT * FROM items WHERE store_id = $1 ORDER BY created_at DESC', [req.params.store_id]);
+    res.json(result.rows);
   } catch (err) { res.status(500).send("Server Error"); }
 });
 
@@ -454,22 +590,103 @@ app.get('/api/search/items', async (req, res) => {
   try {
     const { q } = req.query;
     if (!q) return res.json([]);
-    const result = await db.query(`
-      SELECT i.id, i.item_name, i.price, i.store_id, s.store_name 
-      FROM items i JOIN stores s ON i.store_id = s.id 
-      WHERE i.item_name ILIKE $1 OR i.item_category ILIKE $1 LIMIT 15;
-    `, [`%${q}%`]);
+    const result = await db.query(`SELECT i.id, i.item_name, i.price, i.store_id, s.store_name FROM items i JOIN stores s ON i.store_id = s.id WHERE i.item_name ILIKE $1 OR i.item_category ILIKE $1 LIMIT 15;`, [`%${q}%`]);
     res.json(result.rows);
   } catch (err) { res.status(500).send("Server Error"); }
 });
 
-app.post('/api/create-checkout-session', async (req, res) => {
-  const { store_id } = req.body;
-
+app.get('/api/stores/:store_id/reviews', async (req, res) => {
   try {
-    const secretKey = process.env.PAYMONGO_SECRET_KEY;
-    if (!secretKey) throw new Error("PayMongo Secret Key is missing.");
+    const result = await db.query(`SELECT r.id, r.rating, r.comment, r.created_at, u.display_name, u.avatar_url FROM reviews r JOIN users u ON r.user_id = u.id WHERE r.store_id = $1 ORDER BY r.created_at DESC;`, [req.params.store_id]);
+    res.json(result.rows);
+  } catch (err) { res.status(500).send("Server Error"); }
+});
 
+app.get('/api/users/:user_id/saved-places', async (req, res) => {
+  try {
+    const result = await db.query(`SELECT s.id, s.store_name, s.store_category, s.cover_image_url, sp.created_at FROM saved_places sp JOIN stores s ON sp.store_id = s.id WHERE sp.user_id = $1 ORDER BY sp.created_at DESC;`, [req.params.user_id]);
+    res.json(result.rows);
+  } catch (err) { res.status(500).send("Server Error"); }
+});
+
+app.get('/api/users/:id', async (req, res) => {
+  try {
+    const result = await db.query(`SELECT id, email, role, display_name, avatar_url FROM users WHERE id = $1`, [req.params.id]);
+    if (result.rows.length === 0) return res.status(404).json({ error: "User not found" });
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).send("Server Error"); }
+});
+
+// ---------------------------------------------------------
+// 🚀 PAYMONGO INTEGRATION (CRYPTOGRAPHICALLY VERIFIED & DYNAMIC PRICING)
+// ---------------------------------------------------------
+app.post('/api/create-checkout-session', checkoutLimiter, verifyUser, async (req, res) => {
+  const client = await db.connect();
+  try {
+    const { store_id, voucher_code } = req.body;
+    
+    // 1. Fetch dynamic base pricing
+    const planResult = await client.query("SELECT price FROM subscription_plans WHERE name = 'LocalLook Premium - 30 Days' LIMIT 1");
+    let basePrice = 199; // Standard fallback
+    
+    if (planResult.rows.length > 0) {
+      basePrice = parseFloat(planResult.rows[0].price);
+    }
+    
+    let finalPrice = basePrice;
+    let appliedVoucherId = null;
+    let discountName = '';
+
+    // 2. Validate and Apply Voucher Math (If Provided)
+    if (voucher_code) {
+      const voucherResult = await client.query(`SELECT * FROM vouchers WHERE code = $1`, [voucher_code.toUpperCase()]);
+      
+      if (voucherResult.rows.length === 0) {
+        throw new Error("Invalid checkout promo code.");
+      }
+      
+      const voucher = voucherResult.rows[0];
+      
+      if (voucher.discount_type === 'free_days') {
+        throw new Error("This code is for free days. Use the 'Claim Free Days' button instead of the checkout form.");
+      }
+      if (voucher.max_uses && voucher.current_uses >= voucher.max_uses) {
+        throw new Error("This voucher has reached its maximum usage limit.");
+      }
+      if (voucher.valid_until && new Date(voucher.valid_until) < new Date()) {
+        throw new Error("This voucher has expired.");
+      }
+
+      const existingRedemption = await client.query(
+        `SELECT 1 FROM voucher_redemptions WHERE store_id = $1 AND voucher_id = $2`,
+        [store_id, voucher.id]
+      );
+      
+      if (existingRedemption.rows.length > 0) {
+        throw new Error("Your store has already claimed this voucher.");
+      }
+
+      if (voucher.discount_type === 'percentage') {
+        finalPrice = basePrice - (basePrice * (parseFloat(voucher.discount_value) / 100));
+        discountName = ` (${voucher.discount_value}% OFF)`;
+      } else if (voucher.discount_type === 'fixed') {
+        finalPrice = basePrice - parseFloat(voucher.discount_value);
+        discountName = ` (₱${voucher.discount_value} OFF)`;
+      }
+
+      // 3. Absolute Floor Limit: PayMongo API restricts checkouts below ₱20
+      if (finalPrice < 20) {
+        finalPrice = 20; 
+      }
+      
+      appliedVoucherId = voucher.id;
+    }
+
+    // 4. Pack the Reference Number (Format: storeId|voucherId)
+    const amountInCentavos = Math.round(finalPrice * 100);
+    const refNumber = appliedVoucherId ? `${store_id}|${appliedVoucherId}` : store_id;
+
+    const secretKey = process.env.PAYMONGO_SECRET_KEY;
     const options = {
       method: 'POST',
       headers: {
@@ -480,187 +697,104 @@ app.post('/api/create-checkout-session', async (req, res) => {
       body: JSON.stringify({
         data: {
           attributes: {
-            send_email_receipt: true,
-            show_description: true,
-            show_line_items: true,
-            line_items: [
-              {
-                currency: 'PHP',
-                amount: 19900, 
-                name: 'LocalLook Premium Plan - 30 Days',
-                quantity: 1
-              }
-            ],
+            send_email_receipt: true, show_description: true, show_line_items: true,
+            line_items: [{ currency: 'PHP', amount: amountInCentavos, name: `LocalLook Premium Plan - 30 Days${discountName}`, quantity: 1 }],
             payment_method_types: ['gcash', 'paymaya', 'grab_pay', 'card'],
-            reference_number: store_id, 
+            reference_number: refNumber, 
             success_url: 'https://locallookph.com/dashboard?payment=success',
             cancel_url: 'https://locallookph.com/dashboard?payment=cancelled'
           }
         }
       })
     };
-
+    
     const response = await fetch('https://api.paymongo.com/v1/checkout_sessions', options);
     const data = await response.json();
-
-    if (data.errors) {
-      throw new Error(data.errors[0].detail);
-    }
-
+    if (data.errors) throw new Error(data.errors[0].detail);
     res.json({ checkoutUrl: data.data.attributes.checkout_url });
 
-  } catch (error) {
-    console.error("Checkout Session Error:", error.message);
-    res.status(500).json({ error: 'Failed to create payment session.' });
+  } catch (error) { 
+    res.status(400).json({ error: error.message || 'Failed to create payment session.' }); 
+  } finally {
+    client.release();
   }
 });
 
 app.post('/api/webhooks/paymongo', async (req, res) => {
   try {
-    const eventType = req.body?.data?.attributes?.type;
-    
-    if (eventType === 'checkout_session.payment.paid') {
-      const storeId = req.body?.data?.attributes?.data?.attributes?.reference_number;
+    const signatureHeader = req.headers['paymongo-signature'];
+    const webhookSecret = process.env.PAYMONGO_WEBHOOK_SECRET; 
+
+    if (!signatureHeader || !webhookSecret) {
+      console.warn("⚠️ Webhook missing signature or secret is not configured.");
+      return res.status(400).send("Bad Request");
+    }
+
+    const signatureParts = signatureHeader.split(',').reduce((acc, part) => {
+      const [key, value] = part.split('=');
+      acc[key] = value;
+      return acc;
+    }, {});
+
+    const timestamp = signatureParts.t;
+    const signature = process.env.NODE_ENV === 'production' ? signatureParts.li : signatureParts.te; 
+
+    if (!timestamp || !signature) {
+      return res.status(400).send("Invalid signature format");
+    }
+
+    const signaturePayload = `${timestamp}.${JSON.stringify(req.body)}`;
+    const expectedSignature = crypto
+      .createHmac('sha256', webhookSecret)
+      .update(signaturePayload)
+      .digest('hex');
+
+    if (crypto.timingSafeEqual(Buffer.from(expectedSignature), Buffer.from(signature))) {
+      const eventType = req.body?.data?.attributes?.type;
       
-      if (storeId) {
-        const thirtyDaysFromNow = new Date();
-        thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
-
-        const { error } = await supabaseAdmin.from('subscriptions').insert([{
-          store_id: storeId,
-          plan_type: 'premium',
-          end_date: thirtyDaysFromNow.toISOString(),
-          status: 'active'
-        }]);
-
-        if (error) {
-          console.error("Webhook Database Error:", error);
-          return res.status(500).send("Database Update Failed");
-        }
+      if (eventType === 'checkout_session.payment.paid') {
+        const rawRef = req.body?.data?.attributes?.data?.attributes?.reference_number;
+        const amountPaid = req.body?.data?.attributes?.data?.attributes?.amount / 100; // Convert back to PHP from centavos
         
-        console.log(`✅ Webhook Success: Store ${storeId} is now Premium.`);
+        if (rawRef) {
+          // Unpack the metadata mapping (storeId|voucherId)
+          const parts = rawRef.split('|');
+          const storeId = parts[0];
+          const voucherId = parts[1] || null;
+
+          const thirtyDaysFromNow = new Date();
+          thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+          
+          // 1. Grant Premium Subscription
+          const subCheck = await db.query(`SELECT id FROM subscriptions WHERE store_id = $1 LIMIT 1`, [storeId]);
+          if (subCheck.rows.length > 0) {
+             await db.query(`UPDATE subscriptions SET plan_type = 'premium', status = 'active', end_date = $1 WHERE store_id = $2`, [thirtyDaysFromNow.toISOString(), storeId]);
+          } else {
+             await db.query(`INSERT INTO subscriptions (store_id, plan_type, status, end_date) VALUES ($1, 'premium', 'active', $2)`, [storeId, thirtyDaysFromNow.toISOString()]);
+          }
+          
+          // 2. Consume Voucher & Log Transaction
+          if (voucherId) {
+            await db.query(`INSERT INTO voucher_redemptions (store_id, voucher_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [storeId, voucherId]);
+            await db.query(`UPDATE vouchers SET current_uses = current_uses + 1 WHERE id = $1`, [voucherId]);
+            await db.query(`INSERT INTO transaction_logs (store_id, voucher_id, event_type, amount, reference_number) VALUES ($1, $2, 'VOUCHER_REDEEMED_PAYMENT', $3, $4)`, [storeId, voucherId, amountPaid, rawRef]);
+          } else {
+            await db.query(`INSERT INTO transaction_logs (store_id, event_type, amount, reference_number) VALUES ($1, 'PAYMENT_SUCCESS', $2, $3)`, [storeId, amountPaid, rawRef]);
+          }
+        }
       }
-    }
-    
-    res.status(200).send("Webhook Received");
-
-  } catch (err) {
-    console.error("Webhook Processing Error:", err);
-    res.status(500).send("Internal Server Error");
-  }
-});
-
-app.get('/api/stores/:store_id/reviews', async (req, res) => {
-  try {
-    const result = await db.query(`
-      SELECT r.id, r.rating, r.comment, r.created_at, u.display_name, u.avatar_url 
-      FROM reviews r
-      JOIN users u ON r.user_id = u.id
-      WHERE r.store_id = $1
-      ORDER BY r.created_at DESC;
-    `, [req.params.store_id]);
-    res.json(result.rows);
-  } catch (err) {
-    console.error(err);
-    res.status(500).send("Server Error");
-  }
-});
-
-app.post('/api/reviews', async (req, res) => {
-  try {
-    const { store_id, user_id, rating, comment } = req.body;
-    
-    if (!store_id || !user_id || !rating) {
-      return res.status(400).json({ error: "Missing required fields." });
-    }
-
-    const result = await db.query(`
-      INSERT INTO reviews (store_id, user_id, rating, comment) 
-      VALUES ($1, $2, $3, $4) 
-      RETURNING *;
-    `, [store_id, user_id, rating, comment]); 
-    
-    res.json(result.rows[0]);
-  } catch (err) {
-    console.error(err);
-    res.status(500).send("Server Error");
-  }
-});
-
-app.post('/api/saved-places/toggle', async (req, res) => {
-  try {
-    const { store_id, user_id } = req.body;
-    
-    const check = await db.query('SELECT id FROM saved_places WHERE store_id = $1 AND user_id = $2', [store_id, user_id]);
-    
-    if (check.rows.length > 0) {
-      await db.query('DELETE FROM saved_places WHERE id = $1', [check.rows[0].id]);
-      res.json({ saved: false, message: "Removed from saved places." });
+      
+      return res.status(200).send("Webhook Received & Verified");
+      
     } else {
-      await db.query('INSERT INTO saved_places (store_id, user_id) VALUES ($1, $2)', [store_id, user_id]);
-      res.json({ saved: true, message: "Added to saved places." });
-    }
-  } catch (err) {
-    console.error(err);
-    res.status(500).send("Server Error");
-  }
-});
-
-app.get('/api/users/:user_id/saved-places', async (req, res) => {
-  try {
-    const result = await db.query(`
-      SELECT s.id, s.store_name, s.store_category, s.cover_image_url, sp.created_at
-      FROM saved_places sp
-      JOIN stores s ON sp.store_id = s.id
-      WHERE sp.user_id = $1
-      ORDER BY sp.created_at DESC;
-    `, [req.params.user_id]);
-    res.json(result.rows);
-  } catch (err) {
-    console.error(err);
-    res.status(500).send("Server Error");
-  }
-});
-
-app.get('/api/users/:id', async (req, res) => {
-  try {
-    const result = await db.query(`
-      SELECT id, email, role, display_name, avatar_url 
-      FROM users 
-      WHERE id = $1
-    `, [req.params.id]);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "User not found" });
+      console.error("🚨 Webhook signature mismatch. Possible spoofing attempt.");
+      return res.status(401).send("Unauthorized");
     }
 
-    res.json(result.rows[0]);
-  } catch (err) {
-    console.error(err);
-    res.status(500).send("Server Error");
+  } catch (err) { 
+    console.error("Webhook processing error:", err);
+    res.status(500).send("Internal Server Error"); 
   }
 });
 
-app.patch('/api/users/:id', async (req, res) => {
-  try {
-    const { display_name, avatar_url } = req.body;
-    
-    const result = await db.query(`
-      UPDATE users 
-      SET display_name = $1, avatar_url = $2
-      WHERE id = $3 
-      RETURNING id, email, role, display_name, avatar_url
-    `, [display_name, avatar_url, req.params.id]);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    res.json(result.rows[0]);
-  } catch (err) {
-    console.error(err);
-    res.status(500).send("Server Error");
-  }
-});
-
-app.listen(PORT, () => { console.log(`Server is running on http://localhost:${PORT}`); });
+app.listen(PORT, () => { console.log(`Server is running securely on http://localhost:${PORT}`); });
