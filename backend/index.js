@@ -20,6 +20,7 @@ app.use(helmet());
 const allowedOrigins = [
   'https://locallookph.com',
   'http://localhost:5173',
+  'http://localhost:5174', // Fixed: Added port 5174 for the Admin Panel
   'http://localhost:3000'
 ];
 
@@ -169,7 +170,8 @@ app.patch('/api/admin/stores/:id/status', verifySuperAdmin, async (req, res) => 
 app.post('/api/stores', verifyUser, async (req, res) => {
   const client = await db.connect();
   try {
-    const { store_name, store_category, description, phone, email, website, lat, lng } = req.body;
+    // Fixed: Added 'industry' to destructured body
+    const { store_name, store_category, industry, description, phone, email, website, lat, lng } = req.body;
     const user_id = req.user.id; 
     
     if (!store_name || !store_category || !lat || !lng) {
@@ -177,11 +179,13 @@ app.post('/api/stores', verifyUser, async (req, res) => {
     }
 
     await client.query('BEGIN');
+    
+    // Fixed: Included 'industry' in the SQL INSERT statement
     const storeResult = await client.query(`
-      INSERT INTO stores (store_name, store_category, description, phone, email, website, location, is_open, is_approved, merchant_id)
-      VALUES ($1, $2, $3, $4, $5, $6, ST_GeomFromText($7, 4326), false, true, $8)
+      INSERT INTO stores (store_name, store_category, industry, description, phone, email, website, location, is_open, is_approved, merchant_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, ST_GeomFromText($8, 4326), false, true, $9)
       RETURNING id, store_name;
-    `, [store_name, store_category, description, phone, email, website, `POINT(${lng} ${lat})`, user_id]); 
+    `, [store_name, store_category, industry, description, phone, email, website, `POINT(${lng} ${lat})`, user_id]); 
     
     const newStoreId = storeResult.rows[0].id;
     await client.query(`INSERT INTO store_operators (store_id, user_id, role, status) VALUES ($1, $2, 'merchant', 'confirmed');`, [newStoreId, user_id]);
