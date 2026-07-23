@@ -20,7 +20,7 @@ app.use(helmet());
 const allowedOrigins = [
   'https://locallookph.com',
   'http://localhost:5173',
-  'http://localhost:5174', // Fixed: Added port 5174 for the Admin Panel
+  'http://localhost:5174', 
   'http://localhost:3000'
 ];
 
@@ -58,7 +58,7 @@ const checkoutLimiter = rateLimit({
 
 const voucherLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 5, // Strictly limit guesses to prevent promo code brute-forcing
+  max: 5, 
   message: { error: "Too many voucher attempts. Please try again later." }
 });
 
@@ -170,7 +170,6 @@ app.patch('/api/admin/stores/:id/status', verifySuperAdmin, async (req, res) => 
 app.post('/api/stores', verifyUser, async (req, res) => {
   const client = await db.connect();
   try {
-    // Fixed: Added 'industry' to destructured body
     const { store_name, store_category, industry, description, phone, email, website, lat, lng } = req.body;
     const user_id = req.user.id; 
     
@@ -180,7 +179,6 @@ app.post('/api/stores', verifyUser, async (req, res) => {
 
     await client.query('BEGIN');
     
-    // Fixed: Included 'industry' in the SQL INSERT statement
     const storeResult = await client.query(`
       INSERT INTO stores (store_name, store_category, industry, description, phone, email, website, location, is_open, is_approved, merchant_id)
       VALUES ($1, $2, $3, $4, $5, $6, $7, ST_GeomFromText($8, 4326), false, true, $9)
@@ -291,6 +289,34 @@ app.delete('/api/items/:id', verifyUser, async (req, res) => {
 // ---------------------------------------------------------
 // 🚀 INVITATIONS & STAFF (Protected)
 // ---------------------------------------------------------
+
+// NEW: Secure route to fetch pending invitations bypassing RLS
+app.get('/api/invitations/pending', verifyUser, async (req, res) => {
+  try {
+    const email = req.user.email;
+    const result = await db.query(`
+      SELECT si.id, si.store_id, si.email, si.status, s.store_name
+      FROM store_invitations si
+      JOIN stores s ON si.store_id = s.id
+      WHERE si.email = $1 AND si.status = 'pending'
+    `, [email]);
+    
+    // Map the result so it matches the expected frontend structure
+    const mappedData = result.rows.map(row => ({
+      id: row.id,
+      store_id: row.store_id,
+      email: row.email,
+      status: row.status,
+      stores: { store_name: row.store_name }
+    }));
+    
+    res.json(mappedData);
+  } catch (err) {
+    console.error("Failed to fetch user invitations:", err);
+    res.status(500).json({ error: "Failed to load invitations." });
+  }
+});
+
 app.post('/api/stores/:store_id/invite', inviteLimiter, verifyUser, async (req, res) => {
   const client = await db.connect();
   try {
