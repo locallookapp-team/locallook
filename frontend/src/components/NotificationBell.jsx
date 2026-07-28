@@ -9,8 +9,11 @@ import {
   MdWarning, 
   MdCheckCircle, 
   MdCampaign, 
-  MdNotifications 
+  MdNotifications,
+  MdThumbUp, // Replaced Heart with Thumb Up
+  MdStorefront 
 } from 'react-icons/md';
+import { FaThumbsUp } from 'react-icons/fa';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://locallook-api.onrender.com';
 
@@ -25,7 +28,6 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
 
   const totalUnread = invitations.length + unreadNotesCount;
 
-  // --- Dynamic Styling Helper ---
   const getNotificationStyle = (type) => {
     switch (type) {
       case 'moderation':
@@ -34,32 +36,43 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
         return { color: '#10B981', bg: '#F0FDF4', icon: <MdCheckCircle size={16} color="#10B981" /> };
       case 'announcement':
         return { color: '#3B82F6', bg: '#EFF6FF', icon: <MdCampaign size={16} color="#3B82F6" /> };
+      case 'social_like': 
+        return { color: '#2563EB', bg: '#EFF6FF', icon: <FaThumbsUp size={16} color="#2563EB" /> };
+      case 'owner_reply': 
+        return { color: '#F59E0B', bg: '#FFFBEB', icon: <MdStorefront size={16} color="#F59E0B" /> };
       default:
         return { color: '#64748B', bg: '#F8FAFC', icon: <MdNotifications size={16} color="#64748B" /> };
     }
   };
 
-  // --- Fetch Initial Data & Subscribe ---
+  const getAuthHeaders = async (isJson = false) => {
+    const { data: { session: currentSession } } = await supabase.auth.getSession();
+    const headers = { 'Authorization': `Bearer ${currentSession?.access_token}` };
+    if (isJson) headers['Content-Type'] = 'application/json';
+    return headers;
+  };
+
   useEffect(() => {
     if (!session) return;
 
     const fetchAllNotifications = async () => {
-      // 1. Fetch Store Invitations
-      const { data: inviteData } = await supabase
-        .from('store_invitations')
-        .select('id, store_id, email, status, stores(store_name)')
-        .eq('email', session.user.email)
-        .eq('status', 'pending');
-        
-      if (inviteData) setInvitations(inviteData);
+      try {
+        const headers = await getAuthHeaders();
+        const inviteRes = await fetch(`${API_BASE_URL}/api/invitations/pending`, { headers });
+        if (inviteRes.ok) {
+          const inviteData = await inviteRes.json();
+          setInvitations(inviteData);
+        }
+      } catch (err) {
+        console.error("Failed to fetch pending invites:", err);
+      }
 
-      // 2. Fetch System Notifications
       const { data: noteData } = await supabase
         .from('notifications')
         .select('*')
         .eq('user_id', session.user.id)
         .order('created_at', { ascending: false })
-        .limit(10);
+        .limit(15); 
       
       if (noteData) {
         setSystemNotes(noteData);
@@ -69,12 +82,7 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
 
     fetchAllNotifications();
 
-    // ---------------------------------------------------------
-    // 🚀 ROBUST ENTERPRISE SUBSCRIPTION PATTERN (REAL-TIME KILL SWITCH)
-    // ---------------------------------------------------------
     const CHANNEL_NAME = `public-notifications-${isSidebarMode ? 'sidebar' : 'topnav'}`;
-
-    // STEP 1: Pre-cleanup. Kill any lingering ghost channels in memory from HMR reloads.
     const existingChannels = supabase.getChannels();
     existingChannels.forEach(c => {
       if (c.topic === `realtime:${CHANNEL_NAME}`) {
@@ -82,10 +90,8 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
       }
     });
 
-    // STEP 2: Create the fresh channel as a separate variable
     const channel = supabase.channel(CHANNEL_NAME);
 
-    // STEP 3: Attach the listener to ALL events (*)
     channel.on('postgres_changes', { 
       event: '*', 
       schema: 'public', 
@@ -93,67 +99,76 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
       filter: `user_id=eq.${session.user.id}` 
     }, (payload) => {
       
-      // Handle New Notifications
       if (payload.eventType === 'INSERT') {
-        setSystemNotes(prev => [payload.new, ...prev]);
-        setUnreadNotesCount(prev => prev + 1);
+        setSystemNotes(prev => {
+          const newNotes = [payload.new, ...prev];
+          setUnreadNotesCount(newNotes.filter(n => !n.is_read).length);
+          return newNotes;
+        });
       }
       
-      // Handle Master Broadcast Edits
       if (payload.eventType === 'UPDATE') {
-        setSystemNotes(prev => 
-          prev.map(note => note.id === payload.new.id ? payload.new : note)
-        );
+        setSystemNotes(prev => {
+          const updatedNotes = prev.map(note => note.id === payload.new.id ? payload.new : note);
+          setUnreadNotesCount(updatedNotes.filter(n => !n.is_read).length);
+          return updatedNotes.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        });
       }
       
-      // Handle Master Broadcast Retractions (The Kill Switch)
       if (payload.eventType === 'DELETE') {
         setSystemNotes(prev => {
           const filteredNotes = prev.filter(note => note.id !== payload.old.id);
-          // Recalculate unread count based on the new array to keep the badge accurate
           setUnreadNotesCount(filteredNotes.filter(n => !n.is_read).length);
           return filteredNotes;
         });
       }
-
     });
 
-    // STEP 4: Only after setup is complete, subscribe
     channel.subscribe();
 
-    // STEP 5: Standard React unmount cleanup
-    return () => { 
-      supabase.removeChannel(channel); 
-    };
+    return () => { supabase.removeChannel(channel); };
   }, [session]);
 
-  // --- Click Outside to Close ---
+  const markAsRead = () => {
+    if (systemNotes.some(n => !n.is_read)) {
+      setSystemNotes(prev => prev.map(n => ({ ...n, is_read: true })));
+      supabase.from('notifications')
+        .update({ is_read: true })
+        .eq('user_id', session.user.id)
+        .eq('is_read', false)
+        .then();
+    }
+  };
+
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setIsOpen(false);
+        if (isOpen) {
+          setIsOpen(false);
+          markAsRead(); 
+        }
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [isOpen, systemNotes, session]);
 
-  // --- Handlers ---
   const handleToggleMenu = async () => {
-    setIsOpen(!isOpen);
-    // Mark system notes as read when opened
-    if (!isOpen && unreadNotesCount > 0) {
-      setUnreadNotesCount(0);
-      await supabase.from('notifications').update({ is_read: true }).eq('user_id', session.user.id).eq('is_read', false);
-      setSystemNotes(systemNotes.map(n => ({ ...n, is_read: true })));
+    if (!isOpen) {
+      setIsOpen(true);
+      setUnreadNotesCount(0); 
+    } else {
+      setIsOpen(false);
+      markAsRead(); 
     }
   };
 
   const handleAcceptInvite = async (inviteId) => {
     try {
+      const headers = await getAuthHeaders(true);
       const res = await fetch(`${API_BASE_URL}/api/invitations/${inviteId}/accept`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ user_id: session.user.id, email: session.user.email })
       });
       if (res.ok) {
@@ -173,16 +188,14 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
 
   const handleDeclineInvite = async (inviteId) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/invitations/${inviteId}/decline`, { method: 'POST' });
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${API_BASE_URL}/api/invitations/${inviteId}/decline`, { method: 'POST', headers });
       if (res.ok) setInvitations(prev => prev.filter(inv => inv.id !== inviteId));
     } catch (err) { console.error(err); }
   };
 
-  // --- Render ---
   return (
     <div ref={dropdownRef} style={{ position: 'relative', width: isSidebarMode ? '100%' : 'auto' }}>
-      
-      {/* TRIGGER BUTTON: Adapts based on the prop */}
       {isSidebarMode ? (
         <div onClick={handleToggleMenu} className={`nav-item ${isOpen ? 'active' : ''}`} style={{ display: 'flex', justifyContent: 'space-between', cursor: 'pointer' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -203,7 +216,6 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
         </div>
       )}
 
-      {/* DROPDOWN MENU */}
       {isOpen && (
         <div style={{ 
           position: 'absolute', 
@@ -222,7 +234,6 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
           overflow: 'hidden' 
         }}>
           
-          {/* Section: Pending Invites */}
           {invitations.length > 0 && (
             <div>
               <div style={{ padding: '12px 16px', backgroundColor: '#EFF6FF', borderBottom: '1px solid #BFDBFE', fontWeight: '800', fontSize: '12px', color: '#1E3A8A' }}>
@@ -248,7 +259,6 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
             </div>
           )}
 
-          {/* Section: System Alerts */}
           <div>
             <div style={{ padding: '12px 16px', backgroundColor: '#F8FAFC', borderBottom: '1px solid #F1F5F9', borderTop: invitations.length > 0 ? '1px solid #E2E8F0' : 'none', fontWeight: '800', fontSize: '12px', color: '#0F172A' }}>
               System Alerts
@@ -259,7 +269,6 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
               ) : (
                 systemNotes.map(note => {
                   const style = getNotificationStyle(note.type);
-                  
                   return (
                     <div 
                       key={note.id} 
@@ -267,6 +276,7 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
                         if (note.action_url) {
                           navigate(note.action_url);
                           setIsOpen(false);
+                          markAsRead(); 
                         }
                       }}
                       style={{ 
@@ -292,7 +302,6 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
               )}
             </div>
           </div>
-
         </div>
       )}
     </div>

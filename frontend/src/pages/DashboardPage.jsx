@@ -3,12 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import Cropper from 'react-easy-crop';
-import { supabase } from '../supabaseClient';
+import { QRCodeCanvas } from 'qrcode.react'; // 🚀 NEW: QR Code Library
+import { supabase } from '../supabaseClient'; 
 import { 
   MdDragIndicator, MdSmartphone, MdChevronLeft, MdChevronRight, MdOutlineNearMe, 
   MdEdit, MdDelete, MdAdd, MdCameraAlt, MdDashboard, MdPeople, MdSecurity, 
   MdLocalOffer, MdRocketLaunch, MdPayment, MdRestaurantMenu, MdCheckCircle, 
-  MdCancel, MdWarning, MdClose, MdSettings, MdStorefront, MdVerifiedUser, MdUploadFile
+  MdCancel, MdWarning, MdClose, MdSettings, MdStorefront, MdVerifiedUser, MdUploadFile,
+  MdInsertDriveFile, MdStar, MdReply, MdMoreVert, MdDesktopMac, MdQrCode // 🚀 NEW: Desktop & QR Icons
 } from "react-icons/md";
 
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
@@ -78,46 +80,133 @@ function SortableCategory({ id, activeCategory, brandColor, onClick }) {
   );
 }
 
-function VerificationPanel({ storeId, isVerified }) {
-  const [uploading, setUploading] = useState(false);
-  const [message, setMessage] = useState('');
+function VerificationPanel({ store, userId, onStoreUpdate }) {
+  const [dtiFile, setDtiFile] = useState(null);
+  const [birFile, setBirFile] = useState(null);
+  const [loading, setLoading] = useState(true); 
+  const [message, setMessage] = useState(null);
 
-  const handleFileUpload = async (event, documentType) => {
+  const [existingDti, setExistingDti] = useState(null);
+  const [existingBir, setExistingBir] = useState(null);
+  const [isVerified, setIsVerified] = useState(false);
+
+  useEffect(() => {
+    const fetchFreshDocs = async () => {
+      try {
+        const { data } = await supabase
+          .from('stores')
+          .select('dti_permit_url, bir_cor_url, is_verified')
+          .eq('id', store.id)
+          .single();
+          
+        if (data) {
+          setExistingDti(data.dti_permit_url);
+          setExistingBir(data.bir_cor_url);
+          setIsVerified(data.is_verified);
+          onStoreUpdate({ ...store, ...data });
+        }
+      } catch (err) {
+        console.error("Error fetching fresh documents:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchFreshDocs();
+  }, [store.id]);
+
+  const handleFileSelect = (event, type) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    if (type === 'dti') setDtiFile(file);
+    if (type === 'bir') setBirFile(file);
+    setMessage(null);
+  };
+
+  const handleDeleteExisting = async (type) => {
+    if (!window.confirm("Are you sure you want to permanently delete this document?")) return;
+    
+    setLoading(true);
+    setMessage(null);
     try {
-      setUploading(true);
-      setMessage('');
-      
-      const file = event.target.files[0];
-      if (!file) return;
+      const filePath = type === 'dti' ? existingDti : existingBir;
+      const columnName = type === 'dti' ? 'dti_permit_url' : 'bir_cor_url';
 
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${storeId}/${documentType}-${Math.random()}.${fileExt}`;
-      const filePath = `${fileName}`;
+      const { error: storageErr } = await supabase.storage.from('merchant-documents').remove([filePath]);
+      if (storageErr) console.warn("Storage deletion warning:", storageErr);
 
-      const { error: uploadError } = await supabase.storage
-        .from('merchant-documents')
-        .upload(filePath, file);
+      const { error: dbErr } = await supabase.from('stores').update({ [columnName]: null }).eq('id', store.id);
+      if (dbErr) throw dbErr;
 
-      if (uploadError) throw uploadError;
+      if (type === 'dti') setExistingDti(null);
+      if (type === 'bir') setExistingBir(null);
+      onStoreUpdate({ ...store, [columnName]: null });
+      setMessage({ type: 'success', text: 'Document successfully removed.' });
 
-      const updateData = {};
-      updateData[documentType] = filePath; 
-
-      const { error: updateError } = await supabase
-        .from('stores')
-        .update(updateData)
-        .eq('id', storeId);
-
-      if (updateError) throw updateError;
-
-      setMessage(`${documentType === 'dti_permit_url' ? 'DTI Permit' : 'BIR COR'} uploaded successfully. Awaiting Admin review.`);
-    } catch (error) {
-      console.error('Upload error:', error);
-      setMessage('Error uploading document. Please try again.');
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to delete: ' + err.message });
     } finally {
-      setUploading(false);
+      setLoading(false);
     }
   };
+
+  const handleSubmitVerification = async () => {
+    if (!existingDti && !dtiFile) return setMessage({ type: 'error', text: "Please provide your DTI/Mayor's Permit." });
+    if (!existingBir && !birFile) return setMessage({ type: 'error', text: "Please provide your BIR Form 2303." });
+    if (!dtiFile && !birFile) return; 
+
+    try {
+      setLoading(true);
+      setMessage(null);
+
+      const folderPath = `${userId}/${store.id}`;
+
+      const { data: existingStorageFiles } = await supabase.storage.from('merchant-documents').list(folderPath);
+
+      if (existingStorageFiles && existingStorageFiles.length > 0) {
+        const filesToDelete = existingStorageFiles.filter(file => file.name !== '.emptyFolderPlaceholder').map(file => `${folderPath}/${file.name}`);
+        if (filesToDelete.length > 0) {
+          await supabase.storage.from('merchant-documents').remove(filesToDelete);
+        }
+      }
+
+      let newDtiPath = existingDti;
+      let newBirPath = existingBir;
+
+      if (dtiFile) {
+        const dtiExt = dtiFile.name.split('.').pop();
+        newDtiPath = `${folderPath}/dti-${Date.now()}.${dtiExt}`;
+        const { error: dtiError } = await supabase.storage.from('merchant-documents').upload(newDtiPath, dtiFile);
+        if (dtiError) throw dtiError;
+      }
+
+      if (birFile) {
+        const birExt = birFile.name.split('.').pop();
+        newBirPath = `${folderPath}/bir-${Date.now()}.${birExt}`;
+        const { error: birError } = await supabase.storage.from('merchant-documents').upload(newBirPath, birFile);
+        if (birError) throw birError;
+      }
+
+      const { error: dbError } = await supabase.from('stores').update({ dti_permit_url: newDtiPath, bir_cor_url: newBirPath }).eq('id', store.id);
+      if (dbError) throw dbError;
+
+      setExistingDti(newDtiPath);
+      setExistingBir(newBirPath);
+      onStoreUpdate({ ...store, dti_permit_url: newDtiPath, bir_cor_url: newBirPath });
+      setDtiFile(null);
+      setBirFile(null);
+      setMessage({ type: 'success', text: "Documents securely saved! We will notify you once the Admin reviews them." });
+
+    } catch (error) {
+      console.error('Upload error:', error);
+      setMessage({ type: 'error', text: `Upload failed: ${error.message}` });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading && !existingDti && !existingBir && !dtiFile && !birFile) {
+     return <div style={{ padding: '40px', textAlign: 'center', color: '#64748B', fontWeight: 'bold' }}>Syncing database records...</div>;
+  }
 
   if (isVerified) {
     return (
@@ -134,47 +223,105 @@ function VerificationPanel({ storeId, isVerified }) {
   return (
     <div style={{ padding: '24px', backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
       <h3 style={{ margin: '0 0 16px 0', color: '#0F172A', fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <MdVerifiedUser size={20} color="#64748B" /> Get Verified Status
+        <MdVerifiedUser size={20} color="#64748B" /> Business Verification Status
       </h3>
       <p style={{ fontSize: '13px', color: '#64748B', marginBottom: '20px' }}>
-        Upload your legal documents to receive the verified badge on the map and unlock premium platform features.
+        Manage your legal documents here. Valid submissions will unlock premium platform features.
       </p>
 
       {message && (
-        <div style={{ padding: '10px', backgroundColor: '#EFF6FF', color: '#1E3A8A', borderRadius: '6px', fontSize: '12px', marginBottom: '16px', fontWeight: '600' }}>
-          {message}
+        <div style={{ padding: '12px', backgroundColor: message.type === 'success' ? '#ECFDF5' : '#FEF2F2', border: `1px solid ${message.type === 'success' ? '#A7F3D0' : '#FECACA'}`, color: message.type === 'success' ? '#065F46' : '#991B1B', borderRadius: '8px', fontSize: '13px', marginBottom: '20px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {message.type === 'success' ? <MdCheckCircle size={18} /> : <MdWarning size={18} />} {message.text}
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        <div style={{ border: '1px dashed #CBD5E1', padding: '16px', borderRadius: '8px', textAlign: 'center', backgroundColor: '#F8FAFC' }}>
-          <label style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-            <MdUploadFile size={24} color="#2563EB" />
-            <span style={{ fontSize: '13px', fontWeight: '700', color: '#0F172A' }}>Upload DTI / Mayor's Permit</span>
-            <input 
-              type="file" 
-              accept="image/*,.pdf" 
-              onChange={(e) => handleFileUpload(e, 'dti_permit_url')} 
-              disabled={uploading}
-              style={{ display: 'none' }} 
-            />
-          </label>
-        </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '20px' }}>
+        
+        {existingDti ? (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: '#ECFDF5', border: '1px solid #10B981', borderRadius: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <MdCheckCircle size={24} color="#10B981" />
+              <div>
+                <p style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: '#065F46' }}>DTI / Mayor's Permit</p>
+                <p style={{ margin: 0, fontSize: '12px', color: '#047857' }}>Securely saved in database</p>
+              </div>
+            </div>
+            <button onClick={() => handleDeleteExisting('dti')} disabled={loading} style={{ background: 'white', border: '1px solid #FECACA', color: '#EF4444', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <MdDelete size={16} /> Delete
+            </button>
+          </div>
+        ) : dtiFile ? (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <MdInsertDriveFile size={24} color="#2563EB" />
+              <div>
+                <p style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: '#0F172A' }}>DTI / Mayor's Permit</p>
+                <p style={{ margin: 0, fontSize: '12px', color: '#64748B' }}>{dtiFile.name} (Ready to upload)</p>
+              </div>
+            </div>
+            <button onClick={() => setDtiFile(null)} disabled={loading} style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer' }}><MdClose size={20} /></button>
+          </div>
+        ) : (
+          <div style={{ border: '1px dashed #CBD5E1', padding: '20px', borderRadius: '8px', textAlign: 'center', backgroundColor: '#F8FAFC', transition: 'background-color 0.2s' }}>
+            <label style={{ cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+              <MdUploadFile size={28} color="#94A3B8" />
+              <span style={{ fontSize: '13px', fontWeight: '700', color: '#0F172A' }}>Upload DTI / Mayor's Permit</span>
+              <input type="file" accept="image/*,.pdf" onChange={(e) => handleFileSelect(e, 'dti')} disabled={loading} style={{ display: 'none' }} />
+            </label>
+          </div>
+        )}
 
-        <div style={{ border: '1px dashed #CBD5E1', padding: '16px', borderRadius: '8px', textAlign: 'center', backgroundColor: '#F8FAFC' }}>
-          <label style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-            <MdUploadFile size={24} color="#2563EB" />
-            <span style={{ fontSize: '13px', fontWeight: '700', color: '#0F172A' }}>Upload BIR Certificate of Registration</span>
-            <input 
-              type="file" 
-              accept="image/*,.pdf" 
-              onChange={(e) => handleFileUpload(e, 'bir_cor_url')} 
-              disabled={uploading}
-              style={{ display: 'none' }} 
-            />
-          </label>
-        </div>
+        {existingBir ? (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: '#ECFDF5', border: '1px solid #10B981', borderRadius: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <MdCheckCircle size={24} color="#10B981" />
+              <div>
+                <p style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: '#065F46' }}>BIR Form 2303 (COR)</p>
+                <p style={{ margin: 0, fontSize: '12px', color: '#047857' }}>Securely saved in database</p>
+              </div>
+            </div>
+            <button onClick={() => handleDeleteExisting('bir')} disabled={loading} style={{ background: 'white', border: '1px solid #FECACA', color: '#EF4444', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <MdDelete size={16} /> Delete
+            </button>
+          </div>
+        ) : birFile ? (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <MdInsertDriveFile size={24} color="#2563EB" />
+              <div>
+                <p style={{ margin: '0 0 2px 0', fontSize: '13px', fontWeight: '700', color: '#0F172A' }}>BIR Form 2303 (COR)</p>
+                <p style={{ margin: 0, fontSize: '12px', color: '#64748B' }}>{birFile.name} (Ready to upload)</p>
+              </div>
+            </div>
+            <button onClick={() => setBirFile(null)} disabled={loading} style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer' }}><MdClose size={20} /></button>
+          </div>
+        ) : (
+          <div style={{ border: '1px dashed #CBD5E1', padding: '20px', borderRadius: '8px', textAlign: 'center', backgroundColor: '#F8FAFC', transition: 'background-color 0.2s' }}>
+            <label style={{ cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+              <MdUploadFile size={28} color="#94A3B8" />
+              <span style={{ fontSize: '13px', fontWeight: '700', color: '#0F172A' }}>Upload BIR Certificate of Registration</span>
+              <input type="file" accept="image/*,.pdf" onChange={(e) => handleFileSelect(e, 'bir')} disabled={loading} style={{ display: 'none' }} />
+            </label>
+          </div>
+        )}
+
       </div>
+
+      {(!existingDti || !existingBir) && (
+        <button 
+          onClick={handleSubmitVerification} 
+          disabled={loading || (!dtiFile && !birFile)} 
+          style={{ 
+            width: '100%', padding: '14px', backgroundColor: '#2563EB', color: 'white', border: 'none', 
+            borderRadius: '8px', fontWeight: '800', fontSize: '14px', display: 'flex', alignItems: 'center', 
+            justifyContent: 'center', gap: '8px', cursor: loading || (!dtiFile && !birFile) ? 'not-allowed' : 'pointer',
+            opacity: (!dtiFile && !birFile) ? 0.5 : 1, transition: 'all 0.2s'
+          }}
+        >
+          {loading ? 'Processing Documents...' : 'Submit Documents for Verification'}
+        </button>
+      )}
+
     </div>
   );
 }
@@ -188,6 +335,17 @@ export default function DashboardPage() {
   const [items, setItems] = useState([]);
   const [storeOperators, setStoreOperators] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  const [storeReviews, setStoreReviews] = useState([]);
+  const [loadingReviews, setLoadingReviews] = useState(false);
+  const [replyingToId, setReplyingToId] = useState(null);
+  const [replyText, setReplyText] = useState('');
+  const [isSubmittingReply, setIsSubmittingReply] = useState(false);
+  const [activeReviewMenuId, setActiveReviewMenuId] = useState(null);
+
+  // 🚀 NEW: Preview & QR States
+  const [isPreviewMobile, setIsPreviewMobile] = useState(true);
+  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
 
   const storeScrollRef = useRef(null);
   const storeDragState = useRef({ isDown: false, startX: 0, scrollLeft: 0 });
@@ -234,7 +392,6 @@ export default function DashboardPage() {
   const [subscription, setSubscription] = useState({ plan_type: 'free', end_date: null });
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
   
-  // NEW PROMO CODE STATE FOR CHECKOUT
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [checkoutPromoCode, setCheckoutPromoCode] = useState('');
 
@@ -336,6 +493,24 @@ export default function DashboardPage() {
     } catch (err) { console.error(err); }
   };
 
+  const fetchStoreReviews = async () => {
+    setLoadingReviews(true);
+    try {
+      const { data, error } = await supabase
+        .from('reviews')
+        .select('id, rating, comment, photo_urls, created_at, reviewer_name, owner_reply, owner_reply_created_at')
+        .eq('store_id', activeStore.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setStoreReviews(data || []);
+    } catch (err) {
+      console.error("Failed to fetch reviews:", err);
+    } finally {
+      setLoadingReviews(false);
+    }
+  };
+
   useEffect(() => {
     if (activeStore?.id) {
       fetch(`${API_BASE_URL}/api/stores/${activeStore.id}`)
@@ -362,9 +537,18 @@ export default function DashboardPage() {
       });
 
       fetchSubscription(activeStore.id);
-      setActiveTab('menu'); 
+      
+      if (activeTab === 'reviews') {
+        fetchStoreReviews();
+      }
     }
   }, [activeStore?.id]);
+
+  useEffect(() => {
+    if (activeTab === 'reviews' && activeStore?.id) {
+      fetchStoreReviews();
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     const uniqueCats = [...new Set(items.map(i => i.item_category || 'Uncategorized'))];
@@ -642,7 +826,6 @@ export default function DashboardPage() {
     }
   };
 
-  // --- UPDATED: Passing the discount code to the backend checkout session ---
   const handleProceedToPayment = async () => {
     setIsProcessingPayment(true);
     try {
@@ -687,6 +870,62 @@ export default function DashboardPage() {
     } catch (error) { alert("Error: " + error.message); }
   };
 
+  const submitReply = async (reviewId) => {
+    if (!replyText.trim()) return;
+    setIsSubmittingReply(true);
+    try {
+      const timestamp = new Date().toISOString();
+      const { error } = await supabase
+        .from('reviews')
+        .update({
+          owner_reply: replyText.trim(),
+          owner_reply_created_at: timestamp
+        })
+        .eq('id', reviewId);
+      
+      if (error) throw error;
+      
+      setStoreReviews(prev => prev.map(r => r.id === reviewId ? { ...r, owner_reply: replyText.trim(), owner_reply_created_at: timestamp } : r));
+      setReplyingToId(null);
+      setReplyText('');
+    } catch (err) {
+      alert("Failed to submit reply: " + err.message);
+    } finally {
+      setIsSubmittingReply(false);
+    }
+  };
+
+  const handleDeleteReply = async (reviewId) => {
+    if (!window.confirm("Are you sure you want to delete your response?")) return;
+    try {
+      const { error } = await supabase
+        .from('reviews')
+        .update({ owner_reply: null, owner_reply_created_at: null })
+        .eq('id', reviewId);
+      
+      if (error) throw error;
+      
+      setStoreReviews(prev => prev.map(r => r.id === reviewId ? { ...r, owner_reply: null, owner_reply_created_at: null } : r));
+      setActiveReviewMenuId(null);
+    } catch (err) {
+      alert("Failed to delete reply: " + err.message);
+    }
+  };
+
+  // 🚀 NEW: Function to Download QR Code
+  const downloadQRCode = () => {
+    const canvas = document.getElementById("qr-code-canvas");
+    if (canvas) {
+      const pngUrl = canvas.toDataURL("image/png").replace("image/png", "image/octet-stream");
+      let downloadLink = document.createElement("a");
+      downloadLink.href = pngUrl;
+      downloadLink.download = `${activeStore.store_name.replace(/\s+/g, '-')}-QR.png`;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+    }
+  };
+
   const groupedItems = items.reduce((groups, item) => { const category = item.item_category || 'Uncategorized'; if (!groups[category]) groups[category] = []; groups[category].push(item); return groups; }, {});
   const isMenuLocked = subscription?.plan_type === 'free' || (subscription?.plan_type === 'premium' && subscription?.end_date && new Date(subscription.end_date) <= new Date());
 
@@ -712,6 +951,33 @@ export default function DashboardPage() {
           display: none !important; 
         }
       `}</style>
+
+      {/* 🚀 NEW: QR Code Modal */}
+      {isQrModalOpen && activeStore && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
+          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '24px', width: '100%', maxWidth: '350px', textAlign: 'center', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '10px' }}>
+              <button onClick={() => setIsQrModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8' }}><MdClose size={24} /></button>
+            </div>
+            <h2 style={{ margin: '0 0 5px 0', fontSize: '20px', fontWeight: '900', color: '#0F172A' }}>Share your Store</h2>
+            <p style={{ margin: '0 0 20px 0', color: '#64748B', fontSize: '14px' }}>Print this code for customers to instantly access your digital menu and leave reviews.</p>
+            
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '25px', padding: '20px', backgroundColor: '#F8FAFC', borderRadius: '16px', border: '1px solid #E2E8F0' }}>
+              <QRCodeCanvas 
+                id="qr-code-canvas" 
+                value={`${window.location.origin}/store/${activeStore.id}`} 
+                size={200} 
+                level={"H"}
+                includeMargin={true}
+              />
+            </div>
+            
+            <button onClick={downloadQRCode} style={{ width: '100%', padding: '14px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px' }}>
+              Download QR Image
+            </button>
+          </div>
+        </div>
+      )}
 
       {imageToCrop && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', flexDirection: 'column' }}>
@@ -754,7 +1020,6 @@ export default function DashboardPage() {
             <h2 style={{ margin: '0 0 10px 0', fontSize: '24px', color: '#0F172A', fontWeight: '900', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>Unlock Premium <MdRocketLaunch color="#2563EB" /></h2>
             <p style={{ color: '#64748B', marginBottom: '25px', fontSize: '14px', lineHeight: '1.5' }}>Get full access to edit your menu, customize your store branding, and accept online orders.</p>
             
-            {/* NEW: Checkout Promo Code Input */}
             <div style={{ marginBottom: '15px', textAlign: 'left' }}>
               <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#64748B', marginBottom: '8px' }}>Have a percentage or fixed discount code?</label>
               <input 
@@ -1005,13 +1270,14 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', borderBottom: '1px solid #E2E8F0', paddingBottom: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', borderBottom: '1px solid #E2E8F0', paddingBottom: '10px', gap: '15px', flexWrap: 'wrap' }}>
               <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', scrollbarWidth: 'none' }}>
-                {['menu', 'staff', 'verification', 'preview'].map(tab => {
+                {['menu', 'staff', 'verification', 'reviews', 'preview'].map(tab => {
                   const labels = { 
                     menu: <><MdDashboard size={18} /> Dashboard & Menu</>, 
                     staff: <><MdPeople size={18} /> Staff Access</>, 
                     verification: <><MdVerifiedUser size={18} /> Verification</>,
+                    reviews: <><MdStar size={18} /> Reviews</>,
                     preview: <><MdSmartphone size={18} /> Live Preview</> 
                   };
                   const isActive = activeTab === tab;
@@ -1024,19 +1290,25 @@ export default function DashboardPage() {
                 })}
               </div>
               
-              <button onClick={() => {
-                setEditStoreData({ 
-                  ...editStoreData, id: activeStore.id, store_name: activeStore.store_name, store_category: activeStore.store_category, 
-                  industry: activeStore.industry || '', description: activeStore.description || '', phone: activeStore.phone || '', 
-                  email: activeStore.email || '', website: activeStore.website || '', lat: activeStore.lat, lng: activeStore.lng, 
-                  showPhone: !!activeStore.theme_settings?.showPhone, showEmail: !!activeStore.theme_settings?.showEmail, 
-                  showWebsite: !!activeStore.theme_settings?.showWebsite, showAddress: !!activeStore.theme_settings?.showAddress, 
-                  addressText: activeStore.theme_settings?.addressText || '' 
-                });
-                setIsEditStoreModalOpen(true);
-              }} style={{ padding: '8px 16px', backgroundColor: '#EFF6FF', color: '#2563EB', border: '1px dashed #BFDBFE', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <MdEdit size={16} /> Edit Store Info
-              </button>
+              {/* 🚀 UPGRADED: Header Action Buttons */}
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={() => setIsQrModalOpen(true)} style={{ padding: '8px 16px', backgroundColor: '#F8FAFC', color: '#0F172A', border: '1px solid #E2E8F0', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <MdQrCode size={16} /> QR Code
+                </button>
+                <button onClick={() => {
+                  setEditStoreData({ 
+                    ...editStoreData, id: activeStore.id, store_name: activeStore.store_name, store_category: activeStore.store_category, 
+                    industry: activeStore.industry || '', description: activeStore.description || '', phone: activeStore.phone || '', 
+                    email: activeStore.email || '', website: activeStore.website || '', lat: activeStore.lat, lng: activeStore.lng, 
+                    showPhone: !!activeStore.theme_settings?.showPhone, showEmail: !!activeStore.theme_settings?.showEmail, 
+                    showWebsite: !!activeStore.theme_settings?.showWebsite, showAddress: !!activeStore.theme_settings?.showAddress, 
+                    addressText: activeStore.theme_settings?.addressText || '' 
+                  });
+                  setIsEditStoreModalOpen(true);
+                }} style={{ padding: '8px 16px', backgroundColor: '#EFF6FF', color: '#2563EB', border: '1px dashed #BFDBFE', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <MdEdit size={16} /> Edit Store Info
+                </button>
+              </div>
             </div>
 
             {activeTab === 'menu' && (
@@ -1183,44 +1455,156 @@ export default function DashboardPage() {
 
             {/* TAB 3: VERIFICATION */}
             {activeTab === 'verification' && (
-              <VerificationPanel storeId={activeStore.id} isVerified={activeStore.is_verified} />
+              <VerificationPanel 
+                store={activeStore} 
+                userId={user?.id}
+                onStoreUpdate={(updatedStore) => {
+                  setActiveStore(updatedStore);
+                  setStores(stores.map(s => s.id === updatedStore.id ? updatedStore : s));
+                }}
+              />
             )}
 
-            {activeTab === 'preview' && (
-              <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px', backgroundColor: '#F1F5F9', borderRadius: '24px', border: '1px dashed #CBD5E1' }}>
-                <div style={{ width: '375px', height: '700px', backgroundColor: 'white', borderRadius: '40px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', border: '8px solid #0F172A', overflowY: 'auto', position: 'relative', display: 'flex', flexDirection: 'column' }}>
-                  <div style={{ height: '30px', width: '100%', backgroundColor: 'rgba(0,0,0,0.2)', position: 'absolute', top: 0, zIndex: 10, borderRadius: '32px 32px 0 0' }} />
-                  <div style={{ height: '200px', backgroundImage: `url(${getStoreCoverImage(activeStore)})`, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative' }}>
-                     <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0) 100%)' }} />
-                     <div style={{ position: 'absolute', top: '10px', right: '10px', backgroundColor: activeStore.is_open ? 'rgba(209, 250, 229, 0.85)' : 'rgba(254, 242, 242, 0.85)', backdropFilter: 'blur(4px)', padding: '4px 10px', borderRadius: '6px', boxShadow: '0 2px 6px rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <span style={{ fontSize: '10.5px', fontWeight: '700', color: activeStore.is_open ? '#059669' : '#E11D48', textTransform: 'capitalize', letterSpacing: '0.2px' }}>{activeStore.is_open ? 'Open' : 'Closed'}</span>
-                     </div>
-                     <div style={{ position: 'absolute', bottom: '15px', left: '20px' }}>
-                        <h2 style={{ color: 'white', margin: 0, fontSize: '24px', fontWeight: '900' }}>{activeStore.store_name}</h2>
-                        <p style={{ color: '#E2E8F0', margin: 0, fontSize: '13px' }}>{activeStore.industry || activeStore.store_category}</p>
-                     </div>
-                  </div>
-                  <div style={{ padding: '20px', flexGrow: 1, backgroundColor: '#F8FAFC' }}>
-                     <p style={{ color: '#475569', fontSize: '14px', margin: '0 0 20px 0', lineHeight: '1.5' }}>{editStoreData.description || "No description provided."}</p>
-                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                       <h3 style={{ margin: 0, fontSize: '16px', color: '#0F172A' }}>Menu Highlights</h3>
-                       <span style={{ color: storeTheme.primaryColor, fontWeight: 'bold', fontSize: '13px' }}>View All</span>
-                     </div>
-                     {items.slice(0, 3).map(item => (
-                       <div key={item.id} style={{ display: 'flex', gap: '15px', padding: '15px', whiteSpace: 'nowrap', textOverflow: 'ellipsis', overflow: 'hidden', backgroundColor: 'white', borderRadius: '16px', marginBottom: '10px', boxShadow: '0 2px 5px rgba(0,0,0,0.02)' }}>
-                          {item.image_url ? <img src={item.image_url} alt="item" style={{ width: '60px', height: '60px', borderRadius: '10px', objectFit: 'cover' }} /> : <div style={{ width: '60px', height: '60px', backgroundColor: '#F1F5F9', borderRadius: '10px', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#CBD5E1' }}><MdRestaurantMenu size={24} /></div>}
-                          <div style={{ flexGrow: 1 }}>
-                             <h4 style={{ margin: '0 0 5px 0', fontSize: '14px', color: '#0F172A' }}>{item.item_name}</h4>
-                             <p style={{ margin: 0, fontSize: '13px', fontWeight: '800', color: storeTheme.primaryColor }}>₱{item.price}</p>
-                          </div>
+            {/* TAB 4: MERCHANT REVIEWS MANAGEMENT */}
+            {activeTab === 'reviews' && (
+              <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '20px', border: '1px solid #E2E8F0' }}>
+                <h3 style={{ margin: '0 0 10px 0', color: '#0F172A', fontSize: '18px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <MdStar color="#F59E0B" /> Customer Reviews
+                </h3>
+                <p style={{ margin: '0 0 20px 0', color: '#64748B', fontSize: '14px' }}>Read and respond to customer feedback to build trust and loyalty.</p>
+                
+                {loadingReviews ? (
+                   <div style={{ textAlign: 'center', padding: '40px', color: '#94A3B8' }}>Loading reviews...</div>
+                ) : storeReviews.length === 0 ? (
+                   <div style={{ textAlign: 'center', padding: '40px', color: '#94A3B8', border: '1px dashed #CBD5E1', borderRadius: '12px' }}>No reviews yet.</div>
+                ) : (
+                   <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                     {storeReviews.map(review => (
+                       <div key={review.id} style={{ padding: '20px', border: '1px solid #E2E8F0', borderRadius: '12px', backgroundColor: '#F8FAFC' }}>
+                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
+                           <div>
+                             <div style={{ fontWeight: '800', color: '#0F172A', fontSize: '14px' }}>{review.reviewer_name}</div>
+                             <div style={{ color: '#64748B', fontSize: '12px' }}>{new Date(review.created_at).toLocaleDateString()}</div>
+                           </div>
+                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: '#FFFBEB', padding: '4px 8px', borderRadius: '8px', border: '1px solid #FEF3C7' }}>
+                             <span style={{ fontWeight: 'bold', color: '#D97706', fontSize: '13px' }}>{review.rating.toFixed(1)}</span>
+                             <MdStar size={14} color="#F59E0B" />
+                           </div>
+                         </div>
+                         
+                         <p style={{ margin: '0 0 15px 0', fontSize: '14px', color: '#334155', lineHeight: '1.5', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                           {review.comment || <span style={{ fontStyle: 'italic', color: '#94A3B8' }}>No written comment.</span>}
+                         </p>
+
+                         {/* Customer Photos if any */}
+                         {review.photo_urls && review.photo_urls.length > 0 && (
+                            <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', marginBottom: '15px' }}>
+                              {review.photo_urls.map((url, i) => (
+                                <img key={i} src={url} alt="Review" style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #E2E8F0' }} />
+                              ))}
+                            </div>
+                         )}
+
+                         {/* Owner Reply Block or Input */}
+                         {review.owner_reply ? (
+                           <div style={{ backgroundColor: 'white', padding: '15px', borderRadius: '8px', borderLeft: `4px solid ${storeTheme.primaryColor}` }}>
+                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '5px' }}>
+                               <div style={{ fontSize: '12px', fontWeight: 'bold', color: storeTheme.primaryColor }}>Your Response:</div>
+                               
+                               <div style={{ position: 'relative' }}>
+                                 <button onClick={() => setActiveReviewMenuId(activeReviewMenuId === review.id ? null : review.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0', color: '#94A3B8' }}>
+                                   <MdMoreVert size={18} />
+                                 </button>
+                                 {activeReviewMenuId === review.id && (
+                                   <>
+                                     <div onClick={() => setActiveReviewMenuId(null)} style={{ position: 'fixed', inset: 0, zIndex: 90 }} />
+                                     <div style={{ position: 'absolute', top: '100%', right: 0, backgroundColor: 'white', border: '1px solid #E2E8F0', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, width: '120px', overflow: 'hidden' }}>
+                                       <button onClick={() => handleDeleteReply(review.id)} style={{ width: '100%', padding: '10px', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', color: '#DC2626' }}>
+                                         Delete Reply
+                                       </button>
+                                     </div>
+                                   </>
+                                 )}
+                               </div>
+                             </div>
+                             <div style={{ fontSize: '13px', color: '#475569', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{review.owner_reply}</div>
+                           </div>
+                         ) : (
+                           replyingToId === review.id ? (
+                             <div style={{ marginTop: '10px' }}>
+                               <textarea 
+                                 autoFocus
+                                 maxLength={500}
+                                 value={replyText}
+                                 onChange={(e) => setReplyText(e.target.value)}
+                                 placeholder="Write your response to the customer..."
+                                 style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #CBD5E1', minHeight: '80px', fontSize: '13px', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit', wordBreak: 'break-word' }}
+                               />
+                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
+                                 {/* 🚀 UPGRADED: Char counter moved to the left for better visibility */}
+                                 <div style={{ fontSize: '12px', color: replyText.length >= 500 ? '#EF4444' : '#64748B', fontWeight: 'bold' }}>
+                                   {replyText.length} / 500 characters
+                                 </div>
+                                 <div style={{ display: 'flex', gap: '10px' }}>
+                                   <button onClick={() => { setReplyingToId(null); setReplyText(''); }} style={{ padding: '8px 16px', background: 'none', border: 'none', color: '#64748B', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}>Cancel</button>
+                                   <button onClick={() => submitReply(review.id)} disabled={isSubmittingReply || !replyText.trim()} style={{ padding: '8px 16px', backgroundColor: storeTheme.primaryColor, color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: isSubmittingReply || !replyText.trim() ? 'not-allowed' : 'pointer', fontSize: '13px', opacity: isSubmittingReply || !replyText.trim() ? 0.7 : 1 }}>
+                                     {isSubmittingReply ? 'Posting...' : 'Post Reply'}
+                                   </button>
+                                 </div>
+                               </div>
+                             </div>
+                           ) : (
+                             <button onClick={() => { setReplyingToId(review.id); setReplyText(''); }} style={{ padding: '8px 16px', backgroundColor: 'white', color: storeTheme.primaryColor, border: `1px solid ${storeTheme.primaryColor}`, borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                               <MdReply size={16} /> Reply to Review
+                             </button>
+                           )
+                         )}
                        </div>
                      ))}
-                     {items.length === 0 && <p style={{ textAlign: 'center', color: '#94A3B8', fontSize: '13px', marginTop: '40px' }}>No items uploaded yet.</p>}
-                  </div>
-                  <div style={{ position: 'absolute', bottom: '20px', right: '20px', width: '50px', height: '50px', borderRadius: '25px', backgroundColor: storeTheme.primaryColor, display: 'flex', justifyContent: 'center', alignItems: 'center', color: 'white', boxShadow: `0 4px 10px ${storeTheme.primaryColor}80` }}>
-                    <MdSmartphone size={24} />
-                  </div>
+                   </div>
+                )}
+              </div>
+            )}
+
+            {/* 🚀 TAB 5: ACTUAL LIVE PREVIEW IFRAME */}
+            {activeTab === 'preview' && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px', backgroundColor: '#F1F5F9', borderRadius: '24px', border: '1px dashed #CBD5E1' }}>
+                
+                {/* Device Toggle */}
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', backgroundColor: '#E2E8F0', padding: '6px', borderRadius: '12px' }}>
+                  <button 
+                    onClick={() => setIsPreviewMobile(true)} 
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', border: 'none', transition: 'all 0.2s', backgroundColor: isPreviewMobile ? 'white' : 'transparent', color: isPreviewMobile ? '#0F172A' : '#64748B', boxShadow: isPreviewMobile ? '0 2px 4px rgba(0,0,0,0.05)' : 'none' }}
+                  >
+                    <MdSmartphone size={18} /> Mobile
+                  </button>
+                  <button 
+                    onClick={() => setIsPreviewMobile(false)} 
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', border: 'none', transition: 'all 0.2s', backgroundColor: !isPreviewMobile ? 'white' : 'transparent', color: !isPreviewMobile ? '#0F172A' : '#64748B', boxShadow: !isPreviewMobile ? '0 2px 4px rgba(0,0,0,0.05)' : 'none' }}
+                  >
+                    <MdDesktopMac size={18} /> Desktop
+                  </button>
                 </div>
+
+                {/* Actual Storefront Iframe */}
+                <div style={{ 
+                  width: isPreviewMobile ? '375px' : '100%', 
+                  height: isPreviewMobile ? '700px' : '800px', 
+                  transition: 'width 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.1), height 0.4s ease',
+                  border: isPreviewMobile ? '12px solid #0F172A' : '1px solid #E2E8F0',
+                  borderRadius: isPreviewMobile ? '40px' : '16px',
+                  overflow: 'hidden',
+                  boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
+                  backgroundColor: 'white'
+                }}>
+                  {/* Note: In a real production environment, ensure your API/CORS allows iframe embedding from your own domain */}
+                  <iframe 
+                    src={`${window.location.origin}/store/${activeStore.id}`} 
+                    style={{ width: '100%', height: '100%', border: 'none' }} 
+                    title="Live Preview" 
+                  />
+                </div>
+                
               </div>
             )}
           </div>

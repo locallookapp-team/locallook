@@ -14,7 +14,6 @@ if (MAPBOX_TOKEN) {
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://locallook-api.onrender.com';
 
-// 🚀 FIXED: Custom address parser to inject missing commas between street and barangay
 const fetchAddressFromCoords = async (lng, lat) => {
   if (!MAPBOX_TOKEN) return '';
   try {
@@ -26,7 +25,6 @@ const fetchAddressFromCoords = async (lng, lat) => {
     
     let address = feature.place_name || '';
     
-    // Check if Mapbox concatenated the street and neighborhood without a comma
     if (feature.text && feature.context && feature.context.length > 0) {
       const nextPart = feature.context[0].text;
       const missingCommaStr = `${feature.text} ${nextPart}`;
@@ -89,7 +87,7 @@ const BUSINESS_TAXONOMY = {
 
 export default function CreateBusinessPage() {
   const navigate = useNavigate();
-  const [isVerifying, setIsVerifying] = useState(true); // 🚀 Identity Verification Guard
+  const [isVerifying, setIsVerifying] = useState(true); 
   const [isLoading, setIsLoading] = useState(false);
   const [existingStores, setExistingStores] = useState([]);
   const [zoom, setZoom] = useState(15.5);
@@ -119,7 +117,6 @@ export default function CreateBusinessPage() {
   const newStoreRef = useRef(newStoreData);
   useEffect(() => { newStoreRef.current = newStoreData; }, [newStoreData]);
 
-  // 🚀 KYC IDENTITY VERIFICATION CHECK
   useEffect(() => {
     const checkKycStatus = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -145,18 +142,17 @@ export default function CreateBusinessPage() {
   }, [navigate]);
 
   useEffect(() => {
-    if (isVerifying) return; // Do not fetch map data if we are still verifying identity
+    if (isVerifying) return; 
 
     const fetchExistingLocations = async () => {
       try {
-        const { data, error } = await supabase
-          .from('stores')
-          .select('id, store_name, store_category, industry, lat, lng')
-          .not('lat', 'is', null)
-          .not('lng', 'is', null);
-          
-        if (!error && data) {
-          setExistingStores(data);
+        // 🚀 FIXED: Routed through backend to bypass the 500 RLS errors
+        const res = await fetch(`${API_BASE_URL}/api/stores`);
+        if (res.ok) {
+          const data = await res.json();
+          // Filter out missing lat/lng dynamically
+          const validLocations = data.filter(s => s.lat != null && s.lng != null);
+          setExistingStores(validLocations);
         }
       } catch (err) {
         console.error("Error fetching existing stores:", err);
@@ -166,7 +162,7 @@ export default function CreateBusinessPage() {
   }, [isVerifying]);
 
   useEffect(() => {
-    if (isVerifying) return; // Wait until identity is cleared before rendering map
+    if (isVerifying) return; 
 
     if (mapContainer.current && !map.current) {
       map.current = new mapboxgl.Map({
@@ -336,9 +332,13 @@ export default function CreateBusinessPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Authentication required.");
 
+      // 🚀 FIXED: Added Authorization Headers to clear the 401 Unauthorized block
       const response = await fetch(`${API_BASE_URL}/api/stores`, { 
         method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}` 
+        }, 
         body: JSON.stringify({ ...newStoreData, user_id: session.user.id }) 
       });
 
@@ -356,9 +356,13 @@ export default function CreateBusinessPage() {
         addressText: newStoreData.addressText 
       };
       
+      // 🚀 FIXED: Added Authorization Header to theme patching as well
       await fetch(`${API_BASE_URL}/api/stores/${createdStore.id}/theme`, { 
         method: 'PATCH', 
-        headers: { 'Content-Type': 'application/json' }, 
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}` 
+        }, 
         body: JSON.stringify({ theme_settings: newTheme }) 
       });
 

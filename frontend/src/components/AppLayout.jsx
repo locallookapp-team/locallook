@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import NotificationBell from './NotificationBell'; // 🚀 Imported Universal Component
+import NotificationBell from './NotificationBell'; 
 import { 
-  MdExplore, MdGridView, MdBookmarkBorder, MdStarBorder, 
+  MdExplore, MdGridView, MdStarBorder, 
   MdAddBusiness, MdSpaceDashboard, MdOutlineSettings, MdOutlineHelpOutline, 
-  MdLocationOn, MdLogin, MdMenu, MdClose 
+  MdLocationOn, MdLogin, MdMenu, MdClose, MdPersonOutline // 🚀 FIXED: Added missing icon
 } from "react-icons/md";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://locallook-api.onrender.com';
@@ -18,7 +18,32 @@ export default function AppLayout({ children }) {
   const [isMerchant, setIsMerchant] = useState(false); 
   const [displayName, setDisplayName] = useState('');
   
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const checkMerchantStatus = async (userId) => {
+    try {
+      const { data: kycData } = await supabase
+        .from('merchant_profiles')
+        .select('kyc_status')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (kycData?.kyc_status === 'approved') return true;
+
+      const res = await fetch(`${API_BASE_URL}/api/users/${userId}`);
+      if (res.ok) {
+        const userData = await res.json();
+        if (userData.role === 'merchant' || userData.role === 'super_admin') {
+          return true;
+        }
+      }
+      return false;
+    } catch (e) {
+      console.error("Failed to verify merchant status:", e);
+      return false;
+    }
+  };
 
   useEffect(() => {
     const fetchSession = async () => {
@@ -27,22 +52,25 @@ export default function AppLayout({ children }) {
       
       if (session) {
         setDisplayName(session.user.user_metadata?.full_name || session.user.email.split('@')[0]);
-        const { data } = await supabase.from('store_operators').select('id').eq('user_id', session.user.id).limit(1).maybeSingle();
-        setIsMerchant(!!data); 
+        const merchantStatus = await checkMerchantStatus(session.user.id);
+        setIsMerchant(merchantStatus); 
       }
+      setIsAuthLoading(false);
     };
 
     fetchSession();
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, newSession) => {
+      setIsAuthLoading(true); 
       setSession(newSession);
       if (newSession) {
         setDisplayName(newSession.user.user_metadata?.full_name || newSession.user.email.split('@')[0]);
-        const { data } = await supabase.from('store_operators').select('id').eq('user_id', newSession.user.id).limit(1).maybeSingle();
-        setIsMerchant(!!data);
+        const merchantStatus = await checkMerchantStatus(newSession.user.id);
+        setIsMerchant(merchantStatus);
       } else {
         setIsMerchant(false);
       }
+      setIsAuthLoading(false);
     });
 
     return () => { authListener.subscription.unsubscribe(); };
@@ -59,10 +87,11 @@ export default function AppLayout({ children }) {
     setIsMobileMenuOpen(false);
   };
 
+  // 🚀 FIXED: Side Nav now properly routes to your Private Profile Page
   const navItems = [
     { label: 'Explore', path: '/', icon: <MdExplore size={20} /> },
     { label: 'Categories', path: '/categories', icon: <MdGridView size={20} /> },
-    { label: 'Saved Places', path: '/profile', icon: <MdBookmarkBorder size={20} /> },
+    { label: 'Profile', path: '/profile', icon: <MdPersonOutline size={20} /> },
     { label: 'Reviews', path: '/reviews', icon: <MdStarBorder size={20} /> },
   ];
 
@@ -83,6 +112,8 @@ export default function AppLayout({ children }) {
         .nav-item:hover { background-color: #F8FAFC; color: #0F172A; }
         .nav-item.active { background-color: #EFF6FF; color: #2563EB; }
         .nav-item.active svg { color: #2563EB !important; }
+
+        @keyframes skeletonPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
         
         @media (max-width: 768px) {
           .desktop-sidebar { position: fixed; height: 100%; transform: translateX(-100%); box-shadow: 4px 0 24px rgba(0,0,0,0.1); }
@@ -119,7 +150,12 @@ export default function AppLayout({ children }) {
             
             <div style={{ height: '24px' }} />
             
-            {isMerchant ? (
+            {isAuthLoading ? (
+              <div className="nav-item">
+                <span style={{ color: '#94A3B8', opacity: 0.5 }}><MdSpaceDashboard size={20} /></span>
+                <div style={{ backgroundColor: '#E2E8F0', height: '14px', width: '90px', borderRadius: '4px', animation: 'skeletonPulse 1.5s infinite' }} />
+              </div>
+            ) : isMerchant ? (
               <div onClick={() => handleNavigation('/dashboard')} className={`nav-item ${location.pathname === '/dashboard' ? 'active' : ''}`}>
                 <span style={{ color: location.pathname === '/dashboard' ? '#2563EB' : '#94A3B8' }}><MdSpaceDashboard size={20} /></span>
                 Dashboard
@@ -134,7 +170,6 @@ export default function AppLayout({ children }) {
 
           <div style={{ display: 'flex', flexDirection: 'column', position: 'relative' }}>
             
-            {/* 🚀 Inserted the new universal Notification Bell here */}
             <NotificationBell session={session} isSidebarMode={true} onInviteAccepted={() => setIsMerchant(true)} />
 
             <div className="nav-item"><span style={{ color: '#94A3B8' }}><MdOutlineSettings size={20} /></span> Settings</div>
@@ -149,7 +184,7 @@ export default function AppLayout({ children }) {
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
                     <span style={{ fontSize: '13px', fontWeight: '700', color: '#0F172A', maxWidth: '80px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{displayName}</span>
                     <span style={{ fontSize: '10px', color: '#64748B', textTransform: 'uppercase', fontWeight: '800' }}>
-                      {isMerchant ? 'MERCHANT' : 'CONSUMER'}
+                      {isAuthLoading ? '...' : (isMerchant ? 'MERCHANT' : 'CONSUMER')}
                     </span>
                   </div>
                 </div>

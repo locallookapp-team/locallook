@@ -11,6 +11,8 @@ export default function IdentityVerificationPage() {
   
   // KYC State
   const [kycProfile, setKycProfile] = useState(null);
+  const [rejectionMessage, setRejectionMessage] = useState(null);
+  
   const [formData, setFormData] = useState({
     full_legal_name: '',
     phone_number: '',
@@ -36,6 +38,24 @@ export default function IdentityVerificationPage() {
 
       if (data) {
         setKycProfile(data);
+        
+        // Fetch the exact rejection message securely from notifications if rejected
+        if (data.kyc_status === 'rejected') {
+          const { data: noteData } = await supabase
+            .from('notifications')
+            .select('message')
+            .eq('user_id', session.user.id)
+            .eq('title', 'Verification Failed')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+            
+          if (noteData) {
+            // Extracts only the custom reason, removing the boilerplate text added in the backend
+            const cleanMessage = noteData.message.replace('Your verification was rejected: ', '').replace('\n\nPlease resubmit your documents.', '');
+            setRejectionMessage(cleanMessage);
+          }
+        }
       }
       setLoading(false);
     };
@@ -61,9 +81,27 @@ export default function IdentityVerificationPage() {
     setUploading(true);
 
     try {
-      // 1. Upload ID to the secure kyc-documents bucket
+      const folderPath = `${user.id}`;
+      
+      // 🧹 THE FIX: Folder Sweeping!
+      // List all existing files in the user's KYC folder and scrub them clean before uploading
+      const { data: existingStorageFiles } = await supabase.storage
+        .from('kyc-documents')
+        .list(folderPath);
+
+      if (existingStorageFiles && existingStorageFiles.length > 0) {
+        const filesToDelete = existingStorageFiles
+          .filter(file => file.name !== '.emptyFolderPlaceholder')
+          .map(file => `${folderPath}/${file.name}`);
+
+        if (filesToDelete.length > 0) {
+          await supabase.storage.from('kyc-documents').remove(filesToDelete);
+        }
+      }
+
+      // 1. Upload new ID to the secure kyc-documents bucket
       const fileExt = formData.idFile.name.split('.').pop();
-      const fileName = `${user.id}/gov-id-${Date.now()}.${fileExt}`;
+      const fileName = `${folderPath}/gov-id-${Date.now()}.${fileExt}`;
       
       const { error: uploadError } = await supabase.storage
         .from('kyc-documents')
@@ -154,7 +192,7 @@ export default function IdentityVerificationPage() {
                   <MdWarning size={24} color="#DC2626" style={{ flexShrink: 0 }} />
                   <div>
                     <h3 style={{ margin: '0 0 5px 0', color: '#991B1B', fontSize: '14px', fontWeight: '800' }}>Verification Failed</h3>
-                    <p style={{ margin: 0, color: '#DC2626', fontSize: '13px' }}>Reason: {kycProfile.admin_notes || "Document unreadable or invalid."} Please update your information and try again.</p>
+                    <p style={{ margin: 0, color: '#DC2626', fontSize: '13px' }}>Reason: {rejectionMessage || "Document unreadable or invalid."} Please update your information and try again.</p>
                   </div>
                 </div>
               )}

@@ -14,7 +14,8 @@ import ProfilePage from './pages/ProfilePage';
 import CreateBusinessPage from './pages/CreateBusinessPage'; 
 import IdentityVerificationPage from './pages/IdentityVerificationPage'; // 🚀 Added this import!
 import TestPages from './pages/TestPages'; 
-
+import ReviewsFeedPage from './pages/ReviewsFeedPage';
+import PublicUserProfilePage from './pages/PublicUserProfilePage';
 import AppLayout from './components/AppLayout'; 
 import ProtectedRoute from './components/ProtectedRoute'; 
 
@@ -36,7 +37,8 @@ function App() {
         <Route path="/" element={<AppLayout><MapPage /></AppLayout>} />
         <Route path="/browse" element={<AppLayout><BrowsePage /></AppLayout>} />
         <Route path="/store/:id" element={<AppLayout><StoreProfilePage /></AppLayout>} />
-
+        <Route path="/reviews" element={<AppLayout><ReviewsFeedPage /></AppLayout>} />
+        <Route path="/user/:id" element={<AppLayout><PublicUserProfilePage /></AppLayout>} />
         {/* 🚀 CONSUMER PROTECTED ROUTES (Requires Login, any role) */}
         <Route path="/profile" element={<ProtectedRoute><AppLayout><ProfilePage /></AppLayout></ProtectedRoute>} />
         
