@@ -201,42 +201,52 @@ app.post('/api/stores', verifyUser, async (req, res) => {
 
 app.patch('/api/stores/:id', verifyUser, async (req, res) => {
   try {
-    if (!(await isStoreOperator(req.params.id, req.user.id))) return res.status(403).json({ error: "Unauthorized access to store." });
+    if (!(await isStoreOperator(req.params.id, req.user.id))) {
+      return res.status(403).json({ error: "Unauthorized access to store." });
+    }
 
-    const { store_name, store_category, description, phone, email, website, lat, lng } = req.body;
-    const result = await db.query(`
-      UPDATE stores 
-      SET store_name = $1, store_category = $2, description = $3, phone = $4, email = $5, website = $6, location = ST_GeomFromText($7, 4326) 
-      WHERE id = $8 RETURNING *
-    `, [store_name, store_category, description, phone, email, website, `POINT(${lng} ${lat})`, req.params.id]);
-    res.json(result.rows[0]);
-  } catch (err) { res.status(500).send("Server Error"); }
-});
-
-app.delete('/api/stores/:id', verifyUser, async (req, res) => {
-  try {
-    if (!(await isStoreOperator(req.params.id, req.user.id))) return res.status(403).json({ error: "Unauthorized access to store." });
+    const updates = req.body;
     
-    const result = await db.query('DELETE FROM stores WHERE id = $1 RETURNING *', [req.params.id]);
-    if (result.rowCount === 0) return res.status(404).json({ error: "Store not found" });
-    res.json({ message: "Store deleted successfully" });
-  } catch (err) { res.status(500).send("Server Error"); }
-});
+    // Whitelist of allowed fields so users cannot inject malicious SQL columns
+    const allowedFields = [
+      'store_name', 'store_category', 'industry', 'description', 
+      'phone', 'email', 'website', 'cover_image_url', 'logo_url'
+    ];
 
-app.patch('/api/stores/:id/theme', verifyUser, async (req, res) => {
-  try {
-    if (!(await isStoreOperator(req.params.id, req.user.id))) return res.status(403).json({ error: "Unauthorized." });
-    const result = await db.query(`UPDATE stores SET theme_settings = $1 WHERE id = $2 RETURNING id, theme_settings`, [req.body.theme_settings, req.params.id]);
-    res.json(result.rows[0]);
-  } catch (err) { res.status(500).send("Server Error"); }
-});
+    let queryParams = [];
+    let setClauses = [];
+    let paramIndex = 1;
 
-app.patch('/api/stores/:id/toggle', verifyUser, async (req, res) => {
-  try {
-    if (!(await isStoreOperator(req.params.id, req.user.id))) return res.status(403).json({ error: "Unauthorized." });
-    const result = await db.query('UPDATE stores SET is_open = $1 WHERE id = $2 RETURNING id, is_open', [req.body.is_open, req.params.id]);
+    // Dynamically build the SET clause based on what was provided in req.body
+    for (const field of allowedFields) {
+      if (updates[field] !== undefined) {
+        setClauses.push(`${field} = $${paramIndex}`);
+        queryParams.push(updates[field]);
+        paramIndex++;
+      }
+    }
+
+    // Handle geography location specifically if lat/lng are provided
+    if (updates.lat && updates.lng) {
+      setClauses.push(`location = ST_GeomFromText($${paramIndex}, 4326)`);
+      queryParams.push(`POINT(${updates.lng} ${updates.lat})`);
+      paramIndex++;
+    }
+
+    if (setClauses.length === 0) {
+      return res.status(400).json({ error: "No valid fields provided for update." });
+    }
+
+    // Add the store ID as the final parameter for the WHERE clause
+    queryParams.push(req.params.id);
+    const query = `UPDATE stores SET ${setClauses.join(', ')} WHERE id = $${paramIndex} RETURNING *`;
+
+    const result = await db.query(query, queryParams);
     res.json(result.rows[0]);
-  } catch (err) { res.status(500).send("Server Error"); }
+  } catch (err) {
+    console.error("Store Update Error:", err);
+    res.status(500).send("Server Error");
+  }
 });
 
 // ---------------------------------------------------------
