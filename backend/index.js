@@ -170,11 +170,13 @@ app.patch('/api/admin/stores/:id/status', verifySuperAdmin, async (req, res) => 
 app.post('/api/stores', verifyUser, async (req, res) => {
   const client = await db.connect();
   try {
-    const { store_name, store_category, industry, description, phone, email, website, lat, lng } = req.body;
+    // 🚀 NEW: Extract tos_accepted_at from the request body
+    const { store_name, store_category, industry, description, phone, email, website, lat, lng, tos_accepted_at } = req.body;
     const user_id = req.user.id; 
     
-    if (!store_name || !store_category || !lat || !lng) {
-      return res.status(400).json({ error: "Missing required fields." });
+    // 🚀 NEW: Block request if the Terms of Service timestamp is missing
+    if (!store_name || !store_category || !lat || !lng || !tos_accepted_at) {
+      return res.status(400).json({ error: "Missing required fields or Terms of Service consent." });
     }
 
     await client.query('BEGIN');
@@ -187,7 +189,15 @@ app.post('/api/stores', verifyUser, async (req, res) => {
     
     const newStoreId = storeResult.rows[0].id;
     await client.query(`INSERT INTO store_operators (store_id, user_id, role, status) VALUES ($1, $2, 'merchant', 'confirmed');`, [newStoreId, user_id]);
-    await client.query(`INSERT INTO users (id, role) VALUES ($1, 'merchant') ON CONFLICT (id) DO UPDATE SET role = 'merchant';`, [user_id]);
+    
+    // 🚀 NEW: Log the exact timestamp of their ToS agreement in the users table
+    await client.query(`
+      INSERT INTO users (id, role, tos_accepted_at) 
+      VALUES ($1, 'merchant', $2) 
+      ON CONFLICT (id) DO UPDATE 
+      SET role = 'merchant', tos_accepted_at = EXCLUDED.tos_accepted_at;
+    `, [user_id, tos_accepted_at]);
+    
     await client.query('COMMIT');
     
     res.json(storeResult.rows[0]);
@@ -207,7 +217,6 @@ app.patch('/api/stores/:id', verifyUser, async (req, res) => {
 
     const updates = req.body;
     
-    // Whitelist of allowed fields so users cannot inject malicious SQL columns
     const allowedFields = [
       'store_name', 'store_category', 'industry', 'description', 
       'phone', 'email', 'website', 'cover_image_url', 'logo_url'
@@ -217,7 +226,6 @@ app.patch('/api/stores/:id', verifyUser, async (req, res) => {
     let setClauses = [];
     let paramIndex = 1;
 
-    // Dynamically build the SET clause based on what was provided in req.body
     for (const field of allowedFields) {
       if (updates[field] !== undefined) {
         setClauses.push(`${field} = $${paramIndex}`);
@@ -226,7 +234,6 @@ app.patch('/api/stores/:id', verifyUser, async (req, res) => {
       }
     }
 
-    // Handle geography location specifically if lat/lng are provided
     if (updates.lat && updates.lng) {
       setClauses.push(`location = ST_GeomFromText($${paramIndex}, 4326)`);
       queryParams.push(`POINT(${updates.lng} ${updates.lat})`);
@@ -237,7 +244,6 @@ app.patch('/api/stores/:id', verifyUser, async (req, res) => {
       return res.status(400).json({ error: "No valid fields provided for update." });
     }
 
-    // Add the store ID as the final parameter for the WHERE clause
     queryParams.push(req.params.id);
     const query = `UPDATE stores SET ${setClauses.join(', ')} WHERE id = $${paramIndex} RETURNING *`;
 
@@ -247,6 +253,32 @@ app.patch('/api/stores/:id', verifyUser, async (req, res) => {
     console.error("Store Update Error:", err);
     res.status(500).send("Server Error");
   }
+});
+
+app.delete('/api/stores/:id', verifyUser, async (req, res) => {
+  try {
+    if (!(await isStoreOperator(req.params.id, req.user.id))) return res.status(403).json({ error: "Unauthorized access to store." });
+    
+    const result = await db.query('DELETE FROM stores WHERE id = $1 RETURNING *', [req.params.id]);
+    if (result.rowCount === 0) return res.status(404).json({ error: "Store not found" });
+    res.json({ message: "Store deleted successfully" });
+  } catch (err) { res.status(500).send("Server Error"); }
+});
+
+app.patch('/api/stores/:id/theme', verifyUser, async (req, res) => {
+  try {
+    if (!(await isStoreOperator(req.params.id, req.user.id))) return res.status(403).json({ error: "Unauthorized." });
+    const result = await db.query(`UPDATE stores SET theme_settings = $1 WHERE id = $2 RETURNING id, theme_settings`, [req.body.theme_settings, req.params.id]);
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).send("Server Error"); }
+});
+
+app.patch('/api/stores/:id/toggle', verifyUser, async (req, res) => {
+  try {
+    if (!(await isStoreOperator(req.params.id, req.user.id))) return res.status(403).json({ error: "Unauthorized." });
+    const result = await db.query('UPDATE stores SET is_open = $1 WHERE id = $2 RETURNING id, is_open', [req.body.is_open, req.params.id]);
+    res.json(result.rows[0]);
+  } catch (err) { res.status(500).send("Server Error"); }
 });
 
 // ---------------------------------------------------------
@@ -299,8 +331,6 @@ app.delete('/api/items/:id', verifyUser, async (req, res) => {
 // ---------------------------------------------------------
 // 🚀 INVITATIONS & STAFF (Protected)
 // ---------------------------------------------------------
-
-// NEW: Secure route to fetch pending invitations bypassing RLS
 app.get('/api/invitations/pending', verifyUser, async (req, res) => {
   try {
     const email = req.user.email;
@@ -311,7 +341,6 @@ app.get('/api/invitations/pending', verifyUser, async (req, res) => {
       WHERE si.email = $1 AND si.status = 'pending'
     `, [email]);
     
-    // Map the result so it matches the expected frontend structure
     const mappedData = result.rows.map(row => ({
       id: row.id,
       store_id: row.store_id,
@@ -457,7 +486,6 @@ app.post('/api/vouchers/redeem', voucherLimiter, verifyUser, async (req, res) =>
       throw new Error("This voucher has expired.");
     }
     
-    // Strict Check: Direct redemption modal is only for 'free_days'
     if (voucher.discount_type !== 'free_days') {
       throw new Error("This voucher provides a payment discount. Please apply it during checkout instead of direct redemption.");
     }
@@ -592,7 +620,6 @@ app.get('/api/stores', async (req, res) => {
   try {
     const { minLng, minLat, maxLng, maxLat, userLat, userLng, radius } = req.query;
     
-    // 🚀 Added cover_image_url and logo_url to the select clause
     let selectClause = `SELECT id, store_name, store_category, industry, description, phone, email, website, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng, cover_image_url, logo_url`;
     let fromClause = ` FROM stores`;
     let whereClauses = [];
