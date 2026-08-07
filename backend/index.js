@@ -68,7 +68,7 @@ app.use('/api/', apiLimiter);
 const supabaseAdmin = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-// --- 4. AUTHENTICATION MIDDLEWARES ---
+// --- 4. AUTHENTICATION & SECURITY MIDDLEWARES ---
 const verifyUser = async (req, res, next) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -112,6 +112,51 @@ const verifySuperAdmin = async (req, res, next) => {
 const isStoreOperator = async (storeId, userId) => {
   const check = await db.query('SELECT 1 FROM store_operators WHERE store_id = $1 AND user_id = $2', [storeId, userId]);
   return check.rows.length > 0;
+};
+
+// 🚀 PREMIUM VERIFICATION MIDDLEWARE
+const verifyPremium = async (req, res, next) => {
+  try {
+    let storeId = req.body.store_id || req.params.store_id;
+
+    // Handle store routes using :id (like theme updates)
+    if (!storeId && req.params.id && req.originalUrl.includes('/api/stores/')) {
+      storeId = req.params.id;
+    }
+
+    // Handle item routes using :id (like updating/deleting specific items)
+    if (!storeId && req.params.id && req.originalUrl.includes('/api/items/')) {
+      const itemCheck = await db.query('SELECT store_id FROM items WHERE id = $1', [req.params.id]);
+      if (itemCheck.rows.length === 0) return res.status(404).json({ error: "Item not found." });
+      storeId = itemCheck.rows[0].store_id;
+    }
+
+    if (!storeId) {
+      return res.status(400).json({ error: "Store ID is required for this operation." });
+    }
+
+    const subCheck = await db.query(`
+      SELECT plan_type, end_date 
+      FROM subscriptions 
+      WHERE store_id = $1 
+      ORDER BY created_at DESC LIMIT 1
+    `, [storeId]);
+
+    const sub = subCheck.rows[0];
+    const isPremium = sub && sub.plan_type === 'premium' && new Date(sub.end_date) > new Date();
+
+    if (!isPremium) {
+      return res.status(403).json({ 
+        error: "Premium Required", 
+        message: "This action requires an active LocalLook Premium subscription." 
+      });
+    }
+
+    next(); 
+  } catch (err) {
+    console.error("Premium Verification Error:", err);
+    res.status(500).json({ error: "Server error verifying subscription status." });
+  }
 };
 
 // ---------------------------------------------------------
@@ -170,11 +215,9 @@ app.patch('/api/admin/stores/:id/status', verifySuperAdmin, async (req, res) => 
 app.post('/api/stores', verifyUser, async (req, res) => {
   const client = await db.connect();
   try {
-    // 🚀 NEW: Extract tos_accepted_at from the request body
     const { store_name, store_category, industry, description, phone, email, website, lat, lng, tos_accepted_at } = req.body;
     const user_id = req.user.id; 
     
-    // 🚀 NEW: Block request if the Terms of Service timestamp is missing
     if (!store_name || !store_category || !lat || !lng || !tos_accepted_at) {
       return res.status(400).json({ error: "Missing required fields or Terms of Service consent." });
     }
@@ -190,7 +233,6 @@ app.post('/api/stores', verifyUser, async (req, res) => {
     const newStoreId = storeResult.rows[0].id;
     await client.query(`INSERT INTO store_operators (store_id, user_id, role, status) VALUES ($1, $2, 'merchant', 'confirmed');`, [newStoreId, user_id]);
     
-    // 🚀 NEW: Log the exact timestamp of their ToS agreement in the users table
     await client.query(`
       INSERT INTO users (id, role, tos_accepted_at) 
       VALUES ($1, 'merchant', $2) 
@@ -265,6 +307,7 @@ app.delete('/api/stores/:id', verifyUser, async (req, res) => {
   } catch (err) { res.status(500).send("Server Error"); }
 });
 
+// 🔓 Theme Modification is now FREE
 app.patch('/api/stores/:id/theme', verifyUser, async (req, res) => {
   try {
     if (!(await isStoreOperator(req.params.id, req.user.id))) return res.status(403).json({ error: "Unauthorized." });
@@ -282,9 +325,9 @@ app.patch('/api/stores/:id/toggle', verifyUser, async (req, res) => {
 });
 
 // ---------------------------------------------------------
-// 🚀 ITEM MANAGEMENT ROUTES
+// 🚀 ITEM MANAGEMENT ROUTES (Secured - Premium Only)
 // ---------------------------------------------------------
-app.post('/api/items', verifyUser, async (req, res) => {
+app.post('/api/items', verifyUser, verifyPremium, async (req, res) => {
   try {
     const { store_id, item_name, description, price, image_url, item_category } = req.body;
     if (!(await isStoreOperator(store_id, req.user.id))) return res.status(403).json({ error: "Unauthorized." });
@@ -301,7 +344,7 @@ app.post('/api/items', verifyUser, async (req, res) => {
   } catch (err) { res.status(500).send("Server Error"); }
 });
 
-app.patch('/api/items/:id', verifyUser, async (req, res) => {
+app.patch('/api/items/:id', verifyUser, verifyPremium, async (req, res) => {
   try {
     const itemCheck = await db.query('SELECT store_id FROM items WHERE id = $1', [req.params.id]);
     if (itemCheck.rows.length === 0) return res.status(404).json({error: "Not found"});
@@ -317,7 +360,7 @@ app.patch('/api/items/:id', verifyUser, async (req, res) => {
   } catch (err) { res.status(500).send("Server Error"); }
 });
 
-app.delete('/api/items/:id', verifyUser, async (req, res) => {
+app.delete('/api/items/:id', verifyUser, verifyPremium, async (req, res) => {
   try {
     const itemCheck = await db.query('SELECT store_id FROM items WHERE id = $1', [req.params.id]);
     if (itemCheck.rows.length === 0) return res.status(404).json({error: "Not found"});
@@ -356,7 +399,8 @@ app.get('/api/invitations/pending', verifyUser, async (req, res) => {
   }
 });
 
-app.post('/api/stores/:store_id/invite', inviteLimiter, verifyUser, async (req, res) => {
+// 🛡️ Securing Staff Invites
+app.post('/api/stores/:store_id/invite', inviteLimiter, verifyUser, verifyPremium, async (req, res) => {
   const client = await db.connect();
   try {
     const { store_id } = req.params;
