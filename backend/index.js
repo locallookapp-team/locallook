@@ -165,7 +165,14 @@ const verifyPremium = async (req, res, next) => {
 app.get('/api/admin/stores', verifySuperAdmin, async (req, res) => {
   try {
     const result = await db.query(`
-      SELECT s.id, s.store_name, s.store_category, s.is_approved, s.is_open, u.email as owner_email
+      SELECT 
+        s.id, 
+        s.store_name, 
+        s.store_category, 
+        s.is_approved, 
+        s.is_open, 
+        u.email as owner_email,
+        u.display_name as merchant_name
       FROM stores s
       LEFT JOIN users u ON s.merchant_id = u.id
       ORDER BY s.created_at DESC;
