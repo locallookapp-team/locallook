@@ -331,6 +331,29 @@ app.patch('/api/stores/:id/toggle', verifyUser, async (req, res) => {
   } catch (err) { res.status(500).send("Server Error"); }
 });
 
+// 🚀 Update Operating Hours & Auto-Schedule Toggle
+app.patch('/api/stores/:id/schedule', verifyUser, async (req, res) => {
+  try {
+    if (!(await isStoreOperator(req.params.id, req.user.id))) {
+      return res.status(403).json({ error: "Unauthorized." });
+    }
+
+    const { auto_schedule_enabled, operating_hours } = req.body;
+    
+    const result = await db.query(`
+      UPDATE stores 
+      SET auto_schedule_enabled = $1, operating_hours = $2 
+      WHERE id = $3 
+      RETURNING id, auto_schedule_enabled, operating_hours
+    `, [auto_schedule_enabled, operating_hours, req.params.id]);
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error("Schedule Update Error:", err);
+    res.status(500).send("Server Error");
+  }
+}); 
+
 // ---------------------------------------------------------
 // 🚀 ITEM MANAGEMENT ROUTES (Secured - Premium Only)
 // ---------------------------------------------------------
@@ -932,6 +955,56 @@ app.post('/api/webhooks/paymongo', async (req, res) => {
   } catch (err) { 
     console.error("Webhook processing error:", err);
     res.status(500).send("Internal Server Error"); 
+  }
+});
+
+const cron = require('node-cron');
+
+// ---------------------------------------------------------
+// 🚀 AUTOMATED STORE SCHEDULER (Runs every 1 minute)
+// ---------------------------------------------------------
+cron.schedule('* * * * *', async () => {
+  try {
+    // 1. Get the current time exactly in Philippine Standard Time (PHT)
+    const options = { timeZone: 'Asia/Manila', hour12: false };
+    const now = new Date();
+    
+    // Format: "Monday"
+    const currentDay = new Intl.DateTimeFormat('en-US', { ...options, weekday: 'long' }).format(now);
+    
+    // Format: "14:30" (HH:MM)
+    const currentHour = new Intl.DateTimeFormat('en-US', { ...options, hour: '2-digit' }).format(now);
+    const currentMinute = new Intl.DateTimeFormat('en-US', { ...options, minute: '2-digit' }).format(now);
+    const currentTime = `${currentHour.padStart(2, '0')}:${currentMinute.padStart(2, '0')}`;
+
+    // 2. Fetch all stores that have automation turned ON
+    const { rows: stores } = await db.query(`
+      SELECT id, is_open, operating_hours 
+      FROM stores 
+      WHERE auto_schedule_enabled = true
+    `);
+
+    for (const store of stores) {
+      if (!store.operating_hours) continue;
+
+      const todaySchedule = store.operating_hours[currentDay];
+      let shouldBeOpen = false;
+
+      // 3. Evaluate if the store should be open right now
+      if (todaySchedule && todaySchedule.isOpen) {
+        if (currentTime >= todaySchedule.open && currentTime < todaySchedule.close) {
+          shouldBeOpen = true;
+        }
+      }
+
+      // 4. If the database status doesn't match reality, flip the switch!
+      if (store.is_open !== shouldBeOpen) {
+        console.log(`[Auto-Scheduler] Switching ${store.id} is_open to ${shouldBeOpen}`);
+        await db.query('UPDATE stores SET is_open = $1 WHERE id = $2', [shouldBeOpen, store.id]);
+      }
+    }
+  } catch (error) {
+    console.error("[Auto-Scheduler Error]:", error);
   }
 });
 
