@@ -340,12 +340,43 @@ app.patch('/api/stores/:id/schedule', verifyUser, async (req, res) => {
 
     const { auto_schedule_enabled, operating_hours } = req.body;
     
+    // 1. Prepare dynamic SQL variables
+    let isOpenUpdate = ''; 
+    let queryParams = [auto_schedule_enabled, operating_hours, req.params.id];
+    let paramIndex = 4;
+
+    // 2. INSTANT EVALUATION: If automation is turned on, evaluate the time right now
+    if (auto_schedule_enabled && operating_hours) {
+      const options = { timeZone: 'Asia/Manila', hour12: false };
+      const now = new Date();
+      
+      const currentDay = new Intl.DateTimeFormat('en-US', { ...options, weekday: 'long' }).format(now);
+      const currentHour = new Intl.DateTimeFormat('en-US', { ...options, hour: '2-digit' }).format(now);
+      const currentMinute = new Intl.DateTimeFormat('en-US', { ...options, minute: '2-digit' }).format(now);
+      const currentTime = `${currentHour.padStart(2, '0')}:${currentMinute.padStart(2, '0')}`;
+
+      const todaySchedule = operating_hours[currentDay];
+      let shouldBeOpen = false;
+
+      // Check if current time falls inside their open window
+      if (todaySchedule && todaySchedule.isOpen) {
+        if (currentTime >= todaySchedule.open && currentTime < todaySchedule.close) {
+          shouldBeOpen = true;
+        }
+      }
+
+      // Add the instantaneous status flip to our SQL query
+      isOpenUpdate = `, is_open = $${paramIndex}`;
+      queryParams.push(shouldBeOpen);
+    }
+
+    // 3. Execute the save and the status flip simultaneously
     const result = await db.query(`
       UPDATE stores 
-      SET auto_schedule_enabled = $1, operating_hours = $2 
+      SET auto_schedule_enabled = $1, operating_hours = $2 ${isOpenUpdate}
       WHERE id = $3 
-      RETURNING id, auto_schedule_enabled, operating_hours
-    `, [auto_schedule_enabled, operating_hours, req.params.id]);
+      RETURNING *
+    `, queryParams);
 
     res.json(result.rows[0]);
   } catch (err) {
