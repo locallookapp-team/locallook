@@ -5,7 +5,7 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { supabase } from '../supabaseClient';
 import { CustomMapPin } from '../components/MapMarkers';
-import NotificationBell from '../components/NotificationBell'; // 🚀 Imported Universal Component
+import NotificationBell from '../components/NotificationBell'; 
 import { 
   MdSearch, MdTune, MdExpandMore, MdLocationOn, 
   MdStorefront, MdFastfood, MdClose, MdStar, MdChevronLeft, 
@@ -67,6 +67,10 @@ export default function MapPage() {
   useEffect(() => { selectedStoreRef.current = selectedStore; }, [selectedStore]);
 
   const [activeLocation, setActiveLocation] = useState(TABLAS_MUNICIPALITIES[0]); 
+  
+  // 🚀 NEW: Store the actual GPS coordinates of the user
+  const [actualUserLocation, setActualUserLocation] = useState(null);
+
   const [isLocationDropdownOpen, setIsLocationDropdownOpen] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -91,6 +95,17 @@ export default function MapPage() {
     'Health & Medical', 'Automotive', 'Travel & Accommodation', 
     'Home & Professional Services', 'Financial & Business'
   ];
+
+  // 🚀 NEW: Automatically fetch actual GPS location on page load
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => setActualUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        (err) => console.log("Silent GPS fallback:", err),
+        { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+      );
+    }
+  }, []);
 
   const checkScrollArrows = () => {
     if (!categoryScrollRef.current) return;
@@ -139,6 +154,9 @@ export default function MapPage() {
       (pos) => {
         const { longitude, latitude, heading } = pos.coords;
         
+        // 🚀 FIX: Update actual location state so popups update instantly
+        setActualUserLocation({ lat: latitude, lng: longitude });
+
         map.current.getSource('user-location').setData({
           type: 'Feature', 
           geometry: { type: 'Point', coordinates: [longitude, latitude] }, 
@@ -305,6 +323,7 @@ export default function MapPage() {
     return stores.filter(store => {
       if (!store.lat || !store.lng) return false;
       if (activeCategory !== 'All' && store.store_category !== activeCategory) return false;
+      // We still filter map radius based on the active dropdown location
       if (calculateDistance(activeLocation.lat, activeLocation.lng, store.lat, store.lng) > filters.distance) return false;
       if (filters.openNow && store.is_open === false) return false;
       return true;
@@ -370,7 +389,10 @@ export default function MapPage() {
     const onPopupClose = () => setSelectedStore(null);
 
     if (selectedStore) {
-      const dist = calculateDistance(activeLocation.lat, activeLocation.lng, selectedStore.lat, selectedStore.lng).toFixed(2);
+      // 🚀 FIX: Calculate popup distance using actual GPS, falling back to dropdown if GPS denied
+      const distanceBase = actualUserLocation || activeLocation;
+      const dist = calculateDistance(distanceBase.lat, distanceBase.lng, selectedStore.lat, selectedStore.lng).toFixed(2);
+      
       const isOpen = selectedStore.is_open;
       const coverImage = selectedStore.cover_url || selectedStore.image_url || 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&w=400&q=80';
       
@@ -446,7 +468,7 @@ export default function MapPage() {
       popupRef.current.remove();
     }
     return () => popupRef.current.off('close', onPopupClose);
-  }, [selectedStore, navigate]);
+  }, [selectedStore, navigate, actualUserLocation, activeLocation]); // Added dependencies
 
   return (
     <>
@@ -653,7 +675,6 @@ export default function MapPage() {
                 )}
               </div>
               
-              {/* 🚀 Inserted the new universal Notification Bell here */}
               <div style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center' }}>
                 <NotificationBell session={session} isSidebarMode={false} />
               </div>

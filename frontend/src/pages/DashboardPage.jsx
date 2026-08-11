@@ -3,14 +3,17 @@ import { useNavigate } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import Cropper from 'react-easy-crop';
-import { QRCodeCanvas } from 'qrcode.react'; // 🚀 NEW: QR Code Library
+import { QRCodeCanvas } from 'qrcode.react'; 
 import { supabase } from '../supabaseClient'; 
+import MerchantOnboarding from '../components/MerchantOnboarding';
+import StoreScheduleModal from '../components/StoreScheduleModal';
 import { 
   MdDragIndicator, MdSmartphone, MdChevronLeft, MdChevronRight, MdOutlineNearMe, 
   MdEdit, MdDelete, MdAdd, MdCameraAlt, MdDashboard, MdPeople, MdSecurity, 
   MdLocalOffer, MdRocketLaunch, MdPayment, MdRestaurantMenu, MdCheckCircle, 
   MdCancel, MdWarning, MdClose, MdSettings, MdStorefront, MdVerifiedUser, MdUploadFile,
-  MdInsertDriveFile, MdStar, MdReply, MdMoreVert, MdDesktopMac, MdQrCode // 🚀 NEW: Desktop & QR Icons
+  MdInsertDriveFile, MdStar, MdReply, MdMoreVert, MdDesktopMac, MdQrCode,
+  MdLocationOn, MdVisibility, MdLock, MdSchedule
 } from "react-icons/md";
 
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
@@ -50,11 +53,25 @@ const createImage = (url) => new Promise((resolve, reject) => {
   image.setAttribute('crossOrigin', 'anonymous'); image.src = url;
 });
 
-const getCroppedImg = async (imageSrc, pixelCrop) => {
-  const image = await createImage(imageSrc); const canvas = document.createElement('canvas'); const ctx = canvas.getContext('2d');
-  if (!ctx) return null; canvas.width = pixelCrop.width; canvas.height = pixelCrop.height;
-  ctx.drawImage(image, pixelCrop.x, pixelCrop.y, pixelCrop.width, pixelCrop.height, 0, 0, pixelCrop.width, pixelCrop.height);
-  return new Promise((resolve) => { canvas.toBlob((file) => { if (file) resolve(new File([file], "cropped-image.jpg", { type: "image/jpeg" })); }, 'image/jpeg', 0.9); });
+const getCroppedImg = async (imageSrc, pixelCrop, maxWidth = 1200) => {
+  const image = await createImage(imageSrc); 
+  const canvas = document.createElement('canvas'); 
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null; 
+
+  let scale = 1;
+  if (pixelCrop.width > maxWidth) {
+    scale = maxWidth / pixelCrop.width;
+  }
+
+  canvas.width = pixelCrop.width * scale; 
+  canvas.height = pixelCrop.height * scale;
+
+  ctx.drawImage(image, pixelCrop.x, pixelCrop.y, pixelCrop.width, pixelCrop.height, 0, 0, canvas.width, canvas.height);
+  
+  return new Promise((resolve) => { 
+    canvas.toBlob((file) => { if (file) resolve(new File([file], "cropped-image.jpg", { type: "image/jpeg" })); }, 'image/jpeg', 0.8); 
+  });
 };
 
 const getStoreCoverImage = (store) => {
@@ -93,12 +110,7 @@ function VerificationPanel({ store, userId, onStoreUpdate }) {
   useEffect(() => {
     const fetchFreshDocs = async () => {
       try {
-        const { data } = await supabase
-          .from('stores')
-          .select('dti_permit_url, bir_cor_url, is_verified')
-          .eq('id', store.id)
-          .single();
-          
+        const { data } = await supabase.from('stores').select('dti_permit_url, bir_cor_url, is_verified').eq('id', store.id).single();
         if (data) {
           setExistingDti(data.dti_permit_url);
           setExistingBir(data.bir_cor_url);
@@ -124,16 +136,12 @@ function VerificationPanel({ store, userId, onStoreUpdate }) {
 
   const handleDeleteExisting = async (type) => {
     if (!window.confirm("Are you sure you want to permanently delete this document?")) return;
-    
-    setLoading(true);
-    setMessage(null);
+    setLoading(true); setMessage(null);
     try {
       const filePath = type === 'dti' ? existingDti : existingBir;
       const columnName = type === 'dti' ? 'dti_permit_url' : 'bir_cor_url';
 
-      const { error: storageErr } = await supabase.storage.from('merchant-documents').remove([filePath]);
-      if (storageErr) console.warn("Storage deletion warning:", storageErr);
-
+      await supabase.storage.from('merchant-documents').remove([filePath]);
       const { error: dbErr } = await supabase.from('stores').update({ [columnName]: null }).eq('id', store.id);
       if (dbErr) throw dbErr;
 
@@ -141,7 +149,6 @@ function VerificationPanel({ store, userId, onStoreUpdate }) {
       if (type === 'bir') setExistingBir(null);
       onStoreUpdate({ ...store, [columnName]: null });
       setMessage({ type: 'success', text: 'Document successfully removed.' });
-
     } catch (err) {
       setMessage({ type: 'error', text: 'Failed to delete: ' + err.message });
     } finally {
@@ -155,22 +162,9 @@ function VerificationPanel({ store, userId, onStoreUpdate }) {
     if (!dtiFile && !birFile) return; 
 
     try {
-      setLoading(true);
-      setMessage(null);
-
+      setLoading(true); setMessage(null);
       const folderPath = `${userId}/${store.id}`;
-
-      const { data: existingStorageFiles } = await supabase.storage.from('merchant-documents').list(folderPath);
-
-      if (existingStorageFiles && existingStorageFiles.length > 0) {
-        const filesToDelete = existingStorageFiles.filter(file => file.name !== '.emptyFolderPlaceholder').map(file => `${folderPath}/${file.name}`);
-        if (filesToDelete.length > 0) {
-          await supabase.storage.from('merchant-documents').remove(filesToDelete);
-        }
-      }
-
-      let newDtiPath = existingDti;
-      let newBirPath = existingBir;
+      let newDtiPath = existingDti; let newBirPath = existingBir;
 
       if (dtiFile) {
         const dtiExt = dtiFile.name.split('.').pop();
@@ -178,7 +172,6 @@ function VerificationPanel({ store, userId, onStoreUpdate }) {
         const { error: dtiError } = await supabase.storage.from('merchant-documents').upload(newDtiPath, dtiFile);
         if (dtiError) throw dtiError;
       }
-
       if (birFile) {
         const birExt = birFile.name.split('.').pop();
         newBirPath = `${folderPath}/bir-${Date.now()}.${birExt}`;
@@ -189,24 +182,18 @@ function VerificationPanel({ store, userId, onStoreUpdate }) {
       const { error: dbError } = await supabase.from('stores').update({ dti_permit_url: newDtiPath, bir_cor_url: newBirPath }).eq('id', store.id);
       if (dbError) throw dbError;
 
-      setExistingDti(newDtiPath);
-      setExistingBir(newBirPath);
+      setExistingDti(newDtiPath); setExistingBir(newBirPath);
       onStoreUpdate({ ...store, dti_permit_url: newDtiPath, bir_cor_url: newBirPath });
-      setDtiFile(null);
-      setBirFile(null);
+      setDtiFile(null); setBirFile(null);
       setMessage({ type: 'success', text: "Documents securely saved! We will notify you once the Admin reviews them." });
-
     } catch (error) {
-      console.error('Upload error:', error);
       setMessage({ type: 'error', text: `Upload failed: ${error.message}` });
     } finally {
       setLoading(false);
     }
   };
 
-  if (loading && !existingDti && !existingBir && !dtiFile && !birFile) {
-     return <div style={{ padding: '40px', textAlign: 'center', color: '#64748B', fontWeight: 'bold' }}>Syncing database records...</div>;
-  }
+  if (loading && !existingDti && !existingBir && !dtiFile && !birFile) return <div style={{ padding: '40px', textAlign: 'center', color: '#64748B', fontWeight: 'bold' }}>Syncing database records...</div>;
 
   if (isVerified) {
     return (
@@ -246,9 +233,7 @@ function VerificationPanel({ store, userId, onStoreUpdate }) {
                 <p style={{ margin: 0, fontSize: '12px', color: '#047857' }}>Securely saved in database</p>
               </div>
             </div>
-            <button onClick={() => handleDeleteExisting('dti')} disabled={loading} style={{ background: 'white', border: '1px solid #FECACA', color: '#EF4444', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <MdDelete size={16} /> Delete
-            </button>
+            <button onClick={() => handleDeleteExisting('dti')} disabled={loading} style={{ background: 'white', border: '1px solid #FECACA', color: '#EF4444', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}><MdDelete size={16} /> Delete</button>
           </div>
         ) : dtiFile ? (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '8px' }}>
@@ -280,9 +265,7 @@ function VerificationPanel({ store, userId, onStoreUpdate }) {
                 <p style={{ margin: 0, fontSize: '12px', color: '#047857' }}>Securely saved in database</p>
               </div>
             </div>
-            <button onClick={() => handleDeleteExisting('bir')} disabled={loading} style={{ background: 'white', border: '1px solid #FECACA', color: '#EF4444', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <MdDelete size={16} /> Delete
-            </button>
+            <button onClick={() => handleDeleteExisting('bir')} disabled={loading} style={{ background: 'white', border: '1px solid #FECACA', color: '#EF4444', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}><MdDelete size={16} /> Delete</button>
           </div>
         ) : birFile ? (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '8px' }}>
@@ -309,19 +292,12 @@ function VerificationPanel({ store, userId, onStoreUpdate }) {
 
       {(!existingDti || !existingBir) && (
         <button 
-          onClick={handleSubmitVerification} 
-          disabled={loading || (!dtiFile && !birFile)} 
-          style={{ 
-            width: '100%', padding: '14px', backgroundColor: '#2563EB', color: 'white', border: 'none', 
-            borderRadius: '8px', fontWeight: '800', fontSize: '14px', display: 'flex', alignItems: 'center', 
-            justifyContent: 'center', gap: '8px', cursor: loading || (!dtiFile && !birFile) ? 'not-allowed' : 'pointer',
-            opacity: (!dtiFile && !birFile) ? 0.5 : 1, transition: 'all 0.2s'
-          }}
+          onClick={handleSubmitVerification} disabled={loading || (!dtiFile && !birFile)} 
+          style={{ width: '100%', padding: '14px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '8px', fontWeight: '800', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: loading || (!dtiFile && !birFile) ? 'not-allowed' : 'pointer', opacity: (!dtiFile && !birFile) ? 0.5 : 1, transition: 'all 0.2s' }}
         >
           {loading ? 'Processing Documents...' : 'Submit Documents for Verification'}
         </button>
       )}
-
     </div>
   );
 }
@@ -343,7 +319,6 @@ export default function DashboardPage() {
   const [isSubmittingReply, setIsSubmittingReply] = useState(false);
   const [activeReviewMenuId, setActiveReviewMenuId] = useState(null);
 
-  // 🚀 NEW: Preview & QR States
   const [isPreviewMobile, setIsPreviewMobile] = useState(true);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
 
@@ -352,10 +327,10 @@ export default function DashboardPage() {
   const [showStoreLeft, setShowStoreLeft] = useState(false);
   const [showStoreRight, setShowStoreRight] = useState(false);
 
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [isEditStoreModalOpen, setIsEditStoreModalOpen] = useState(false);
-
   const [editStoreData, setEditStoreData] = useState({ 
-    id: '', store_name: '', store_category: '', industry: '', description: '', phone: '', email: '', website: '', lat: '', lng: '', cover_image_url: '',
+    id: '', store_name: '', store_category: '', industry: '', description: '', phone: '', email: '', website: '', lat: '', lng: '', cover_image_url: '', logo_url: '',
     showPhone: false, showEmail: false, showWebsite: false, showAddress: false, addressText: '', theme_settings: {} 
   });
   
@@ -366,6 +341,7 @@ export default function DashboardPage() {
   const [newItem, setNewItem] = useState({ name: '', description: '', price: '', category: '', imageFile: null });
   const [isUploading, setIsUploading] = useState(false);
   const [isUploadingCover, setIsUploadingCover] = useState(false); 
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [editingItemId, setEditingItemId] = useState(null); 
   
   const [categoryOrder, setCategoryOrder] = useState([]);
@@ -412,19 +388,6 @@ export default function DashboardPage() {
     if (isJson) headers['Content-Type'] = 'application/json';
     return headers;
   };
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const paymentStatus = params.get('payment');
-    
-    if (paymentStatus === 'success') {
-      alert("Payment Successful! Your premium features have been unlocked.");
-      window.history.replaceState({}, document.title, window.location.pathname);
-    } else if (paymentStatus === 'cancelled') {
-      alert("Payment was cancelled or failed. Please try again.");
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-  }, []);
 
   const handleHeaderMouseDown = (e) => {
     storeDragState.current.isDown = true;
@@ -496,19 +459,10 @@ export default function DashboardPage() {
   const fetchStoreReviews = async () => {
     setLoadingReviews(true);
     try {
-      const { data, error } = await supabase
-        .from('reviews')
-        .select('id, rating, comment, photo_urls, created_at, reviewer_name, owner_reply, owner_reply_created_at')
-        .eq('store_id', activeStore.id)
-        .order('created_at', { ascending: false });
-
+      const { data, error } = await supabase.from('reviews').select('id, rating, comment, photo_urls, created_at, reviewer_name, owner_reply, owner_reply_created_at').eq('store_id', activeStore.id).order('created_at', { ascending: false });
       if (error) throw error;
       setStoreReviews(data || []);
-    } catch (err) {
-      console.error("Failed to fetch reviews:", err);
-    } finally {
-      setLoadingReviews(false);
-    }
+    } catch (err) { console.error("Failed to fetch reviews:", err); } finally { setLoadingReviews(false); }
   };
 
   useEffect(() => {
@@ -522,7 +476,7 @@ export default function DashboardPage() {
           setEditStoreData({ 
             id: data.id, store_name: data.store_name, store_category: data.store_category, industry: data.industry || '', description: data.description || '', 
             phone: data.phone || '', email: data.email || '', website: data.website || '', lat: data.lat, lng: data.lng,
-            cover_image_url: data.cover_image_url || '', showPhone: !!theme.showPhone, showEmail: !!theme.showEmail, showWebsite: !!theme.showWebsite, showAddress: !!theme.showAddress, 
+            cover_image_url: data.cover_image_url || '', logo_url: data.logo_url || '', showPhone: !!theme.showPhone, showEmail: !!theme.showEmail, showWebsite: !!theme.showWebsite, showAddress: !!theme.showAddress, 
             addressText: theme.addressText || '', theme_settings: theme
           });
         }).catch(err => console.error(err));
@@ -530,24 +484,46 @@ export default function DashboardPage() {
       fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/items`).then(res => res.json()).then(data => setItems(data)).catch(err => console.error(err));
       
       getAuthHeaders().then(headers => {
-        fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/operators`, { headers })
-          .then(res => res.ok ? res.json() : [])
-          .then(data => setStoreOperators(data))
-          .catch(err => console.error(err));
+        fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/operators`, { headers }).then(res => res.ok ? res.json() : []).then(data => setStoreOperators(data)).catch(err => console.error(err));
       });
 
       fetchSubscription(activeStore.id);
-      
-      if (activeTab === 'reviews') {
-        fetchStoreReviews();
-      }
+      if (activeTab === 'reviews') fetchStoreReviews();
     }
   }, [activeStore?.id]);
 
+  // ---------------------------------------------------------
+  // 🚀 REAL-TIME STORE STATUS LISTENER
+  // ---------------------------------------------------------
   useEffect(() => {
-    if (activeTab === 'reviews' && activeStore?.id) {
-      fetchStoreReviews();
-    }
+    // Only set up the listener if a store is actively selected
+    if (!activeStore?.id) return;
+
+    const storeChannel = supabase.channel(`realtime-store-${activeStore.id}`)
+      .on('postgres_changes', { 
+        event: 'UPDATE', 
+        schema: 'public', 
+        table: 'stores', 
+        filter: `id=eq.${activeStore.id}` 
+      }, (payload) => {
+        // When the auto-scheduler (or an admin) updates the store, magically flip the UI!
+        if (payload.new) {
+          setActiveStore(prev => ({ ...prev, is_open: payload.new.is_open }));
+          setStores(prevStores => prevStores.map(s => 
+            s.id === payload.new.id ? { ...s, is_open: payload.new.is_open } : s
+          ));
+        }
+      })
+      .subscribe();
+
+    // Clean up the channel when they switch to a different store tab
+    return () => { 
+      supabase.removeChannel(storeChannel); 
+    };
+  }, [activeStore?.id]); // Re-run this setup only when the active store changes
+
+  useEffect(() => {
+    if (activeTab === 'reviews' && activeStore?.id) fetchStoreReviews();
   }, [activeTab]);
 
   useEffect(() => {
@@ -562,26 +538,18 @@ export default function DashboardPage() {
   useEffect(() => {
     if (isEditStoreModalOpen && editMapContainer.current && !editMap.current) {
       editMap.current = new mapboxgl.Map({
-        container: editMapContainer.current, 
-        style: 'mapbox://styles/locallook/cmqttzcqe004h01rc8ya580zb', 
-        center: [editStoreData.lng || 121.9823, editStoreData.lat || 12.3985], 
-        zoom: 15.5, 
-        pitch: 45,
-        attributionControl: false 
+        container: editMapContainer.current, style: 'mapbox://styles/locallook/cmqttzcqe004h01rc8ya580zb', center: [editStoreData.lng || 121.9823, editStoreData.lat || 12.3985], zoom: 15.5, pitch: 45, attributionControl: false 
       });
-      
       if (editStoreData.lng && editStoreData.lat) {
         const el = document.createElement('div');
         el.innerHTML = `<div style="background-color: #2563eb; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); transform: translateY(-12px);"></div>`;
         editPinRef.current = new mapboxgl.Marker({ element: el, anchor: 'bottom' }).setLngLat([editStoreData.lng, editStoreData.lat]).addTo(editMap.current);
       }
-
       editMap.current.on('click', async (e) => {
         const lng = e.lngLat.lng.toFixed(6); const lat = e.lngLat.lat.toFixed(6);
         let addressText = editStoreRef.current.addressText;
         if (editStoreRef.current.showAddress) addressText = await fetchAddressFromCoords(lng, lat);
         setEditStoreData(prev => ({ ...prev, lat, lng, addressText }));
-
         if (!editPinRef.current) {
           const el = document.createElement('div');
           el.innerHTML = `<div style="background-color: #2563eb; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); transform: translateY(-12px);"></div>`;
@@ -589,7 +557,6 @@ export default function DashboardPage() {
         } else { editPinRef.current.setLngLat([lng, lat]); }
       });
     }
-
     return () => { if (!isEditStoreModalOpen && editMap.current) { editMap.current.remove(); editMap.current = null; editPinRef.current = null; } };
   }, [isEditStoreModalOpen, editStoreData.lng, editStoreData.lat]);
 
@@ -600,7 +567,6 @@ export default function DashboardPage() {
         const { longitude, latitude } = pos.coords;
         const lng = longitude.toFixed(6); const lat = latitude.toFixed(6);
         mapRef.current.flyTo({ center: [lng, lat], zoom: 18.5, speed: 1.5 });
-        
         if (isEditing) {
           let addressText = editStoreRef.current.addressText;
           if (editStoreRef.current.showAddress) addressText = await fetchAddressFromCoords(lng, lat);
@@ -608,8 +574,7 @@ export default function DashboardPage() {
           if (editPinRef.current) editPinRef.current.setLngLat([lng, lat]);
         }
       },
-      (err) => alert("Could not access location. Check permissions."),
-      { enableHighAccuracy: true }
+      (err) => alert("Could not access location. Check permissions."), { enableHighAccuracy: true }
     );
   };
 
@@ -653,16 +618,27 @@ export default function DashboardPage() {
     }
   };
 
+  const onLogoFileSelect = (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const reader = new FileReader(); reader.readAsDataURL(e.target.files[0]);
+      reader.onload = () => { setImageToCrop(reader.result); setCropType('logo'); }; 
+      e.target.value = null; 
+    }
+  };
+
   const onCropComplete = (croppedArea, croppedAreaPixels) => setCroppedAreaPixels(croppedAreaPixels);
   
   const handleSaveCrop = async () => {
     try {
-      const croppedFile = await getCroppedImg(imageToCrop, croppedAreaPixels);
+      const maxWidth = cropType === 'cover' ? 1200 : (cropType === 'logo' ? 400 : 800);
+      const croppedFile = await getCroppedImg(imageToCrop, croppedAreaPixels, maxWidth);
       if (cropType === 'item') {
         setNewItem({ ...newItem, imageFile: croppedFile }); 
         setCroppedPreview(URL.createObjectURL(croppedFile));
       } else if (cropType === 'cover') {
         handleCoverUploadFinal(croppedFile);
+      } else if (cropType === 'logo') {
+        handleLogoUploadFinal(croppedFile);
       }
       setImageToCrop(null); 
     } catch (e) { console.error(e); }
@@ -671,40 +647,110 @@ export default function DashboardPage() {
   const handleCoverUploadFinal = async (file) => {
     setIsUploadingCover(true);
     try {
-      const fileExt = 'jpg'; const filePath = `${activeStore.id}/${activeStore.id}-cover-${Math.random()}.${fileExt}`;
+      if (activeStore.cover_image_url) {
+         const oldPath = activeStore.cover_image_url.split('/store-covers/')[1];
+         if (oldPath) await supabase.storage.from('store-covers').remove([oldPath]);
+      }
+      const fileExt = 'jpg'; 
+      const filePath = `${activeStore.id}/${activeStore.id}-cover-${Date.now()}.${fileExt}`;
       const { error: uploadError } = await supabase.storage.from('store-covers').upload(filePath, file);
       if (uploadError) throw uploadError;
       const { data: { publicUrl } } = supabase.storage.from('store-covers').getPublicUrl(filePath);
       
       const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}`, { 
-        method: 'PATCH', 
-        headers: await getAuthHeaders(), 
-        body: JSON.stringify({ cover_image_url: publicUrl }) 
+        method: 'PATCH', headers: await getAuthHeaders(), body: JSON.stringify({ cover_image_url: publicUrl }) 
       });
-      if (!response.ok) throw new Error("Failed to update store in database");
+      if (!response.ok) throw new Error("Failed to save cover image to database.");
+
       setActiveStore({ ...activeStore, cover_image_url: publicUrl }); 
       setStores(stores.map(s => s.id === activeStore.id ? { ...s, cover_image_url: publicUrl } : s)); 
     } catch (err) { alert("Error uploading cover: " + err.message); } finally { setIsUploadingCover(false); }
   };
 
+  const handleLogoUploadFinal = async (file) => {
+    setIsUploadingLogo(true);
+    try {
+      if (activeStore.logo_url) {
+         const oldPath = activeStore.logo_url.split('/avatars/')[1];
+         if (oldPath) await supabase.storage.from('avatars').remove([oldPath]);
+      }
+      const fileExt = 'jpg'; 
+      const filePath = `store-logos/${activeStore.id}-${Date.now()}.${fileExt}`;
+      const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, file);
+      if (uploadError) throw uploadError;
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(filePath);
+      
+      const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}`, { 
+        method: 'PATCH', headers: await getAuthHeaders(), body: JSON.stringify({ logo_url: publicUrl }) 
+      });
+      if (!response.ok) throw new Error("Failed to save logo to database.");
+
+      setActiveStore({ ...activeStore, logo_url: publicUrl }); 
+      setStores(stores.map(s => s.id === activeStore.id ? { ...s, logo_url: publicUrl } : s)); 
+    } catch (err) { alert("Error uploading logo: " + err.message); } finally { setIsUploadingLogo(false); }
+  };
+
   const handleLogout = async () => { await supabase.auth.signOut(); navigate('/'); };
 
   const toggleStoreStatus = async () => {
-    const nextStatus = !activeStore.is_open;
-    const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/toggle`, { 
-      method: 'PATCH', 
-      headers: await getAuthHeaders(), 
-      body: JSON.stringify({ is_open: nextStatus }) 
-    });
-    if (response.ok) { setActiveStore({ ...activeStore, is_open: nextStatus }); setStores(stores.map(s => s.id === activeStore.id ? { ...s, is_open: nextStatus } : s)); }
+    try {
+      const nextStatus = !activeStore.is_open;
+      console.log(`[Toggle Debug] Attempting to set store ${activeStore.id} to is_open: ${nextStatus}`);
+      
+      const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/toggle`, { 
+        method: 'PATCH', 
+        headers: await getAuthHeaders(), 
+        body: JSON.stringify({ is_open: nextStatus }) 
+      });
+      
+      if (response.ok) { 
+        console.log(`[Toggle Debug] Success! Store ${activeStore.id} is now ${nextStatus ? 'OPEN' : 'CLOSED'}`);
+        setActiveStore({ ...activeStore, is_open: nextStatus }); 
+        setStores(stores.map(s => s.id === activeStore.id ? { ...s, is_open: nextStatus } : s)); 
+      } else {
+        const errData = await response.json();
+        console.error("[Toggle Debug] Server Error:", errData);
+        alert(`Failed to toggle status: ${errData.error || 'Server rejected the update.'}`);
+      }
+    } catch (err) {
+      console.error("[Toggle Debug] Network Error:", err);
+      alert("Network Error: " + err.message);
+    }
   };
+
+  const handleOpenEditModal = () => {
+    try {
+      setEditStoreData({ 
+        ...editStoreData, 
+        id: activeStore.id, 
+        store_name: activeStore.store_name, 
+        store_category: activeStore.store_category, 
+        industry: activeStore.industry || '', 
+        description: activeStore.description || '', 
+        phone: activeStore.phone || '', 
+        email: activeStore.email || '', 
+        website: activeStore.website || '', 
+        lat: activeStore.lat, 
+        lng: activeStore.lng, 
+        showPhone: !!activeStore.theme_settings?.showPhone, 
+        showEmail: !!activeStore.theme_settings?.showEmail, 
+        showWebsite: !!activeStore.theme_settings?.showWebsite, 
+        showAddress: !!activeStore.theme_settings?.showAddress, 
+        addressText: activeStore.theme_settings?.addressText || '' 
+      });
+      setIsEditStoreModalOpen(true);
+    } catch (err) {
+      console.error("[Edit Modal Debug] Error loading data:", err);
+      alert("Error loading store data. Check console for details.");
+    }
+  };
+  
 
   const handleUpdateSettings = async (e) => {
     e.preventDefault(); if (!editStoreData.lat || !editStoreData.lng) return alert("Please drop a pin on the map!"); setIsUploading(true);
     try {
       const response = await fetch(`${API_BASE_URL}/api/stores/${editStoreData.id}`, {
-        method: 'PATCH', 
-        headers: await getAuthHeaders(), 
+        method: 'PATCH', headers: await getAuthHeaders(), 
         body: JSON.stringify({ 
           store_name: editStoreData.store_name, store_category: editStoreData.store_category, industry: editStoreData.industry, description: editStoreData.description, 
           phone: editStoreData.phone, email: editStoreData.email, website: editStoreData.website, lat: editStoreData.lat, lng: editStoreData.lng, location: `POINT(${editStoreData.lng} ${editStoreData.lat})`
@@ -713,13 +759,7 @@ export default function DashboardPage() {
       if (response.ok) {
         const updatedStore = await response.json();
         const themeUpdate = { ...storeTheme, categoryOrder, showPhone: editStoreData.showPhone, showEmail: editStoreData.showEmail, showWebsite: editStoreData.showWebsite, showAddress: editStoreData.showAddress, addressText: editStoreData.addressText };
-        
-        await fetch(`${API_BASE_URL}/api/stores/${editStoreData.id}/theme`, { 
-          method: 'PATCH', 
-          headers: await getAuthHeaders(), 
-          body: JSON.stringify({ theme_settings: themeUpdate }) 
-        });
-
+        await fetch(`${API_BASE_URL}/api/stores/${editStoreData.id}/theme`, { method: 'PATCH', headers: await getAuthHeaders(), body: JSON.stringify({ theme_settings: themeUpdate }) });
         const fullyUpdatedStore = { ...updatedStore, theme_settings: themeUpdate };
         setStores(stores.map(s => s.id === fullyUpdatedStore.id ? { ...s, ...fullyUpdatedStore } : s)); setActiveStore({ ...activeStore, ...fullyUpdatedStore }); 
         setIsEditStoreModalOpen(false);
@@ -731,9 +771,7 @@ export default function DashboardPage() {
     setIsSavingTheme(true);
     try {
       const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/theme`, { 
-        method: 'PATCH', 
-        headers: await getAuthHeaders(), 
-        body: JSON.stringify({ theme_settings: { ...storeTheme, categoryOrder } }) 
+        method: 'PATCH', headers: await getAuthHeaders(), body: JSON.stringify({ theme_settings: { ...storeTheme, categoryOrder } }) 
       });
       if (!response.ok) throw new Error("Failed to save theme");
     } catch (err) { alert(err.message); } finally { setIsSavingTheme(false); }
@@ -742,16 +780,11 @@ export default function DashboardPage() {
   const handleDeleteStore = async () => {
     if (deleteConfirmationText !== activeStore.store_name) return; setIsUploading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}`, { 
-        method: 'DELETE',
-        headers: await getAuthHeaders(false) 
-      });
+      const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}`, { method: 'DELETE', headers: await getAuthHeaders(false) });
       if (response.ok) { 
-        const updatedStores = stores.filter(s => s.id !== activeStore.id); 
-        setStores(updatedStores); 
+        const updatedStores = stores.filter(s => s.id !== activeStore.id); setStores(updatedStores); 
         if (updatedStores.length > 0) { setActiveStore(updatedStores[0]); } else { setActiveStore(null); }
-        setIsDeleteStoreModalOpen(false); 
-        setIsEditStoreModalOpen(false);
+        setIsDeleteStoreModalOpen(false); setIsEditStoreModalOpen(false);
       }
     } catch (err) { alert("Failed to delete store."); } finally { setIsUploading(false); }
   };
@@ -763,24 +796,28 @@ export default function DashboardPage() {
   const handleAddItem = async (e) => {
     e.preventDefault(); setIsUploading(true); let finalImageUrl = null;
     if (newItem.imageFile) {
-      const fileName = `${Math.random()}.${newItem.imageFile.name.split('.').pop() || 'jpg'}`; const filePath = `${activeStore.id}/${fileName}`;
-      await supabase.storage.from('item-images').upload(filePath, newItem.imageFile); finalImageUrl = supabase.storage.from('item-images').getPublicUrl(filePath).data.publicUrl;
+      if (editingItemId) {
+         const existingItem = items.find(i => i.id === editingItemId);
+         if (existingItem?.image_url) {
+            const oldPath = existingItem.image_url.split('/item-images/')[1];
+            if (oldPath) await supabase.storage.from('item-images').remove([oldPath]);
+         }
+      }
+      const fileName = `${Date.now()}.${newItem.imageFile.name.split('.').pop() || 'jpg'}`; 
+      const filePath = `${activeStore.id}/${fileName}`;
+      await supabase.storage.from('item-images').upload(filePath, newItem.imageFile); 
+      finalImageUrl = supabase.storage.from('item-images').getPublicUrl(filePath).data.publicUrl;
+    }
+    if (editingItemId && !newItem.imageFile) {
+      const existingItem = items.find(i => i.id === editingItemId);
+      finalImageUrl = existingItem?.image_url;
     }
     const payload = { item_name: newItem.name, description: newItem.description, price: parseFloat(newItem.price), image_url: finalImageUrl, item_category: newItem.category };
-    
     if (editingItemId) {
-      const response = await fetch(`${API_BASE_URL}/api/items/${editingItemId}`, { 
-        method: 'PATCH', 
-        headers: await getAuthHeaders(), 
-        body: JSON.stringify(payload) 
-      });
+      const response = await fetch(`${API_BASE_URL}/api/items/${editingItemId}`, { method: 'PATCH', headers: await getAuthHeaders(), body: JSON.stringify(payload) });
       if (response.ok) { const updatedItem = await response.json(); setItems(items.map(i => i.id === editingItemId ? updatedItem : i)); closeItemModal(); }
     } else {
-      const response = await fetch(`${API_BASE_URL}/api/items`, { 
-        method: 'POST', 
-        headers: await getAuthHeaders(),
-        body: JSON.stringify({ store_id: activeStore.id, ...payload }) 
-      });
+      const response = await fetch(`${API_BASE_URL}/api/items`, { method: 'POST', headers: await getAuthHeaders(), body: JSON.stringify({ store_id: activeStore.id, ...payload }) });
       if (response.ok) { const addedItem = await response.json(); setItems([addedItem, ...items]); closeItemModal(); }
     }
     setIsUploading(false);
@@ -789,10 +826,12 @@ export default function DashboardPage() {
   const handleDeleteItem = async (itemId, itemName) => {
     if (!window.confirm(`Delete "${itemName}" permanently?`)) return;
     try {
-      const response = await fetch(`${API_BASE_URL}/api/items/${itemId}`, { 
-        method: 'DELETE',
-        headers: await getAuthHeaders(false) 
-      });
+      const itemToDelete = items.find(i => i.id === itemId);
+      if (itemToDelete?.image_url) {
+         const oldPath = itemToDelete.image_url.split('/item-images/')[1];
+         if (oldPath) await supabase.storage.from('item-images').remove([oldPath]);
+      }
+      const response = await fetch(`${API_BASE_URL}/api/items/${itemId}`, { method: 'DELETE', headers: await getAuthHeaders(false) });
       if (response.ok) { setItems(items.filter(item => item.id !== itemId)); if (editingItemId === itemId) closeItemModal(); }
     } catch (err) { alert("Failed to delete item."); }
   };
@@ -801,56 +840,28 @@ export default function DashboardPage() {
     if (!voucherCode.trim()) return;
     setVoucherLoading(true); setVoucherMessage(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/vouchers/redeem`, {
-        method: 'POST',
-        headers: await getAuthHeaders(),
-        body: JSON.stringify({ 
-          store_id: activeStore.id, 
-          voucher_code: voucherCode 
-        })
-      });
-
+      const response = await fetch(`${API_BASE_URL}/api/vouchers/redeem`, { method: 'POST', headers: await getAuthHeaders(), body: JSON.stringify({ store_id: activeStore.id, voucher_code: voucherCode }) });
       const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to redeem voucher.");
-      }
-
+      if (!response.ok) throw new Error(data.error || "Failed to redeem voucher.");
       setVoucherMessage({ type: 'success', text: data.message });
       fetchSubscription(activeStore.id);
       setTimeout(() => setIsVoucherModalOpen(false), 2000);
-    } catch (err) { 
-      setVoucherMessage({ type: 'error', text: err.message }); 
-    } finally { 
-      setVoucherLoading(false); 
-    }
+    } catch (err) { setVoucherMessage({ type: 'error', text: err.message }); } finally { setVoucherLoading(false); }
   };
 
   const handleProceedToPayment = async () => {
     setIsProcessingPayment(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/create-checkout-session`, {
-        method: 'POST', 
-        headers: await getAuthHeaders(),
-        body: JSON.stringify({ 
-          store_id: activeStore.id,
-          voucher_code: checkoutPromoCode.trim() || null 
-        })
-      });
+      const res = await fetch(`${API_BASE_URL}/api/create-checkout-session`, { method: 'POST', headers: await getAuthHeaders(), body: JSON.stringify({ store_id: activeStore.id, voucher_code: checkoutPromoCode.trim() || null }) });
       const data = await res.json();
-      if (data.checkoutUrl) window.location.href = data.checkoutUrl;
-      else throw new Error(data.error || "Failed to initiate payment");
+      if (data.checkoutUrl) window.location.href = data.checkoutUrl; else throw new Error(data.error || "Failed to initiate payment");
     } catch (err) { alert("Error initiating payment: " + err.message); setIsProcessingPayment(false); }
   };
 
   const handleInviteOperator = async (e) => {
     e.preventDefault(); setIsInviting(true); setInviteMessage(null); 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/invite`, { 
-        method: 'POST', 
-        headers: await getAuthHeaders(),
-        body: JSON.stringify({ email: inviteEmail, requester_id: user.id }) 
-      });
+      const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/invite`, { method: 'POST', headers: await getAuthHeaders(), body: JSON.stringify({ email: inviteEmail, requester_id: user.id }) });
       const data = await response.json(); if (!response.ok) throw new Error(data.error || "Failed to invite operator");
       setInviteMessage({ type: 'success', text: data.message });
       setStoreOperators([...storeOperators, { email: inviteEmail, status: data.message.includes('Existing') ? 'confirmed' : 'pending', role: 'operator' }]);
@@ -861,10 +872,7 @@ export default function DashboardPage() {
   const handleRemoveStaff = async (staffId, staffEmail) => {
     if (!window.confirm(`Are you sure you want to remove ${staffEmail} from this store?`)) return;
     try {
-      const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/staff/${staffId}`, { 
-        method: 'DELETE',
-        headers: await getAuthHeaders(false)
-      });
+      const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/staff/${staffId}`, { method: 'DELETE', headers: await getAuthHeaders(false) });
       if (!response.ok) throw new Error("Failed to remove staff");
       setStoreOperators(storeOperators.filter(op => op.user_id !== staffId));
     } catch (error) { alert("Error: " + error.message); }
@@ -875,70 +883,43 @@ export default function DashboardPage() {
     setIsSubmittingReply(true);
     try {
       const timestamp = new Date().toISOString();
-      const { error } = await supabase
-        .from('reviews')
-        .update({
-          owner_reply: replyText.trim(),
-          owner_reply_created_at: timestamp
-        })
-        .eq('id', reviewId);
-      
+      const { error } = await supabase.from('reviews').update({ owner_reply: replyText.trim(), owner_reply_created_at: timestamp }).eq('id', reviewId);
       if (error) throw error;
-      
       setStoreReviews(prev => prev.map(r => r.id === reviewId ? { ...r, owner_reply: replyText.trim(), owner_reply_created_at: timestamp } : r));
-      setReplyingToId(null);
-      setReplyText('');
-    } catch (err) {
-      alert("Failed to submit reply: " + err.message);
-    } finally {
-      setIsSubmittingReply(false);
-    }
+      setReplyingToId(null); setReplyText('');
+    } catch (err) { alert("Failed to submit reply: " + err.message); } finally { setIsSubmittingReply(false); }
   };
 
   const handleDeleteReply = async (reviewId) => {
     if (!window.confirm("Are you sure you want to delete your response?")) return;
     try {
-      const { error } = await supabase
-        .from('reviews')
-        .update({ owner_reply: null, owner_reply_created_at: null })
-        .eq('id', reviewId);
-      
+      const { error } = await supabase.from('reviews').update({ owner_reply: null, owner_reply_created_at: null }).eq('id', reviewId);
       if (error) throw error;
-      
       setStoreReviews(prev => prev.map(r => r.id === reviewId ? { ...r, owner_reply: null, owner_reply_created_at: null } : r));
       setActiveReviewMenuId(null);
-    } catch (err) {
-      alert("Failed to delete reply: " + err.message);
-    }
+    } catch (err) { alert("Failed to delete reply: " + err.message); }
   };
 
-  // 🚀 NEW: Function to Download QR Code
   const downloadQRCode = () => {
     const canvas = document.getElementById("qr-code-canvas");
     if (canvas) {
       const pngUrl = canvas.toDataURL("image/png").replace("image/png", "image/octet-stream");
-      let downloadLink = document.createElement("a");
-      downloadLink.href = pngUrl;
-      downloadLink.download = `${activeStore.store_name.replace(/\s+/g, '-')}-QR.png`;
-      document.body.appendChild(downloadLink);
-      downloadLink.click();
-      document.body.removeChild(downloadLink);
+      let downloadLink = document.createElement("a"); downloadLink.href = pngUrl; downloadLink.download = `${activeStore.store_name.replace(/\s+/g, '-')}-QR.png`;
+      document.body.appendChild(downloadLink); downloadLink.click(); document.body.removeChild(downloadLink);
     }
   };
 
   const groupedItems = items.reduce((groups, item) => { const category = item.item_category || 'Uncategorized'; if (!groups[category]) groups[category] = []; groups[category].push(item); return groups; }, {});
   const isMenuLocked = subscription?.plan_type === 'free' || (subscription?.plan_type === 'premium' && subscription?.end_date && new Date(subscription.end_date) <= new Date());
 
+  const reviewCount = storeReviews.length;
+  const avgRating = reviewCount > 0 ? (storeReviews.reduce((sum, r) => sum + r.rating, 0) / reviewCount).toFixed(1) : 0;
+
   if (loading) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', backgroundColor: '#F8FAFC', padding: '30px' }}>
         <div style={{ height: '70px', width: '100%', backgroundColor: '#E2E8F0', borderRadius: '12px', animation: 'pulse 1.5s infinite', marginBottom: '30px' }} />
-        <div style={{ height: '240px', width: '100%', maxWidth: '1000px', margin: '0 auto', backgroundColor: '#E2E8F0', borderRadius: '24px', animation: 'pulse 1.5s infinite', marginBottom: '20px' }} />
-        <div style={{ display: 'flex', gap: '20px', maxWidth: '1000px', margin: '0 auto', width: '100%' }}>
-           <div style={{ flex: 1, height: '400px', backgroundColor: '#E2E8F0', borderRadius: '20px', animation: 'pulse 1.5s infinite' }} />
-           <div style={{ flex: 1, height: '400px', backgroundColor: '#E2E8F0', borderRadius: '20px', animation: 'pulse 1.5s infinite' }} />
-        </div>
-        <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }`}</style>
+        <div style={{ height: '320px', width: '100%', maxWidth: '1000px', margin: '0 auto', backgroundColor: '#E2E8F0', borderRadius: '24px', animation: 'pulse 1.5s infinite', marginBottom: '20px' }} />
       </div>
     );
   }
@@ -946,50 +927,10 @@ export default function DashboardPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', backgroundColor: '#F8FAFC', fontFamily: 'Inter, sans-serif', overflowY: 'auto', position: 'relative' }}>
       
-      <style>{`
-        .mapboxgl-ctrl-bottom-left, .mapboxgl-ctrl-bottom-right, .mapboxgl-ctrl-logo, .mapboxgl-ctrl-attrib { 
-          display: none !important; 
-        }
-      `}</style>
+      <style>{`.mapboxgl-ctrl-bottom-left, .mapboxgl-ctrl-bottom-right, .mapboxgl-ctrl-logo, .mapboxgl-ctrl-attrib { display: none !important; }`}</style>
 
-      {/* 🚀 NEW: QR Code Modal */}
-      {isQrModalOpen && activeStore && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
-          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '24px', width: '100%', maxWidth: '350px', textAlign: 'center', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '10px' }}>
-              <button onClick={() => setIsQrModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8' }}><MdClose size={24} /></button>
-            </div>
-            <h2 style={{ margin: '0 0 5px 0', fontSize: '20px', fontWeight: '900', color: '#0F172A' }}>Share your Store</h2>
-            <p style={{ margin: '0 0 20px 0', color: '#64748B', fontSize: '14px' }}>Print this code for customers to instantly access your digital menu and leave reviews.</p>
-            
-            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '25px', padding: '20px', backgroundColor: '#F8FAFC', borderRadius: '16px', border: '1px solid #E2E8F0' }}>
-              <QRCodeCanvas 
-                id="qr-code-canvas" 
-                value={`${window.location.origin}/store/${activeStore.id}`} 
-                size={200} 
-                level={"H"}
-                includeMargin={true}
-              />
-            </div>
-            
-            <button onClick={downloadQRCode} style={{ width: '100%', padding: '14px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px' }}>
-              Download QR Image
-            </button>
-          </div>
-        </div>
-      )}
-
-      {imageToCrop && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.9)', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ position: 'relative', flexGrow: 1 }}><Cropper image={imageToCrop} crop={crop} zoom={zoom} aspect={cropType === 'cover' ? 16 / 9 : 4 / 3} onCropChange={setCrop} onCropComplete={onCropComplete} onZoomChange={setZoom} /></div>
-          <div style={{ padding: '20px', backgroundColor: 'white', display: 'flex', justifyContent: 'center', gap: '20px', alignItems: 'center' }}>
-            <button onClick={() => { setImageToCrop(null); setCropType(null); }} style={{ padding: '10px 20px', backgroundColor: '#EF4444', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
-            <input type="range" value={zoom} min={1} max={3} step={0.1} aria-labelledby="Zoom" onChange={(e) => setZoom(e.target.value)} style={{ width: '200px' }} />
-            <button onClick={handleSaveCrop} style={{ padding: '10px 20px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Save Crop</button>
-          </div>
-        </div>
-      )}
-
+      {/* 🚀 FIXED: RESTORED ALL MISSING MODAL JSX BLOCKS */}
+      
       {isVoucherModalOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
           <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '20px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
@@ -1031,17 +972,40 @@ export default function DashboardPage() {
               />
             </div>
 
-            <button onClick={handleProceedToPayment} disabled={isProcessingPayment} style={{ width: '100%', padding: '14px', backgroundColor: '#F8FAFC', color: '#0F172A', border: '1px solid #E2E8F0', borderRadius: '12px', fontWeight: 'bold', cursor: isProcessingPayment ? 'not-allowed' : 'pointer', fontSize: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}><MdPayment size={18} /> {isProcessingPayment ? 'Redirecting...' : 'Pay via GCash / Maya'}</button>
+            {/* 🚀 NEW: Clickwrap Payment Disclaimer */}
+            <div style={{ marginBottom: '15px', fontSize: '11px', color: '#475569', lineHeight: '1.4', textAlign: 'center', padding: '0 10px' }}>
+              By proceeding with this payment, you acknowledge that you have read and agree to our strictly non-refundable payment policy as outlined in our <a href="/terms" target="_blank" style={{ color: '#2563EB', textDecoration: 'underline' }}>Terms of Service</a>.
+            </div>
+
+            <button onClick={handleProceedToPayment} disabled={isProcessingPayment} style={{ width: '100%', padding: '14px', backgroundColor: '#F8FAFC', color: '#0F172A', border: '1px solid #E2E8F0', borderRadius: '12px', fontWeight: 'bold', cursor: isProcessingPayment ? 'not-allowed' : 'pointer', fontSize: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+              <MdPayment size={18} /> {isProcessingPayment ? 'Redirecting...' : 'Pay via GCash / Maya'}
+            </button>
             
             <div style={{ margin: '20px 0', borderTop: '1px solid #E2E8F0', position: 'relative' }}>
                <span style={{ position: 'absolute', top: '-10px', left: '50%', transform: 'translateX(-50%)', backgroundColor: 'white', padding: '0 10px', fontSize: '12px', color: '#94A3B8', fontWeight: 'bold' }}>OR</span>
             </div>
 
-            <button onClick={() => { setIsUpgradeModalOpen(false); setIsVoucherModalOpen(true); }} style={{ width: '100%', padding: '14px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer', marginBottom: '5px', fontSize: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}><MdLocalOffer size={18} /> Claim Free Days</button>
+            <button onClick={() => { setIsUpgradeModalOpen(false); setIsVoucherModalOpen(true); }} style={{ width: '100%', padding: '14px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer', marginBottom: '5px', fontSize: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+              <MdLocalOffer size={18} /> Claim Free Days
+            </button>
             
             <button onClick={() => setIsUpgradeModalOpen(false)} style={{ marginTop: '15px', background: 'none', border: 'none', color: '#94A3B8', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
           </div>
         </div>
+
+      )}
+      {/* 🚀 Render the Schedule Modal down here in the return block! */}
+      {isScheduleModalOpen && activeStore && (
+        <StoreScheduleModal 
+          store={activeStore}
+          getAuthHeaders={getAuthHeaders}
+          API_BASE_URL={API_BASE_URL}
+          onClose={() => setIsScheduleModalOpen(false)}
+          onSave={(updatedData) => {
+            setActiveStore(prev => ({ ...prev, ...updatedData }));
+            setStores(stores.map(s => s.id === updatedData.id ? { ...s, ...updatedData } : s));
+          }}
+        />
       )}
 
       {isEditStoreModalOpen && activeStore && (
@@ -1194,80 +1158,104 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {isQrModalOpen && activeStore && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
+          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '24px', width: '100%', maxWidth: '350px', textAlign: 'center', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '10px' }}><button onClick={() => setIsQrModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8' }}><MdClose size={24} /></button></div>
+            <h2 style={{ margin: '0 0 5px 0', fontSize: '20px', fontWeight: '900', color: '#0F172A' }}>Share your Store</h2>
+            <p style={{ margin: '0 0 20px 0', color: '#64748B', fontSize: '14px' }}>Print this code for customers to instantly access your digital menu and leave reviews.</p>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '25px', padding: '20px', backgroundColor: '#F8FAFC', borderRadius: '16px', border: '1px solid #E2E8F0' }}>
+              <QRCodeCanvas id="qr-code-canvas" value={`${window.location.origin}/store/${activeStore.id}`} size={200} level={"H"} includeMargin={true} />
+            </div>
+            <button onClick={downloadQRCode} style={{ width: '100%', padding: '14px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px' }}>Download QR Image</button>
+          </div>
+        </div>
+      )}
+
       <div style={{ height: '70px', flexShrink: 0, boxSizing: 'border-box', zIndex: 40, backgroundColor: '#FFFFFF', padding: '0 30px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #E2E8F0', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px', overflow: 'hidden', flexGrow: 1, marginRight: '20px' }}>
           <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '900', color: '#0F172A', paddingRight: '15px', borderRight: '1px solid #E2E8F0', flexShrink: 0 }}>Merchant's Hub</h2>
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center', overflow: 'hidden', flexGrow: 1 }}>
-            {showStoreLeft && (
-              <button onClick={() => storeScrollRef.current.scrollBy({ left: -200, behavior: 'smooth' })} style={{ position: 'absolute', left: 0, zIndex: 5, background: 'linear-gradient(to right, white 70%, transparent)', border: 'none', height: '100%', padding: '0 10px 0 0', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><MdChevronLeft size={24} color="#0F172A" /></button>
-            )}
-            <div 
-              ref={storeScrollRef} 
-              onScroll={checkHeaderScroll} 
-              onMouseDown={handleHeaderMouseDown}
-              onMouseLeave={handleHeaderMouseLeave}
-              onMouseUp={handleHeaderMouseUp}
-              onMouseMove={handleHeaderMouseMove}
-              style={{ display: 'flex', gap: '8px', overflowX: 'auto', scrollbarWidth: 'none', padding: '5px 0', width: '100%', cursor: 'grab', userSelect: 'none' }}
-            >
-              {stores.map(s => (
-                <button key={s.id} onClick={() => setActiveStore(s)} style={{ flexShrink: 0, padding: '8px 16px', borderRadius: '20px', backgroundColor: activeStore?.id === s.id ? '#2563EB' : 'transparent', color: activeStore?.id === s.id ? 'white' : '#64748B', border: activeStore?.id === s.id ? '1px solid transparent' : '1px solid #E2E8F0', fontWeight: '700', fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap', boxShadow: activeStore?.id === s.id ? '0 4px 10px rgba(37,99,235,0.2)' : 'none' }}>{s.store_name}</button>
-              ))}
+            {showStoreLeft && <button onClick={() => storeScrollRef.current.scrollBy({ left: -200, behavior: 'smooth' })} style={{ position: 'absolute', left: 0, zIndex: 5, background: 'linear-gradient(to right, white 70%, transparent)', border: 'none', height: '100%', padding: '0 10px 0 0', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><MdChevronLeft size={24} color="#0F172A" /></button>}
+            <div ref={storeScrollRef} onScroll={checkHeaderScroll} onMouseDown={handleHeaderMouseDown} onMouseLeave={handleHeaderMouseLeave} onMouseUp={handleHeaderMouseUp} onMouseMove={handleHeaderMouseMove} style={{ display: 'flex', gap: '8px', overflowX: 'auto', scrollbarWidth: 'none', padding: '5px 0', width: '100%', cursor: 'grab', userSelect: 'none' }}>
+              {stores.map(s => <button key={s.id} onClick={() => setActiveStore(s)} style={{ flexShrink: 0, padding: '8px 16px', borderRadius: '20px', backgroundColor: activeStore?.id === s.id ? '#2563EB' : 'transparent', color: activeStore?.id === s.id ? 'white' : '#64748B', border: activeStore?.id === s.id ? '1px solid transparent' : '1px solid #E2E8F0', fontWeight: '700', fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap', boxShadow: activeStore?.id === s.id ? '0 4px 10px rgba(37,99,235,0.2)' : 'none' }}>{s.store_name}</button>)}
               <button onClick={() => navigate('/create-business')} style={{ flexShrink: 0, padding: '8px 16px', borderRadius: '20px', backgroundColor: '#EFF6FF', color: '#2563EB', border: '1px dashed #BFDBFE', fontWeight: '700', fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '4px' }}><MdAdd size={16} /> Add Store</button>
             </div>
-            {showStoreRight && (
-              <button onClick={() => storeScrollRef.current.scrollBy({ left: 200, behavior: 'smooth' })} style={{ position: 'absolute', right: 0, zIndex: 5, background: 'linear-gradient(to left, white 70%, transparent)', border: 'none', height: '100%', padding: '0 0 0 10px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><MdChevronRight size={24} color="#0F172A" /></button>
-            )}
+            {showStoreRight && <button onClick={() => storeScrollRef.current.scrollBy({ left: 200, behavior: 'smooth' })} style={{ position: 'absolute', right: 0, zIndex: 5, background: 'linear-gradient(to left, white 70%, transparent)', border: 'none', height: '100%', padding: '0 0 0 10px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><MdChevronRight size={24} color="#0F172A" /></button>}
           </div>
         </div>
         <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#EF4444', fontWeight: '700', cursor: 'pointer', fontSize: '14px', flexShrink: 0 }}>Sign Out</button>
       </div>
 
       <div ref={scrollContainerRef} onScroll={handleScroll} style={{ flexGrow: 1, padding: '30px', paddingBottom: '90px', position: 'relative', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-        
+        <MerchantOnboarding activeStoreId={activeStore?.id} />
         {stores.length === 0 && (
            <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
-              <div style={{ width: '80px', height: '80px', backgroundColor: '#EFF6FF', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: '20px' }}>
-                <MdStorefront size={40} color="#2563EB" />
-              </div>
+              <div style={{ width: '80px', height: '80px', backgroundColor: '#EFF6FF', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: '20px' }}><MdStorefront size={40} color="#2563EB" /></div>
               <h2 style={{ margin: '0 0 10px 0', color: '#0F172A', fontSize: '24px', fontWeight: '900' }}>Welcome to LocalLook Hub</h2>
-              <p style={{ margin: '0 0 30px 0', color: '#64748B', fontSize: '15px', maxWidth: '400px', lineHeight: '1.5' }}>You haven't registered any locations yet. Register your business to start building your digital storefront.</p>
-              <button onClick={() => navigate('/create-business')} style={{ padding: '14px 28px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '800', fontSize: '15px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 15px rgba(37, 99, 235, 0.2)' }}>
-                <MdAdd size={20} /> Register a Store
-              </button>
+              <button onClick={() => navigate('/create-business')} style={{ padding: '14px 28px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '800', fontSize: '15px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 15px rgba(37, 99, 235, 0.2)' }}><MdAdd size={20} /> Register a Store</button>
            </div>
         )}
 
         {activeStore && (
           <div style={{ width: '100%', maxWidth: '1000px', margin: '0 auto' }}>
             
-            <div style={{ width: '100%', height: '240px', borderRadius: '24px', overflow: 'hidden', backgroundImage: `url(${getStoreCoverImage(activeStore)})`, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative', marginBottom: '20px', boxShadow: '0 10px 30px rgba(0,0,0,0.08)' }}>
-              <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%)' }} />
+            <div style={{ position: 'relative', marginBottom: '80px' }}>
               
-              <div style={{ position: 'absolute', top: '20px', right: '20px' }}>
-                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(4px)', color: '#0F172A', borderRadius: '10px', fontSize: '12px', fontWeight: 'bold', cursor: isUploadingCover ? 'not-allowed' : 'pointer', border: 'none', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
-                    {isUploadingCover ? 'Uploading...' : <><MdCameraAlt size={16} color="#2563EB" /> Edit Cover</>}
-                    <input type="file" accept="image/*" onChange={onCoverFileSelect} disabled={isUploadingCover} style={{ display: 'none' }} />
-                 </label>
-              </div>
-
-              <div style={{ position: 'absolute', bottom: '20px', left: '30px', right: '30px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '15px' }}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <h1 style={{ margin: 0, fontSize: '36px', color: 'white', fontWeight: '900', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>{activeStore.store_name}</h1>
-                    {activeStore.role === 'operator' && <span style={{ padding: '4px 8px', backgroundColor: 'rgba(16, 185, 129, 0.2)', color: '#34d399', border: '1px solid #34d399', fontSize: '12px', fontWeight: 'bold', borderRadius: '6px' }}>STAFF</span>}
-                  </div>
-                  <p style={{ margin: '5px 0 0 0', color: '#d1d5db', fontSize: '15px', fontWeight: 'bold' }}>{activeStore.industry || activeStore.store_category}</p>
+              <div style={{ width: '100%', height: '320px', borderRadius: '24px', overflow: 'hidden', backgroundImage: `url(${getStoreCoverImage(activeStore)})`, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative', boxShadow: '0 10px 30px rgba(0,0,0,0.08)' }}>
+                
+                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0) 100%)', pointerEvents: 'none' }} />
+                
+                <div style={{ position: 'absolute', top: '20px', right: '20px', zIndex: 20 }}>
+                   <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(4px)', color: '#0F172A', borderRadius: '10px', fontSize: '12px', fontWeight: 'bold', cursor: isUploadingCover ? 'not-allowed' : 'pointer', border: 'none', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
+                      {isUploadingCover ? 'Uploading...' : <><MdCameraAlt size={16} color="#2563EB" /> Edit Cover</>}
+                      <input type="file" accept="image/*" onChange={onCoverFileSelect} disabled={isUploadingCover} style={{ display: 'none' }} />
+                   </label>
                 </div>
 
-                <div style={{ display: 'flex', alignItems: 'center', gap: '15px', backgroundColor: '#1E293B', padding: '10px 20px', borderRadius: '50px', border: '1px solid #334155', boxShadow: '0 4px 15px rgba(0,0,0,0.3)' }}>
-                  <span style={{ fontWeight: '800', fontSize: '13px', color: activeStore.is_open ? '#10B981' : '#64748B', transition: 'color 0.3s' }}>OPEN</span>
-                  <div onClick={toggleStoreStatus} style={{ width: '48px', height: '24px', backgroundColor: activeStore.is_open ? '#10B981' : '#475569', borderRadius: '24px', position: 'relative', cursor: 'pointer', transition: 'background-color 0.3s' }}>
-                    <div style={{ width: '20px', height: '20px', backgroundColor: 'white', borderRadius: '50%', position: 'absolute', top: '2px', left: activeStore.is_open ? '26px' : '2px', transition: 'left 0.3s cubic-bezier(0.4, 0.0, 0.2, 1)', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }} />
+                <div style={{ position: 'absolute', bottom: '25px', left: '220px', right: '30px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '15px', zIndex: 20 }}>
+                  <div style={{ pointerEvents: 'auto' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <h1 style={{ margin: 0, fontSize: '36px', color: 'white', fontWeight: '900', textShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>{activeStore.store_name}</h1>
+                      {activeStore.role === 'operator' && <span style={{ padding: '4px 8px', backgroundColor: 'rgba(16, 185, 129, 0.2)', color: '#34d399', border: '1px solid #34d399', fontSize: '12px', fontWeight: 'bold', borderRadius: '6px' }}>STAFF</span>}
+                    </div>
+                    <p style={{ margin: '4px 0 12px 0', color: '#E2E8F0', fontSize: '15px', fontWeight: '600' }}>{activeStore.industry || activeStore.store_category}</p>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '20px', color: '#F8FAFC', fontSize: '14px', fontWeight: '500' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <MdLocationOn size={18} /> {activeStore.theme_settings?.addressText || 'Location not set'}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <MdStar size={18} /> {reviewCount > 0 ? `${avgRating} (${reviewCount} reviews)` : 'No reviews yet'}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <MdVisibility size={18} /> 1.2K views
+                      </div>
+                    </div>
                   </div>
-                  <span style={{ fontWeight: '800', fontSize: '13px', color: !activeStore.is_open ? '#EF4444' : '#64748B', transition: 'color 0.3s' }}>CLOSED</span>
+
+                  <button 
+                    onClick={toggleStoreStatus} 
+                    style={{ display: 'flex', alignItems: 'center', gap: '15px', backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', padding: '12px 24px', borderRadius: '50px', border: '1px solid rgba(255,255,255,0.15)', boxShadow: '0 8px 32px rgba(0,0,0,0.2)', cursor: 'pointer', outline: 'none', pointerEvents: 'auto' }}
+                  >
+                    <span style={{ fontWeight: '800', fontSize: '13px', color: activeStore.is_open ? '#34D399' : '#94A3B8', letterSpacing: '0.5px', transition: 'color 0.3s' }}>OPEN</span>
+                    <div style={{ width: '48px', height: '24px', backgroundColor: activeStore.is_open ? '#10B981' : 'rgba(255,255,255,0.2)', borderRadius: '24px', position: 'relative', transition: 'all 0.3s' }}>
+                      <div style={{ width: '20px', height: '20px', backgroundColor: 'white', borderRadius: '50%', position: 'absolute', top: '2px', left: activeStore.is_open ? '26px' : '2px', transition: 'left 0.3s cubic-bezier(0.4, 0.0, 0.2, 1)', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }} />
+                    </div>
+                    <span style={{ fontWeight: '800', fontSize: '13px', color: !activeStore.is_open ? '#F87171' : '#94A3B8', letterSpacing: '0.5px', transition: 'color 0.3s' }}>CLOSED</span>
+                  </button>
                 </div>
               </div>
+
+              <div style={{ position: 'absolute', bottom: '-40px', left: '40px', width: '160px', height: '160px', borderRadius: '50%', border: '6px solid #F8FAFC', backgroundColor: 'white', zIndex: 30, backgroundImage: activeStore.logo_url ? `url(${activeStore.logo_url})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center', boxShadow: '0 8px 25px rgba(0,0,0,0.1)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                {!activeStore.logo_url && <MdStorefront size={60} color="#CBD5E1" />}
+                
+                <label style={{ position: 'absolute', bottom: '5px', right: '0px', backgroundColor: '#2563EB', color: 'white', width: '36px', height: '36px', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: isUploadingLogo ? 'not-allowed' : 'pointer', border: '3px solid #F8FAFC', boxShadow: '0 4px 10px rgba(0,0,0,0.15)' }}>
+                  {isUploadingLogo ? <div style={{ width: '14px', height: '14px', border: '2px solid white', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /> : <MdCameraAlt size={16} />}
+                  <input type="file" accept="image/*" onChange={onLogoFileSelect} disabled={isUploadingLogo} style={{ display: 'none' }} />
+                </label>
+              </div>
+
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', borderBottom: '1px solid #E2E8F0', paddingBottom: '10px', gap: '15px', flexWrap: 'wrap' }}>
@@ -1280,40 +1268,34 @@ export default function DashboardPage() {
                     reviews: <><MdStar size={18} /> Reviews</>,
                     preview: <><MdSmartphone size={18} /> Live Preview</> 
                   };
-                  const isActive = activeTab === tab;
-                  
                   return (
-                    <button key={tab} onClick={() => setActiveTab(tab)} style={{ padding: '10px 20px', borderRadius: '20px', backgroundColor: isActive ? '#0F172A' : 'transparent', color: isActive ? 'white' : '#64748B', border: 'none', fontWeight: '800', fontSize: '14px', cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <button key={tab} onClick={() => setActiveTab(tab)} style={{ padding: '10px 20px', borderRadius: '20px', backgroundColor: activeTab === tab ? '#0F172A' : 'transparent', color: activeTab === tab ? 'white' : '#64748B', border: 'none', fontWeight: '800', fontSize: '14px', cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '8px' }}>
                       {labels[tab]}
                     </button>
                   );
                 })}
               </div>
               
-              {/* 🚀 UPGRADED: Header Action Buttons */}
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button onClick={() => setIsQrModalOpen(true)} style={{ padding: '8px 16px', backgroundColor: '#F8FAFC', color: '#0F172A', border: '1px solid #E2E8F0', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <MdQrCode size={16} /> QR Code
-                </button>
-                <button onClick={() => {
-                  setEditStoreData({ 
-                    ...editStoreData, id: activeStore.id, store_name: activeStore.store_name, store_category: activeStore.store_category, 
-                    industry: activeStore.industry || '', description: activeStore.description || '', phone: activeStore.phone || '', 
-                    email: activeStore.email || '', website: activeStore.website || '', lat: activeStore.lat, lng: activeStore.lng, 
-                    showPhone: !!activeStore.theme_settings?.showPhone, showEmail: !!activeStore.theme_settings?.showEmail, 
-                    showWebsite: !!activeStore.theme_settings?.showWebsite, showAddress: !!activeStore.theme_settings?.showAddress, 
-                    addressText: activeStore.theme_settings?.addressText || '' 
-                  });
-                  setIsEditStoreModalOpen(true);
-                }} style={{ padding: '8px 16px', backgroundColor: '#EFF6FF', color: '#2563EB', border: '1px dashed #BFDBFE', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ display: 'flex', gap: '10px', position: 'relative', zIndex: 100 }}>
+                <button onClick={() => setIsQrModalOpen(true)} style={{ padding: '8px 16px', backgroundColor: '#F8FAFC', color: '#0F172A', border: '1px solid #E2E8F0', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><MdQrCode size={16} /> QR Code</button>
+                <button 
+                  onClick={handleOpenEditModal} 
+                  style={{ padding: '8px 16px', backgroundColor: '#EFF6FF', color: '#2563EB', border: '1px dashed #BFDBFE', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
                   <MdEdit size={16} /> Edit Store Info
                 </button>
               </div>
+                {/* Add this inside the flex container with the QR Code and Edit Store Info buttons */}
+                <button 
+                  onClick={() => setIsScheduleModalOpen(true)} 
+                  style={{ padding: '8px 16px', backgroundColor: '#F8FAFC', color: '#0F172A', border: '1px solid #E2E8F0', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <MdSchedule size={16} /> Operating Hours
+                </button>
             </div>
 
             {activeTab === 'menu' && (
               <div>
-                
                 {activeStore.merchant_id === user?.id && (
                   <div style={{ display: 'flex', gap: '20px', marginBottom: '30px', flexWrap: 'wrap' }}>
                     <div style={{ flex: 1, backgroundColor: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.02)', border: '1px solid #E2E8F0', minWidth: '300px' }}>
@@ -1329,22 +1311,39 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 )}
-
+                
                 <div style={{ position: 'relative' }}>
-                  {isMenuLocked && (
-                    <div style={{ position: 'absolute', inset: 0, zIndex: 10, backgroundColor: 'rgba(248, 250, 252, 0.7)', backdropFilter: 'blur(6px)', display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: '20px', flexDirection: 'column' }}>
-                      <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '16px', boxShadow: '0 10px 25px rgba(0,0,0,0.05)', border: '1px solid #E2E8F0', textAlign: 'center', maxWidth: '350px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '10px' }}><MdSecurity size={40} color="#94A3B8" /></div>
-                        <h3 style={{ margin: '0 0 10px 0', color: '#0F172A', fontSize: '18px', fontWeight: '800' }}>Menu Locked</h3>
-                        <p style={{ margin: '0 0 20px 0', color: '#64748B', fontSize: '14px' }}>Redeem a voucher or upgrade your plan to access and edit your digital catalog.</p>
-                        <button onClick={() => setIsUpgradeModalOpen(true)} style={{ width: '100%', padding: '12px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer' }}>Upgrade or Redeem Code</button>
-                      </div>
-                    </div>
-                  )}
-
+                  
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                    <h2 style={{ margin: '0 0 0 0', fontSize: '20px', color: '#0F172A', fontWeight: '800' }}>Manage Menu & Products</h2>
-                    <button onClick={openAddModal} disabled={isMenuLocked} style={{ padding: '10px 20px', backgroundColor: isMenuLocked ? '#94A3B8' : '#2563EB', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: isMenuLocked ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}><MdAdd size={18} /> Add Item</button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <h2 style={{ margin: '0 0 0 0', fontSize: '20px', color: '#0F172A', fontWeight: '800' }}>Manage Menu & Products</h2>
+                      {isMenuLocked && (
+                        <span style={{ padding: '4px 10px', backgroundColor: '#FEF2F2', color: '#EF4444', borderRadius: '20px', fontSize: '11px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <MdLock size={12}/> LOCKED
+                        </span>
+                      )}
+                    </div>
+                    
+                    {/* 🚀 FIXED: Dynamic Button. Opens Modal if locked, Opens Add form if unlocked */}
+                    <button 
+                      onClick={isMenuLocked ? () => setIsUpgradeModalOpen(true) : openAddModal} 
+                      style={{ 
+                        padding: '10px 20px', 
+                        backgroundColor: isMenuLocked ? '#F59E0B' : '#2563EB', 
+                        color: 'white', 
+                        border: 'none', 
+                        borderRadius: '12px', 
+                        fontWeight: 'bold', 
+                        cursor: 'pointer', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '8px',
+                        boxShadow: isMenuLocked ? '0 4px 10px rgba(245, 158, 11, 0.3)' : 'none',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      {isMenuLocked ? <><MdLock size={18} /> Unlock Premium</> : <><MdAdd size={18} /> Add Item</>}
+                    </button>
                   </div>
 
                   {categoryOrder.length > 0 && (
@@ -1378,8 +1377,18 @@ export default function DashboardPage() {
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                                     <div style={{ fontSize: '18px', fontWeight: '800', color: '#0F172A' }}>₱{parseFloat(item.price).toFixed(2)}</div>
                                     <div style={{ display: 'flex', gap: '5px', marginLeft: '10px' }}>
-                                      <button onClick={() => startEditItem(item)} disabled={isMenuLocked} style={{ background: '#EFF6FF', color: '#2563EB', border: 'none', padding: '8px', borderRadius: '8px', cursor: isMenuLocked ? 'not-allowed' : 'pointer' }}><MdEdit size={16} /></button>
-                                      <button onClick={() => handleDeleteItem(item.id, item.item_name)} disabled={isMenuLocked} style={{ background: '#FEF2F2', color: '#EF4444', border: 'none', padding: '8px', borderRadius: '8px', cursor: isMenuLocked ? 'not-allowed' : 'pointer' }}><MdDelete size={16} /></button>
+                                      <button 
+                                        onClick={isMenuLocked ? () => setIsUpgradeModalOpen(true) : () => startEditItem(item)} 
+                                        style={{ background: '#EFF6FF', color: '#2563EB', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' }}
+                                      >
+                                        {isMenuLocked ? <MdLock size={16} /> : <MdEdit size={16} />}
+                                      </button>
+                                      <button 
+                                        onClick={isMenuLocked ? () => setIsUpgradeModalOpen(true) : () => handleDeleteItem(item.id, item.item_name)} 
+                                        style={{ background: '#FEF2F2', color: '#EF4444', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' }}
+                                      >
+                                        {isMenuLocked ? <MdLock size={16} /> : <MdDelete size={16} />}
+                                      </button>
                                     </div>
                                   </div>
                                 </div>
@@ -1421,21 +1430,16 @@ export default function DashboardPage() {
                       <tr style={{ borderBottom: '1px solid #F1F5F9' }}>
                         <td style={{ padding: '16px 0', fontWeight: '600', color: '#0F172A' }}>{user?.email}</td>
                         <td style={{ padding: '16px 0' }}>
-                          <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '12px', backgroundColor: '#EFF6FF', color: '#2563EB', fontWeight: 'bold' }}>
-                            STORE OWNER
-                          </span>
+                          <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '12px', backgroundColor: '#EFF6FF', color: '#2563EB', fontWeight: 'bold' }}>STORE OWNER</span>
                         </td>
                         <td style={{ padding: '16px 0', textAlign: 'right' }}></td>
                       </tr>
                     )}
-                    
                     {storeOperators.filter(op => op.user_id !== activeStore.merchant_id).map((op, idx) => (
                       <tr key={op.id || idx} style={{ borderBottom: '1px solid #F1F5F9' }}>
                         <td style={{ padding: '16px 0', fontWeight: '600', color: '#0F172A' }}>{op.email}</td>
                         <td style={{ padding: '16px 0' }}>
-                          <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '12px', backgroundColor: op.status === 'pending' ? '#FEF3C7' : '#D1FAE5', color: op.status === 'pending' ? '#D97706' : '#059669', fontWeight: 'bold' }}>
-                            {op.status === 'pending' ? 'PENDING' : 'ACTIVE STAFF'}
-                          </span>
+                          <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '12px', backgroundColor: op.status === 'pending' ? '#FEF3C7' : '#D1FAE5', color: op.status === 'pending' ? '#D97706' : '#059669', fontWeight: 'bold' }}>{op.status === 'pending' ? 'PENDING' : 'ACTIVE STAFF'}</span>
                         </td>
                         <td style={{ padding: '16px 0', textAlign: 'right' }}>
                           {activeStore.merchant_id === user?.id && op.status !== 'pending' && (
@@ -1444,7 +1448,6 @@ export default function DashboardPage() {
                         </td>
                       </tr>
                     ))}
-
                     {storeOperators.filter(op => op.user_id !== activeStore.merchant_id).length === 0 && activeStore.merchant_id === user?.id && (
                       <tr><td colSpan="3" style={{ padding: '20px 0', textAlign: 'center', color: '#94A3B8' }}>No staff members added yet.</td></tr>
                     )}
@@ -1453,7 +1456,6 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* TAB 3: VERIFICATION */}
             {activeTab === 'verification' && (
               <VerificationPanel 
                 store={activeStore} 
@@ -1465,14 +1467,10 @@ export default function DashboardPage() {
               />
             )}
 
-            {/* TAB 4: MERCHANT REVIEWS MANAGEMENT */}
             {activeTab === 'reviews' && (
               <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '20px', border: '1px solid #E2E8F0' }}>
-                <h3 style={{ margin: '0 0 10px 0', color: '#0F172A', fontSize: '18px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <MdStar color="#F59E0B" /> Customer Reviews
-                </h3>
+                <h3 style={{ margin: '0 0 10px 0', color: '#0F172A', fontSize: '18px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}><MdStar color="#F59E0B" /> Customer Reviews</h3>
                 <p style={{ margin: '0 0 20px 0', color: '#64748B', fontSize: '14px' }}>Read and respond to customer feedback to build trust and loyalty.</p>
-                
                 {loadingReviews ? (
                    <div style={{ textAlign: 'center', padding: '40px', color: '#94A3B8' }}>Loading reviews...</div>
                 ) : storeReviews.length === 0 ? (
@@ -1491,37 +1489,25 @@ export default function DashboardPage() {
                              <MdStar size={14} color="#F59E0B" />
                            </div>
                          </div>
-                         
                          <p style={{ margin: '0 0 15px 0', fontSize: '14px', color: '#334155', lineHeight: '1.5', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
                            {review.comment || <span style={{ fontStyle: 'italic', color: '#94A3B8' }}>No written comment.</span>}
                          </p>
-
-                         {/* Customer Photos if any */}
                          {review.photo_urls && review.photo_urls.length > 0 && (
                             <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', marginBottom: '15px' }}>
-                              {review.photo_urls.map((url, i) => (
-                                <img key={i} src={url} alt="Review" style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #E2E8F0' }} />
-                              ))}
+                              {review.photo_urls.map((url, i) => <img key={i} src={url} alt="Review" style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #E2E8F0' }} />)}
                             </div>
                          )}
-
-                         {/* Owner Reply Block or Input */}
                          {review.owner_reply ? (
                            <div style={{ backgroundColor: 'white', padding: '15px', borderRadius: '8px', borderLeft: `4px solid ${storeTheme.primaryColor}` }}>
                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '5px' }}>
                                <div style={{ fontSize: '12px', fontWeight: 'bold', color: storeTheme.primaryColor }}>Your Response:</div>
-                               
                                <div style={{ position: 'relative' }}>
-                                 <button onClick={() => setActiveReviewMenuId(activeReviewMenuId === review.id ? null : review.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0', color: '#94A3B8' }}>
-                                   <MdMoreVert size={18} />
-                                 </button>
+                                 <button onClick={() => setActiveReviewMenuId(activeReviewMenuId === review.id ? null : review.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0', color: '#94A3B8' }}><MdMoreVert size={18} /></button>
                                  {activeReviewMenuId === review.id && (
                                    <>
                                      <div onClick={() => setActiveReviewMenuId(null)} style={{ position: 'fixed', inset: 0, zIndex: 90 }} />
                                      <div style={{ position: 'absolute', top: '100%', right: 0, backgroundColor: 'white', border: '1px solid #E2E8F0', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, width: '120px', overflow: 'hidden' }}>
-                                       <button onClick={() => handleDeleteReply(review.id)} style={{ width: '100%', padding: '10px', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', color: '#DC2626' }}>
-                                         Delete Reply
-                                       </button>
+                                       <button onClick={() => handleDeleteReply(review.id)} style={{ width: '100%', padding: '10px', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', color: '#DC2626' }}>Delete Reply</button>
                                      </div>
                                    </>
                                  )}
@@ -1532,31 +1518,17 @@ export default function DashboardPage() {
                          ) : (
                            replyingToId === review.id ? (
                              <div style={{ marginTop: '10px' }}>
-                               <textarea 
-                                 autoFocus
-                                 maxLength={500}
-                                 value={replyText}
-                                 onChange={(e) => setReplyText(e.target.value)}
-                                 placeholder="Write your response to the customer..."
-                                 style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #CBD5E1', minHeight: '80px', fontSize: '13px', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit', wordBreak: 'break-word' }}
-                               />
+                               <textarea autoFocus maxLength={500} value={replyText} onChange={(e) => setReplyText(e.target.value)} placeholder="Write your response to the customer..." style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #CBD5E1', minHeight: '80px', fontSize: '13px', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit', wordBreak: 'break-word' }} />
                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
-                                 {/* 🚀 UPGRADED: Char counter moved to the left for better visibility */}
-                                 <div style={{ fontSize: '12px', color: replyText.length >= 500 ? '#EF4444' : '#64748B', fontWeight: 'bold' }}>
-                                   {replyText.length} / 500 characters
-                                 </div>
+                                 <div style={{ fontSize: '12px', color: replyText.length >= 500 ? '#EF4444' : '#64748B', fontWeight: 'bold' }}>{replyText.length} / 500 characters</div>
                                  <div style={{ display: 'flex', gap: '10px' }}>
                                    <button onClick={() => { setReplyingToId(null); setReplyText(''); }} style={{ padding: '8px 16px', background: 'none', border: 'none', color: '#64748B', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}>Cancel</button>
-                                   <button onClick={() => submitReply(review.id)} disabled={isSubmittingReply || !replyText.trim()} style={{ padding: '8px 16px', backgroundColor: storeTheme.primaryColor, color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: isSubmittingReply || !replyText.trim() ? 'not-allowed' : 'pointer', fontSize: '13px', opacity: isSubmittingReply || !replyText.trim() ? 0.7 : 1 }}>
-                                     {isSubmittingReply ? 'Posting...' : 'Post Reply'}
-                                   </button>
+                                   <button onClick={() => submitReply(review.id)} disabled={isSubmittingReply || !replyText.trim()} style={{ padding: '8px 16px', backgroundColor: storeTheme.primaryColor, color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: isSubmittingReply || !replyText.trim() ? 'not-allowed' : 'pointer', fontSize: '13px', opacity: isSubmittingReply || !replyText.trim() ? 0.7 : 1 }}>{isSubmittingReply ? 'Posting...' : 'Post Reply'}</button>
                                  </div>
                                </div>
                              </div>
                            ) : (
-                             <button onClick={() => { setReplyingToId(review.id); setReplyText(''); }} style={{ padding: '8px 16px', backgroundColor: 'white', color: storeTheme.primaryColor, border: `1px solid ${storeTheme.primaryColor}`, borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                               <MdReply size={16} /> Reply to Review
-                             </button>
+                             <button onClick={() => { setReplyingToId(review.id); setReplyText(''); }} style={{ padding: '8px 16px', backgroundColor: 'white', color: storeTheme.primaryColor, border: `1px solid ${storeTheme.primaryColor}`, borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}><MdReply size={16} /> Reply to Review</button>
                            )
                          )}
                        </div>
@@ -1566,45 +1538,15 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* 🚀 TAB 5: ACTUAL LIVE PREVIEW IFRAME */}
             {activeTab === 'preview' && (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px', backgroundColor: '#F1F5F9', borderRadius: '24px', border: '1px dashed #CBD5E1' }}>
-                
-                {/* Device Toggle */}
                 <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', backgroundColor: '#E2E8F0', padding: '6px', borderRadius: '12px' }}>
-                  <button 
-                    onClick={() => setIsPreviewMobile(true)} 
-                    style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', border: 'none', transition: 'all 0.2s', backgroundColor: isPreviewMobile ? 'white' : 'transparent', color: isPreviewMobile ? '#0F172A' : '#64748B', boxShadow: isPreviewMobile ? '0 2px 4px rgba(0,0,0,0.05)' : 'none' }}
-                  >
-                    <MdSmartphone size={18} /> Mobile
-                  </button>
-                  <button 
-                    onClick={() => setIsPreviewMobile(false)} 
-                    style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', border: 'none', transition: 'all 0.2s', backgroundColor: !isPreviewMobile ? 'white' : 'transparent', color: !isPreviewMobile ? '#0F172A' : '#64748B', boxShadow: !isPreviewMobile ? '0 2px 4px rgba(0,0,0,0.05)' : 'none' }}
-                  >
-                    <MdDesktopMac size={18} /> Desktop
-                  </button>
+                  <button onClick={() => setIsPreviewMobile(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', border: 'none', transition: 'all 0.2s', backgroundColor: isPreviewMobile ? 'white' : 'transparent', color: isPreviewMobile ? '#0F172A' : '#64748B', boxShadow: isPreviewMobile ? '0 2px 4px rgba(0,0,0,0.05)' : 'none' }}><MdSmartphone size={18} /> Mobile</button>
+                  <button onClick={() => setIsPreviewMobile(false)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', border: 'none', transition: 'all 0.2s', backgroundColor: !isPreviewMobile ? 'white' : 'transparent', color: !isPreviewMobile ? '#0F172A' : '#64748B', boxShadow: !isPreviewMobile ? '0 2px 4px rgba(0,0,0,0.05)' : 'none' }}><MdDesktopMac size={18} /> Desktop</button>
                 </div>
-
-                {/* Actual Storefront Iframe */}
-                <div style={{ 
-                  width: isPreviewMobile ? '375px' : '100%', 
-                  height: isPreviewMobile ? '700px' : '800px', 
-                  transition: 'width 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.1), height 0.4s ease',
-                  border: isPreviewMobile ? '12px solid #0F172A' : '1px solid #E2E8F0',
-                  borderRadius: isPreviewMobile ? '40px' : '16px',
-                  overflow: 'hidden',
-                  boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)',
-                  backgroundColor: 'white'
-                }}>
-                  {/* Note: In a real production environment, ensure your API/CORS allows iframe embedding from your own domain */}
-                  <iframe 
-                    src={`${window.location.origin}/store/${activeStore.id}`} 
-                    style={{ width: '100%', height: '100%', border: 'none' }} 
-                    title="Live Preview" 
-                  />
+                <div style={{ width: isPreviewMobile ? '375px' : '100%', height: isPreviewMobile ? '700px' : '800px', transition: 'width 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.1), height 0.4s ease', border: isPreviewMobile ? '12px solid #0F172A' : '1px solid #E2E8F0', borderRadius: isPreviewMobile ? '40px' : '16px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', backgroundColor: 'white' }}>
+                  <iframe src={`${window.location.origin}/store/${activeStore.id}`} style={{ width: '100%', height: '100%', border: 'none' }} title="Live Preview" />
                 </div>
-                
               </div>
             )}
           </div>

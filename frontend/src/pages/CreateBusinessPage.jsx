@@ -92,6 +92,9 @@ export default function CreateBusinessPage() {
   const [existingStores, setExistingStores] = useState([]);
   const [zoom, setZoom] = useState(15.5);
   
+  // 🚀 NEW: State to track if the merchant agreed to the Terms of Service
+  const [agreedToTos, setAgreedToTos] = useState(false);
+  
   const [newStoreData, setNewStoreData] = useState({
     store_name: '',
     store_category: 'Food & Dining',
@@ -146,11 +149,9 @@ export default function CreateBusinessPage() {
 
     const fetchExistingLocations = async () => {
       try {
-        // 🚀 FIXED: Routed through backend to bypass the 500 RLS errors
         const res = await fetch(`${API_BASE_URL}/api/stores`);
         if (res.ok) {
           const data = await res.json();
-          // Filter out missing lat/lng dynamically
           const validLocations = data.filter(s => s.lat != null && s.lng != null);
           setExistingStores(validLocations);
         }
@@ -332,14 +333,18 @@ export default function CreateBusinessPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Authentication required.");
 
-      // 🚀 FIXED: Added Authorization Headers to clear the 401 Unauthorized block
       const response = await fetch(`${API_BASE_URL}/api/stores`, { 
         method: 'POST', 
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}` 
         }, 
-        body: JSON.stringify({ ...newStoreData, user_id: session.user.id }) 
+        // 🚀 NEW: Pass the exact timestamp of consent to the backend payload
+        body: JSON.stringify({ 
+          ...newStoreData, 
+          user_id: session.user.id,
+          tos_accepted_at: new Date().toISOString()
+        }) 
       });
 
       if (!response.ok) {
@@ -356,7 +361,6 @@ export default function CreateBusinessPage() {
         addressText: newStoreData.addressText 
       };
       
-      // 🚀 FIXED: Added Authorization Header to theme patching as well
       await fetch(`${API_BASE_URL}/api/stores/${createdStore.id}/theme`, { 
         method: 'PATCH', 
         headers: { 
@@ -480,7 +484,37 @@ export default function CreateBusinessPage() {
               )}
             </div>
 
-            <button type="submit" disabled={isLoading} style={{ padding: '12px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: isLoading ? 'not-allowed' : 'pointer', marginTop: '8px', transition: 'background-color 0.2s', fontSize: '13px' }}>
+            {/* 🚀 NEW: Clickwrap Agreement Checkbox */}
+            <div style={{ marginTop: '16px', marginBottom: '8px', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+              <input 
+                type="checkbox" 
+                id="tos-agree"
+                checked={agreedToTos} 
+                onChange={(e) => setAgreedToTos(e.target.checked)} 
+                style={{ marginTop: '3px', cursor: 'pointer' }}
+              />
+              <label htmlFor="tos-agree" style={{ fontSize: '12px', color: '#475569', lineHeight: '1.4' }}>
+                I have read and agree to the LocalLook <a href="/terms" target="_blank" style={{ color: '#2563EB', textDecoration: 'underline' }}>Terms of Service</a> and <a href="/privacy" target="_blank" style={{ color: '#2563EB', textDecoration: 'underline' }}>Privacy Policy</a>.
+              </label>
+            </div>
+
+            {/* 🚀 FIXED: Button locked until agreedToTos is true */}
+            <button 
+              type="submit" 
+              disabled={isLoading || !agreedToTos} 
+              style={{ 
+                padding: '12px', 
+                backgroundColor: agreedToTos ? '#2563EB' : '#94A3B8', 
+                color: 'white', 
+                border: 'none', 
+                borderRadius: '8px', 
+                fontWeight: 'bold', 
+                cursor: isLoading || !agreedToTos ? 'not-allowed' : 'pointer', 
+                marginTop: '8px', 
+                transition: 'background-color 0.2s', 
+                fontSize: '13px' 
+              }}
+            >
               {isLoading ? 'Creating Store...' : 'Confirm Store Location'}
             </button>
           </form>
