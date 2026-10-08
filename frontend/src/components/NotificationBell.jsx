@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
+import { useTheme } from '../components/ThemeContext'; // 🚀 Added Theme Hook
 import { 
   MdNotificationsNone, 
   MdNotificationsActive, 
@@ -10,7 +11,6 @@ import {
   MdCheckCircle, 
   MdCampaign, 
   MdNotifications,
-  MdThumbUp, // Replaced Heart with Thumb Up
   MdStorefront 
 } from 'react-icons/md';
 import { FaThumbsUp } from 'react-icons/fa';
@@ -20,6 +20,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://locallook-api.onre
 export default function NotificationBell({ session, isSidebarMode = false, onInviteAccepted }) {
   const navigate = useNavigate();
   const dropdownRef = useRef(null);
+  const { isDarkMode } = useTheme(); // 🚀 Pulling current theme state
 
   const [isOpen, setIsOpen] = useState(false);
   const [invitations, setInvitations] = useState([]);
@@ -28,20 +29,35 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
 
   const totalUnread = invitations.length + unreadNotesCount;
 
+  // 🚀 Dynamic Color Palette
+  const theme = {
+    bgPrimary: isDarkMode ? '#1E293B' : '#FFFFFF',
+    bgSecondary: isDarkMode ? '#0F172A' : '#F8FAFC',
+    border: isDarkMode ? '#334155' : '#E2E8F0',
+    textMain: isDarkMode ? '#F8FAFC' : '#0F172A',
+    textMuted: isDarkMode ? '#94A3B8' : '#475569',
+    divider: isDarkMode ? '#334155' : '#F1F5F9',
+    hover: isDarkMode ? '#334155' : '#F1F5F9',
+    inviteBg: isDarkMode ? '#1E3A8A' : '#EFF6FF',
+    inviteBorder: isDarkMode ? '#1D4ED8' : '#BFDBFE',
+    inviteText: isDarkMode ? '#60A5FA' : '#1E3A8A'
+  };
+
+  // 🚀 Updated to handle dark mode background tints
   const getNotificationStyle = (type) => {
     switch (type) {
       case 'moderation':
-        return { color: '#DC2626', bg: '#FEF2F2', icon: <MdWarning size={16} color="#DC2626" /> };
+        return { color: '#DC2626', bg: isDarkMode ? 'rgba(220, 38, 38, 0.15)' : '#FEF2F2', icon: <MdWarning size={16} color="#DC2626" /> };
       case 'success':
-        return { color: '#10B981', bg: '#F0FDF4', icon: <MdCheckCircle size={16} color="#10B981" /> };
+        return { color: '#10B981', bg: isDarkMode ? 'rgba(16, 185, 129, 0.15)' : '#F0FDF4', icon: <MdCheckCircle size={16} color="#10B981" /> };
       case 'announcement':
-        return { color: '#3B82F6', bg: '#EFF6FF', icon: <MdCampaign size={16} color="#3B82F6" /> };
+        return { color: '#3B82F6', bg: isDarkMode ? 'rgba(59, 130, 246, 0.15)' : '#EFF6FF', icon: <MdCampaign size={16} color="#3B82F6" /> };
       case 'social_like': 
-        return { color: '#2563EB', bg: '#EFF6FF', icon: <FaThumbsUp size={16} color="#2563EB" /> };
+        return { color: '#2563EB', bg: isDarkMode ? 'rgba(37, 99, 235, 0.15)' : '#EFF6FF', icon: <FaThumbsUp size={16} color="#2563EB" /> };
       case 'owner_reply': 
-        return { color: '#F59E0B', bg: '#FFFBEB', icon: <MdStorefront size={16} color="#F59E0B" /> };
+        return { color: '#F59E0B', bg: isDarkMode ? 'rgba(245, 158, 11, 0.15)' : '#FFFBEB', icon: <MdStorefront size={16} color="#F59E0B" /> };
       default:
-        return { color: '#64748B', bg: '#F8FAFC', icon: <MdNotifications size={16} color="#64748B" /> };
+        return { color: '#64748B', bg: isDarkMode ? theme.bgSecondary : '#F8FAFC', icon: <MdNotifications size={16} color="#64748B" /> };
     }
   };
 
@@ -98,7 +114,6 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
       table: 'notifications', 
       filter: `user_id=eq.${session.user.id}` 
     }, (payload) => {
-      
       if (payload.eventType === 'INSERT') {
         setSystemNotes(prev => {
           const newNotes = [payload.new, ...prev];
@@ -106,7 +121,6 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
           return newNotes;
         });
       }
-      
       if (payload.eventType === 'UPDATE') {
         setSystemNotes(prev => {
           const updatedNotes = prev.map(note => note.id === payload.new.id ? payload.new : note);
@@ -114,7 +128,6 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
           return updatedNotes.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
         });
       }
-      
       if (payload.eventType === 'DELETE') {
         setSystemNotes(prev => {
           const filteredNotes = prev.filter(note => note.id !== payload.old.id);
@@ -199,7 +212,7 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
       {isSidebarMode ? (
         <div onClick={handleToggleMenu} className={`nav-item ${isOpen ? 'active' : ''}`} style={{ display: 'flex', justifyContent: 'space-between', cursor: 'pointer' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ color: isOpen ? '#2563EB' : '#94A3B8' }}>
+            <span style={{ color: isOpen ? '#2563EB' : theme.textMuted }}>
                {totalUnread > 0 ? <MdNotificationsActive size={20} /> : <MdNotificationsNone size={20} />}
             </span> Notifications
           </div>
@@ -208,8 +221,8 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
           )}
         </div>
       ) : (
-        <div onClick={handleToggleMenu} style={{ width: '40px', height: '40px', display: 'flex', justifyContent: 'center', alignItems: 'center', border: '1px solid #E2E8F0', borderRadius: '50%', cursor: 'pointer', backgroundColor: '#FFFFFF', position: 'relative' }}>
-          {totalUnread > 0 ? <MdNotificationsActive size={20} color="#2563EB" /> : <MdNotificationsNone size={20} color="#475569" />}
+        <div onClick={handleToggleMenu} style={{ width: '40px', height: '40px', display: 'flex', justifyContent: 'center', alignItems: 'center', border: `1px solid ${theme.border}`, borderRadius: '50%', cursor: 'pointer', backgroundColor: theme.bgPrimary, position: 'relative', transition: 'all 0.2s', boxShadow: isDarkMode ? '0 4px 15px rgba(0,0,0,0.2)' : '0 4px 15px rgba(0,0,0,0.08)' }}>
+          {totalUnread > 0 ? <MdNotificationsActive size={20} color="#2563EB" /> : <MdNotificationsNone size={20} color={theme.textMuted} />}
           {totalUnread > 0 && (
             <div style={{ position: 'absolute', top: '-2px', right: '-2px', backgroundColor: '#EF4444', color: 'white', fontSize: '10px', fontWeight: '900', padding: '2px 6px', borderRadius: '10px' }}>{totalUnread}</div>
           )}
@@ -226,30 +239,30 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
           marginTop: isSidebarMode ? '0' : '10px',
           marginBottom: isSidebarMode ? '8px' : '0',
           width: '300px', 
-          backgroundColor: 'white', 
-          border: '1px solid #E2E8F0', 
+          backgroundColor: theme.bgPrimary, 
+          border: `1px solid ${theme.border}`, 
           borderRadius: '12px', 
-          boxShadow: '0 10px 35px rgba(0,0,0,0.15)', 
+          boxShadow: isDarkMode ? '0 10px 35px rgba(0,0,0,0.4)' : '0 10px 35px rgba(0,0,0,0.15)', 
           zIndex: 999999, 
           overflow: 'hidden' 
         }}>
           
           {invitations.length > 0 && (
             <div>
-              <div style={{ padding: '12px 16px', backgroundColor: '#EFF6FF', borderBottom: '1px solid #BFDBFE', fontWeight: '800', fontSize: '12px', color: '#1E3A8A' }}>
+              <div style={{ padding: '12px 16px', backgroundColor: theme.inviteBg, borderBottom: `1px solid ${theme.inviteBorder}`, fontWeight: '800', fontSize: '12px', color: theme.inviteText }}>
                 Action Required: Pending Invites
               </div>
               <div style={{ maxHeight: '180px', overflowY: 'auto' }}>
                 {invitations.map(invite => (
-                  <div key={invite.id} style={{ padding: '12px 16px', borderBottom: '1px solid #F1F5F9' }}>
-                    <p style={{ margin: '0 0 8px 0', fontSize: '12.5px', color: '#475569', lineHeight: '1.4' }}>
-                      You were invited to manage <strong style={{ color: '#0F172A' }}>{invite.stores?.store_name}</strong>.
+                  <div key={invite.id} style={{ padding: '12px 16px', borderBottom: `1px solid ${theme.divider}` }}>
+                    <p style={{ margin: '0 0 8px 0', fontSize: '12.5px', color: theme.textMuted, lineHeight: '1.4' }}>
+                      You were invited to manage <strong style={{ color: theme.textMain }}>{invite.stores?.store_name}</strong>.
                     </p>
                     <div style={{ display: 'flex', gap: '8px' }}>
                       <button onClick={() => handleAcceptInvite(invite.id)} style={{ flex: 1, padding: '8px', backgroundColor: '#10B981', color: 'white', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                         <MdCheck size={16} /> Accept
                       </button>
-                      <button onClick={() => handleDeclineInvite(invite.id)} style={{ padding: '8px', backgroundColor: '#FEE2E2', color: '#DC2626', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <button onClick={() => handleDeclineInvite(invite.id)} style={{ padding: '8px', backgroundColor: isDarkMode ? 'rgba(220, 38, 38, 0.2)' : '#FEE2E2', color: '#DC2626', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <MdClear size={16} />
                       </button>
                     </div>
@@ -260,12 +273,12 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
           )}
 
           <div>
-            <div style={{ padding: '12px 16px', backgroundColor: '#F8FAFC', borderBottom: '1px solid #F1F5F9', borderTop: invitations.length > 0 ? '1px solid #E2E8F0' : 'none', fontWeight: '800', fontSize: '12px', color: '#0F172A' }}>
+            <div style={{ padding: '12px 16px', backgroundColor: theme.bgSecondary, borderBottom: `1px solid ${theme.divider}`, borderTop: invitations.length > 0 ? `1px solid ${theme.border}` : 'none', fontWeight: '800', fontSize: '12px', color: theme.textMain }}>
               System Alerts
             </div>
             <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
               {systemNotes.length === 0 ? (
-                <div style={{ padding: '24px', textAlign: 'center', fontSize: '13px', color: '#94A3B8', fontWeight: '500' }}>You're all caught up!</div>
+                <div style={{ padding: '24px', textAlign: 'center', fontSize: '13px', color: theme.textMuted, fontWeight: '500' }}>You're all caught up!</div>
               ) : (
                 systemNotes.map(note => {
                   const style = getNotificationStyle(note.type);
@@ -279,20 +292,26 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
                           markAsRead(); 
                         }
                       }}
+                      onMouseEnter={(e) => {
+                        if(note.is_read) e.currentTarget.style.backgroundColor = theme.hover;
+                      }}
+                      onMouseLeave={(e) => {
+                        if(note.is_read) e.currentTarget.style.backgroundColor = theme.bgPrimary;
+                      }}
                       style={{ 
                         padding: '14px 16px', 
-                        borderBottom: '1px solid #F1F5F9', 
-                        backgroundColor: note.is_read ? '#FFFFFF' : style.bg,
+                        borderBottom: `1px solid ${theme.divider}`, 
+                        backgroundColor: note.is_read ? theme.bgPrimary : style.bg,
                         cursor: note.action_url ? 'pointer' : 'default',
                         transition: 'background-color 0.2s'
                       }}
                     >
-                      <div style={{ fontWeight: '800', fontSize: '13px', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ fontWeight: '800', fontSize: '13px', color: theme.textMain, display: 'flex', alignItems: 'center', gap: '6px' }}>
                         {!note.is_read && <div style={{ width: '6px', height: '6px', backgroundColor: '#10B981', borderRadius: '50%', flexShrink: 0 }}></div>}
                         {style.icon}
                         {note.title}
                       </div>
-                      <div style={{ fontSize: '12.5px', color: '#475569', marginTop: '4px', lineHeight: '1.4', whiteSpace: 'pre-wrap' }}>{note.message}</div>
+                      <div style={{ fontSize: '12.5px', color: theme.textMuted, marginTop: '4px', lineHeight: '1.4', whiteSpace: 'pre-wrap' }}>{note.message}</div>
                       <div style={{ fontSize: '10px', color: '#94A3B8', marginTop: '6px', fontWeight: '600' }}>
                         {new Date(note.created_at).toLocaleDateString()}
                       </div>

@@ -32,7 +32,6 @@ const DrumColumn = ({ options, value, onChange }) => {
   const scrollTimeout = useRef(null);
 
   useEffect(() => {
-    // Snap to the initial value ONLY on mount when the modal opens
     if (containerRef.current) {
       const index = options.indexOf(value);
       if (index !== -1) {
@@ -54,7 +53,6 @@ const DrumColumn = ({ options, value, onChange }) => {
     }, 100); 
   };
 
-  // 🚀 NEW: Click handler to smoothly scroll to the selected item
   const handleItemClick = (opt, index) => {
     if (containerRef.current) {
       containerRef.current.scrollTo({
@@ -84,17 +82,17 @@ const DrumColumn = ({ options, value, onChange }) => {
       {options.map((opt, index) => (
         <div 
           key={opt} 
-          onClick={() => handleItemClick(opt, index)} // Added Click Event
+          onClick={() => handleItemClick(opt, index)} 
           style={{ 
             height: '40px', 
             lineHeight: '40px', 
             scrollSnapAlign: 'center', 
             fontSize: opt === value ? '18px' : '15px', 
-            color: opt === value ? '#2563EB' : '#94A3B8', 
+            color: opt === value ? 'var(--brand-primary)' : 'var(--text-muted)', 
             fontWeight: opt === value ? '900' : '500', 
             transition: 'all 0.15s ease',
             userSelect: 'none',
-            cursor: 'pointer' // Added Pointer Cursor
+            cursor: 'pointer' 
           }}
         >
           {opt}
@@ -112,12 +110,12 @@ const TimeWheelModal = ({ initialValue, onClose, onSave }) => {
   const [ampm, setAmpm] = useState(parse24(initialValue).ampm);
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 2000, display: 'flex', justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }} onClick={onClose}>
-      <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '20px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', width: '280px' }} onClick={e => e.stopPropagation()}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 2000, display: 'flex', justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.6)' }} onClick={onClose}>
+      <div style={{ backgroundColor: 'var(--surface-color)', padding: '20px', borderRadius: '20px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)', width: '280px', border: '1px solid var(--border-color)' }} onClick={e => e.stopPropagation()}>
         
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '15px', alignItems: 'center' }}>
-           <h3 style={{ margin: 0, fontSize: '16px', color: '#0F172A', fontWeight: '800' }}>Select Time</h3>
-           <button onClick={onClose} style={{ background:'none', border:'none', fontSize:'20px', color: '#94A3B8', cursor:'pointer' }}><MdClose/></button>
+           <h3 style={{ margin: 0, fontSize: '16px', color: 'var(--text-main)', fontWeight: '800' }}>Select Time</h3>
+           <button onClick={onClose} style={{ background:'none', border:'none', fontSize:'20px', color: 'var(--text-muted)', cursor:'pointer' }}><MdClose/></button>
         </div>
         
         <div style={{ position: 'relative', height: '200px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '5px' }}>
@@ -128,8 +126,8 @@ const TimeWheelModal = ({ initialValue, onClose, onSave }) => {
              left: '10px', 
              right: '10px', 
              height: '40px', 
-             backgroundColor: '#EFF6FF', 
-             border: '1px solid #BFDBFE', 
+             backgroundColor: 'var(--surface-hover)', 
+             border: '1px solid var(--border-color)', 
              borderRadius: '10px', 
              pointerEvents: 'none', 
              zIndex: 0 
@@ -137,13 +135,13 @@ const TimeWheelModal = ({ initialValue, onClose, onSave }) => {
            
            {/* The Wheels */}
            <DrumColumn options={hoursArray} value={h} onChange={setH} />
-           <div style={{ fontWeight: '900', fontSize: '18px', color: '#2563EB', zIndex: 10, position: 'relative', paddingBottom: '3px', userSelect: 'none' }}>:</div>
+           <div style={{ fontWeight: '900', fontSize: '18px', color: 'var(--brand-primary)', zIndex: 10, position: 'relative', paddingBottom: '3px', userSelect: 'none' }}>:</div>
            <DrumColumn options={minutesArray} value={m} onChange={setM} />
            <div style={{ width: '10px' }} />
            <DrumColumn options={ampmArray} value={ampm} onChange={setAmpm} />
         </div>
 
-        <button onClick={() => onSave(format24(h, m, ampm))} style={{ width: '100%', padding: '14px', marginTop: '15px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px' }}>
+        <button onClick={() => onSave(format24(h, m, ampm))} style={{ width: '100%', padding: '14px', marginTop: '15px', backgroundColor: 'var(--brand-primary)', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px' }}>
           Done
         </button>
       </div>
@@ -208,21 +206,21 @@ export default function StoreScheduleModal({ store, onClose, onSave, getAuthHead
         />
       )}
 
-      <div style={{ backgroundColor: 'white', padding: '25px', borderRadius: '20px', width: '100%', maxWidth: '520px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+      <div style={{ backgroundColor: 'var(--surface-color)', padding: '25px', borderRadius: '20px', width: '100%', maxWidth: '520px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.2)', border: '1px solid var(--border-color)' }}>
         
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h2 style={{ margin: 0, fontSize: '20px', color: '#0F172A', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}><MdSchedule color="#2563EB" /> Operating Hours</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#94A3B8', fontSize: '24px', cursor: 'pointer', lineHeight: '1' }}><MdClose /></button>
+          <h2 style={{ margin: 0, fontSize: '20px', color: 'var(--text-main)', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}><MdSchedule color="var(--brand-primary)" /> Operating Hours</h2>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '24px', cursor: 'pointer', lineHeight: '1' }}><MdClose /></button>
         </div>
 
-        <div style={{ backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: '12px', padding: '15px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ backgroundColor: 'var(--surface-hover)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '15px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
-            <h3 style={{ margin: '0 0 4px 0', color: '#1E3A8A', fontSize: '15px', fontWeight: '700' }}>Automatic Scheduling</h3>
-            <p style={{ margin: 0, color: '#3B82F6', fontSize: '12px' }}>System will auto-flip your open/close status.</p>
+            <h3 style={{ margin: '0 0 4px 0', color: 'var(--text-main)', fontSize: '15px', fontWeight: '700' }}>Automatic Scheduling</h3>
+            <p style={{ margin: 0, color: 'var(--brand-primary)', fontSize: '12px' }}>System will auto-flip your open/close status.</p>
           </div>
           <label style={{ position: 'relative', display: 'inline-block', width: '48px', height: '24px', flexShrink: 0 }}>
             <input type="checkbox" checked={autoEnabled} onChange={(e) => setAutoEnabled(e.target.checked)} style={{ opacity: 0, width: 0, height: 0 }} />
-            <span style={{ position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: autoEnabled ? '#2563EB' : '#CBD5E1', borderRadius: '24px', transition: '.4s' }}>
+            <span style={{ position: 'absolute', cursor: 'pointer', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: autoEnabled ? 'var(--brand-primary)' : 'var(--border-color)', borderRadius: '24px', transition: '.4s' }}>
               <span style={{ position: 'absolute', content: '""', height: '18px', width: '18px', left: autoEnabled ? '26px' : '3px', bottom: '3px', backgroundColor: 'white', borderRadius: '50%', transition: '.4s' }} />
             </span>
           </label>
@@ -233,11 +231,11 @@ export default function StoreScheduleModal({ store, onClose, onSave, getAuthHead
             {days.map(day => {
               const dayData = schedule[day] || defaultSchedule[day];
               return (
-                <div key={day} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '12px 15px', border: '1px solid #E2E8F0', borderRadius: '10px', backgroundColor: dayData.isOpen ? 'white' : '#F8FAFC', opacity: autoEnabled ? 1 : 0.6, transition: 'all 0.2s' }}>
+                <div key={day} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '12px 15px', border: '1px solid var(--border-color)', borderRadius: '10px', backgroundColor: dayData.isOpen ? 'var(--surface-color)' : 'var(--bg-color)', opacity: autoEnabled ? 1 : 0.6, transition: 'all 0.2s' }}>
                   
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: '110px' }}>
-                    <input type="checkbox" checked={dayData.isOpen} onChange={() => handleDayToggle(day)} disabled={!autoEnabled} style={{ cursor: autoEnabled ? 'pointer' : 'not-allowed', width: '16px', height: '16px', accentColor: '#2563EB' }} />
-                    <span style={{ fontWeight: '600', color: '#0F172A', fontSize: '14px' }}>{day}</span>
+                    <input type="checkbox" checked={dayData.isOpen} onChange={() => handleDayToggle(day)} disabled={!autoEnabled} style={{ cursor: autoEnabled ? 'pointer' : 'not-allowed', width: '16px', height: '16px', accentColor: 'var(--brand-primary)' }} />
+                    <span style={{ fontWeight: '600', color: 'var(--text-main)', fontSize: '14px' }}>{day}</span>
                   </div>
                   
                   {dayData.isOpen ? (
@@ -246,24 +244,24 @@ export default function StoreScheduleModal({ store, onClose, onSave, getAuthHead
                         type="button"
                         onClick={() => setActivePicker({ day, field: 'open', value: dayData.open })}
                         disabled={!autoEnabled} 
-                        style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #CBD5E1', outline: 'none', fontSize: '13px', fontWeight: '700', color: '#0F172A', backgroundColor: 'white', width: '100px', cursor: autoEnabled ? 'pointer' : 'not-allowed' }} 
+                        style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none', fontSize: '13px', fontWeight: '700', color: 'var(--text-main)', backgroundColor: 'var(--surface-hover)', width: '100px', cursor: autoEnabled ? 'pointer' : 'not-allowed' }} 
                       >
                         {formatTo12Hour(dayData.open)}
                       </button>
                       
-                      <span style={{ color: '#94A3B8', fontSize: '11px', fontWeight: '800' }}>TO</span>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '11px', fontWeight: '800' }}>TO</span>
                       
                       <button 
                         type="button"
                         onClick={() => setActivePicker({ day, field: 'close', value: dayData.close })}
                         disabled={!autoEnabled} 
-                        style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid #CBD5E1', outline: 'none', fontSize: '13px', fontWeight: '700', color: '#0F172A', backgroundColor: 'white', width: '100px', cursor: autoEnabled ? 'pointer' : 'not-allowed' }} 
+                        style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none', fontSize: '13px', fontWeight: '700', color: 'var(--text-main)', backgroundColor: 'var(--surface-hover)', width: '100px', cursor: autoEnabled ? 'pointer' : 'not-allowed' }} 
                       >
                         {formatTo12Hour(dayData.close)}
                       </button>
                     </div>
                   ) : (
-                    <div style={{ color: '#94A3B8', fontSize: '13px', fontWeight: '600', flexGrow: 1, textAlign: 'right' }}>Closed All Day</div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: '13px', fontWeight: '600', flexGrow: 1, textAlign: 'right' }}>Closed All Day</div>
                   )}
                 </div>
               )
@@ -271,8 +269,8 @@ export default function StoreScheduleModal({ store, onClose, onSave, getAuthHead
           </div>
 
           <div style={{ display: 'flex', gap: '10px' }}>
-            <button type="button" onClick={onClose} style={{ flex: 1, padding: '14px', backgroundColor: '#F1F5F9', color: '#475569', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer', fontSize: '14px' }}>Cancel</button>
-            <button type="submit" disabled={isSaving} style={{ flex: 1, padding: '14px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: isSaving ? 'not-allowed' : 'pointer', fontSize: '14px' }}>
+            <button type="button" onClick={onClose} style={{ flex: 1, padding: '14px', backgroundColor: 'var(--surface-hover)', color: 'var(--text-main)', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer', fontSize: '14px' }}>Cancel</button>
+            <button type="submit" disabled={isSaving} style={{ flex: 1, padding: '14px', backgroundColor: 'var(--brand-primary)', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: isSaving ? 'not-allowed' : 'pointer', fontSize: '14px' }}>
               {isSaving ? 'Saving...' : 'Save Schedule'}
             </button>
           </div>

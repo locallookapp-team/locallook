@@ -96,20 +96,20 @@ export default function ProfilePage() {
   };
 
   if (loading) {
-    return <div style={{ display: 'flex', height: '100%', justifyContent: 'center', alignItems: 'center', color: '#64748B' }}>Loading Profile...</div>;
+    return <div style={{ display: 'flex', height: '100%', justifyContent: 'center', alignItems: 'center', color: 'var(--text-muted)' }}>Loading Profile...</div>;
   }
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', backgroundColor: '#F8FAFC', padding: '40px 20px' }}>
+    <div style={{ height: '100%', overflowY: 'auto', backgroundColor: 'var(--bg-color)', padding: '40px 20px', fontFamily: 'var(--font-main)' }}>
       <div style={{ maxWidth: '800px', margin: '0 auto' }}>
         
         {/* Profile Header Widget */}
-        <div style={{ backgroundColor: 'white', padding: '40px', borderRadius: '24px', boxShadow: '0 10px 30px rgba(0,0,0,0.03)', display: 'flex', alignItems: 'center', gap: '30px', marginBottom: '40px', border: '1px solid #E2E8F0', flexWrap: 'wrap' }}>
+        <div style={{ backgroundColor: 'var(--surface-color)', padding: '40px', borderRadius: '24px', boxShadow: '0 10px 30px rgba(0,0,0,0.03)', display: 'flex', alignItems: 'center', gap: '30px', marginBottom: '40px', border: '1px solid var(--border-color)', flexWrap: 'wrap' }}>
           
           {/* Avatar Upload */}
           <div style={{ position: 'relative' }}>
-            <div style={{ width: '120px', height: '120px', borderRadius: '50%', backgroundColor: '#EFF6FF', backgroundImage: `url(${profile.avatar_url || `https://ui-avatars.com/api/?name=${profile.display_name}&background=EFF6FF&color=2563EB&size=120`})`, backgroundSize: 'cover', backgroundPosition: 'center', border: '4px solid white', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }} />
-            <label style={{ position: 'absolute', bottom: '5px', right: '5px', backgroundColor: '#2563EB', color: 'white', width: '36px', height: '36px', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: isUploading ? 'not-allowed' : 'pointer', boxShadow: '0 2px 10px rgba(37, 99, 235, 0.4)', transition: 'transform 0.2s' }}>
+            <div style={{ width: '120px', height: '120px', borderRadius: '50%', backgroundColor: 'var(--surface-hover)', backgroundImage: `url(${profile.avatar_url || `https://ui-avatars.com/api/?name=${profile.display_name}&background=EFF6FF&color=2563EB&size=120`})`, backgroundSize: 'cover', backgroundPosition: 'center', border: '4px solid var(--surface-color)', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }} />
+            <label style={{ position: 'absolute', bottom: '5px', right: '5px', backgroundColor: 'var(--brand-primary)', color: 'white', width: '36px', height: '36px', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: isUploading ? 'not-allowed' : 'pointer', boxShadow: '0 2px 10px rgba(37, 99, 235, 0.4)', transition: 'transform 0.2s' }}>
               <MdEdit size={18} />
               <input type="file" accept="image/*" onChange={handleAvatarUpload} disabled={isUploading} style={{ display: 'none' }} />
             </label>
@@ -123,23 +123,23 @@ export default function ProfilePage() {
                   type="text" 
                   value={tempName} 
                   onChange={(e) => setTempName(e.target.value)} 
-                  style={{ padding: '10px 15px', borderRadius: '10px', border: '1px solid #CBD5E1', fontSize: '20px', fontWeight: '800', outline: 'none', color: '#0F172A', width: '250px' }} 
+                  style={{ padding: '10px 15px', borderRadius: '10px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', fontSize: '20px', fontWeight: '800', outline: 'none', color: 'var(--text-main)', width: '250px' }} 
                   autoFocus
                 />
                 <button onClick={handleSaveName} style={{ padding: '10px 20px', backgroundColor: '#10B981', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' }}>Save</button>
-                <button onClick={() => { setIsEditingName(false); setTempName(profile.display_name); }} style={{ padding: '10px', backgroundColor: 'transparent', color: '#64748B', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
+                <button onClick={() => { setIsEditingName(false); setTempName(profile.display_name); }} style={{ padding: '10px', backgroundColor: 'transparent', color: 'var(--text-muted)', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
               </div>
             ) : (
               <div style={{ display: 'flex', gap: '15px', alignItems: 'center', marginBottom: '8px' }}>
-                <h1 style={{ margin: 0, fontSize: '28px', fontWeight: '900', color: '#0F172A' }}>{profile.display_name || 'Community Member'}</h1>
-                <button onClick={() => setIsEditingName(true)} style={{ background: '#F1F5F9', border: 'none', padding: '8px', borderRadius: '50%', cursor: 'pointer', color: '#64748B', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <h1 style={{ margin: 0, fontSize: '28px', fontWeight: '900', color: 'var(--text-main)' }}>{profile.display_name || 'Community Member'}</h1>
+                <button onClick={() => setIsEditingName(true)} style={{ background: 'var(--surface-hover)', border: 'none', padding: '8px', borderRadius: '50%', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <MdEdit size={16} />
                 </button>
               </div>
             )}
             
-            <p style={{ margin: 0, color: '#64748B', fontSize: '15px', fontWeight: '600' }}>{user?.email}</p>
-            <div style={{ display: 'inline-block', marginTop: '12px', padding: '6px 12px', backgroundColor: '#EFF6FF', color: '#2563EB', fontSize: '12px', fontWeight: '800', borderRadius: '20px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '15px', fontWeight: '600' }}>{user?.email}</p>
+            <div style={{ display: 'inline-block', marginTop: '12px', padding: '6px 12px', backgroundColor: 'var(--surface-hover)', color: 'var(--brand-primary)', fontSize: '12px', fontWeight: '800', borderRadius: '20px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
               {profile.role || 'Consumer'} Account
             </div>
           </div>
@@ -148,15 +148,15 @@ export default function ProfilePage() {
         {/* Saved Places Section */}
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
-            <MdBookmarkBorder size={24} color="#0F172A" />
-            <h2 style={{ margin: 0, fontSize: '22px', fontWeight: '800', color: '#0F172A' }}>Saved Places</h2>
+            <MdBookmarkBorder size={24} color="var(--text-main)" />
+            <h2 style={{ margin: 0, fontSize: '22px', fontWeight: '800', color: 'var(--text-main)' }}>Saved Places</h2>
           </div>
 
           {savedPlaces.length === 0 ? (
-            <div style={{ backgroundColor: 'white', padding: '60px 20px', borderRadius: '24px', textAlign: 'center', border: '2px dashed #E2E8F0' }}>
+            <div style={{ backgroundColor: 'var(--surface-color)', padding: '60px 20px', borderRadius: '24px', textAlign: 'center', border: '2px dashed var(--border-color)' }}>
               <div style={{ fontSize: '40px', marginBottom: '10px' }}>🗺️</div>
-              <h3 style={{ margin: '0 0 10px 0', color: '#0F172A', fontSize: '18px' }}>No saved places yet</h3>
-              <p style={{ margin: 0, color: '#64748B', fontSize: '14px', maxWidth: '300px', display: 'inline-block' }}>When you find a store you love on the map, click the bookmark icon to save it here!</p>
+              <h3 style={{ margin: '0 0 10px 0', color: 'var(--text-main)', fontSize: '18px' }}>No saved places yet</h3>
+              <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '14px', maxWidth: '300px', display: 'inline-block' }}>When you find a store you love on the map, click the bookmark icon to save it here!</p>
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
@@ -164,14 +164,14 @@ export default function ProfilePage() {
                 <div 
                   key={place.id} 
                   onClick={() => navigate(`/store/${place.id}`)}
-                  style={{ backgroundColor: 'white', borderRadius: '16px', overflow: 'hidden', border: '1px solid #E2E8F0', cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s', boxShadow: '0 4px 15px rgba(0,0,0,0.02)' }}
+                  style={{ backgroundColor: 'var(--surface-color)', borderRadius: '16px', overflow: 'hidden', border: '1px solid var(--border-color)', cursor: 'pointer', transition: 'transform 0.2s, box-shadow 0.2s', boxShadow: '0 4px 15px rgba(0,0,0,0.02)' }}
                   onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 10px 25px rgba(0,0,0,0.08)'; }}
                   onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 15px rgba(0,0,0,0.02)'; }}
                 >
                   <div style={{ height: '140px', backgroundImage: `url(${place.cover_image_url || 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=600&q=80'})`, backgroundSize: 'cover', backgroundPosition: 'center' }} />
                   <div style={{ padding: '16px' }}>
-                    <h4 style={{ margin: '0 0 6px 0', fontSize: '16px', fontWeight: '800', color: '#0F172A' }}>{place.store_name}</h4>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#64748B', fontSize: '13px', fontWeight: '600' }}>
+                    <h4 style={{ margin: '0 0 6px 0', fontSize: '16px', fontWeight: '800', color: 'var(--text-main)' }}>{place.store_name}</h4>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)', fontSize: '13px', fontWeight: '600' }}>
                       <MdLocationOn size={16} /> {place.store_category}
                     </div>
                   </div>

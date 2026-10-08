@@ -39,7 +39,6 @@ const BUSINESS_TAXONOMY = {
   'Financial & Business': ['Bank / ATM', 'Pawnshop / Remittance', 'Money Changer', 'Lending / Cooperative', 'Insurance Agency', 'Law & Accounting Office', 'Real Estate Office']
 };
 
-// 🚀 UPDATED COLOR SPECTRUM: Added standard spectrum, Pink, and Black
 const PRESET_COLORS = ['#DC2626', '#EA580C', '#F59E0B', '#EAB308', '#84CC16', '#10B981', '#06B6D4', '#3B82F6', '#000000', '#EC4899'];
 
 const fetchAddressFromCoords = async (lng, lat) => {
@@ -93,7 +92,7 @@ function SortableCategory({ id, activeCategory, brandColor, onClick }) {
   const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 50 : 1, position: 'relative', flexShrink: 0 };
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <button onClick={() => onClick(id)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '20px', whiteSpace: 'nowrap', border: 'none', fontWeight: 'bold', fontSize: '13px', transition: isDragging ? 'none' : 'all 0.2s', backgroundColor: activeCategory === id ? brandColor : 'white', color: activeCategory === id ? 'white' : '#475569', boxShadow: isDragging ? '0 10px 25px rgba(0,0,0,0.15)' : (activeCategory === id ? `0 4px 10px ${brandColor}40` : '0 1px 3px rgba(0,0,0,0.1)'), cursor: isDragging ? 'grabbing' : 'grab', opacity: isDragging ? 0.95 : 1, touchAction: 'none' }}>
+      <button onClick={() => onClick(id)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '20px', whiteSpace: 'nowrap', border: 'none', fontWeight: 'bold', fontSize: '13px', transition: isDragging ? 'none' : 'all 0.2s', backgroundColor: activeCategory === id ? brandColor : 'var(--surface-color)', color: activeCategory === id ? 'white' : 'var(--text-muted)', boxShadow: isDragging ? '0 10px 25px rgba(0,0,0,0.15)' : (activeCategory === id ? `0 4px 10px ${brandColor}40` : '0 1px 3px rgba(0,0,0,0.1)'), cursor: isDragging ? 'grabbing' : 'grab', opacity: isDragging ? 0.95 : 1, touchAction: 'none' }}>
         <MdDragIndicator size={16} style={{ opacity: 0.7, marginLeft: '-4px' }} />{id}
       </button>
     </div>
@@ -196,31 +195,31 @@ function VerificationPanel({ store, userId, onStoreUpdate }) {
     }
   };
 
-  if (loading && !existingDti && !existingBir && !dtiFile && !birFile) return <div style={{ padding: '40px', textAlign: 'center', color: '#64748B', fontWeight: 'bold' }}>Syncing database records...</div>;
+  if (loading && !existingDti && !existingBir && !dtiFile && !birFile) return <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)', fontWeight: 'bold' }}>Syncing database records...</div>;
 
   if (isVerified) {
     return (
-      <div style={{ padding: '20px', backgroundColor: '#ECFDF5', border: '1px solid #10B981', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '12px' }}>
+      <div style={{ padding: '20px', backgroundColor: 'rgba(16, 185, 129, 0.1)', border: '1px solid #10B981', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '12px' }}>
         <MdVerifiedUser size={32} color="#10B981" />
         <div>
-          <h3 style={{ margin: '0 0 4px 0', color: '#065F46', fontSize: '16px' }}>Officially Verified</h3>
-          <p style={{ margin: 0, color: '#047857', fontSize: '13px' }}>Your business documents have been reviewed and approved.</p>
+          <h3 style={{ margin: '0 0 4px 0', color: '#10B981', fontSize: '16px' }}>Officially Verified</h3>
+          <p style={{ margin: 0, color: 'var(--text-main)', fontSize: '13px' }}>Your business documents have been reviewed and approved.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: '24px', backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
-      <h3 style={{ margin: '0 0 16px 0', color: '#0F172A', fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <MdVerifiedUser size={20} color="#64748B" /> Business Verification Status
+    <div style={{ padding: '24px', backgroundColor: 'var(--surface-color)', border: '1px solid var(--border-color)', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
+      <h3 style={{ margin: '0 0 16px 0', color: 'var(--text-main)', fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <MdVerifiedUser size={20} color="var(--text-muted)" /> Business Verification Status
       </h3>
-      <p style={{ fontSize: '13px', color: '#64748B', marginBottom: '20px', lineHeight: '1.5' }}>
+      <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginBottom: '20px', lineHeight: '1.5' }}>
         Submit your official documents to earn a Blue Verified Badge. This proves your store is legitimate, protects your brand, and builds trust with customers on the map.
       </p>
 
       {message && (
-        <div style={{ padding: '12px', backgroundColor: message.type === 'success' ? '#ECFDF5' : '#FEF2F2', border: `1px solid ${message.type === 'success' ? '#A7F3D0' : '#FECACA'}`, color: message.type === 'success' ? '#065F46' : '#991B1B', borderRadius: '8px', fontSize: '13px', marginBottom: '20px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div style={{ padding: '12px', backgroundColor: message.type === 'success' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)', border: `1px solid ${message.type === 'success' ? '#10B981' : '#EF4444'}`, color: message.type === 'success' ? '#10B981' : '#EF4444', borderRadius: '8px', fontSize: '13px', marginBottom: '20px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px' }}>
           {message.type === 'success' ? <MdCheckCircle size={18} /> : <MdWarning size={18} />} {message.text}
         </div>
       )}
@@ -228,64 +227,64 @@ function VerificationPanel({ store, userId, onStoreUpdate }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '20px' }}>
         
         {existingDti ? (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: '#ECFDF5', border: '1px solid #10B981', borderRadius: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: 'rgba(16, 185, 129, 0.1)', border: '1px solid #10B981', borderRadius: '8px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <MdCheckCircle size={24} color="#10B981" />
               <div>
-                <p style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: '#065F46' }}>DTI / Mayor's Permit</p>
-                <p style={{ margin: 0, fontSize: '12px', color: '#047857' }}>Securely saved in database</p>
+                <p style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: '#10B981' }}>DTI / Mayor's Permit</p>
+                <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-main)' }}>Securely saved in database</p>
               </div>
             </div>
-            <button onClick={() => handleDeleteExisting('dti')} disabled={loading} style={{ background: 'white', border: '1px solid #FECACA', color: '#EF4444', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}><MdDelete size={16} /> Delete</button>
+            <button onClick={() => handleDeleteExisting('dti')} disabled={loading} style={{ background: 'var(--surface-color)', border: '1px solid #EF4444', color: '#EF4444', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}><MdDelete size={16} /> Delete</button>
           </div>
         ) : dtiFile ? (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: 'var(--surface-hover)', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <MdInsertDriveFile size={24} color="#2563EB" />
+              <MdInsertDriveFile size={24} color="var(--brand-primary)" />
               <div>
-                <p style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: '#0F172A' }}>DTI / Mayor's Permit</p>
-                <p style={{ margin: 0, fontSize: '12px', color: '#64748B' }}>{dtiFile.name} (Ready to upload)</p>
+                <p style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: 'var(--text-main)' }}>DTI / Mayor's Permit</p>
+                <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)' }}>{dtiFile.name} (Ready to upload)</p>
               </div>
             </div>
             <button onClick={() => setDtiFile(null)} disabled={loading} style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer' }}><MdClose size={20} /></button>
           </div>
         ) : (
-          <div style={{ border: '1px dashed #CBD5E1', padding: '20px', borderRadius: '8px', textAlign: 'center', backgroundColor: '#F8FAFC', transition: 'background-color 0.2s' }}>
+          <div style={{ border: '1px dashed var(--border-color)', padding: '20px', borderRadius: '8px', textAlign: 'center', backgroundColor: 'var(--surface-hover)', transition: 'background-color 0.2s' }}>
             <label style={{ cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-              <MdUploadFile size={28} color="#94A3B8" />
-              <span style={{ fontSize: '13px', fontWeight: '700', color: '#0F172A' }}>Upload DTI / Mayor's Permit</span>
+              <MdUploadFile size={28} color="var(--icon-color)" />
+              <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-main)' }}>Upload DTI / Mayor's Permit</span>
               <input type="file" accept="image/*,.pdf" onChange={(e) => handleFileSelect(e, 'dti')} disabled={loading} style={{ display: 'none' }} />
             </label>
           </div>
         )}
 
         {existingBir ? (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: '#ECFDF5', border: '1px solid #10B981', borderRadius: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: 'rgba(16, 185, 129, 0.1)', border: '1px solid #10B981', borderRadius: '8px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <MdCheckCircle size={24} color="#10B981" />
               <div>
-                <p style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: '#065F46' }}>BIR Form 2303 (COR)</p>
-                <p style={{ margin: 0, fontSize: '12px', color: '#047857' }}>Securely saved in database</p>
+                <p style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: '#10B981' }}>BIR Form 2303 (COR)</p>
+                <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-main)' }}>Securely saved in database</p>
               </div>
             </div>
-            <button onClick={() => handleDeleteExisting('bir')} disabled={loading} style={{ background: 'white', border: '1px solid #FECACA', color: '#EF4444', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}><MdDelete size={16} /> Delete</button>
+            <button onClick={() => handleDeleteExisting('bir')} disabled={loading} style={{ background: 'var(--surface-color)', border: '1px solid #EF4444', color: '#EF4444', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}><MdDelete size={16} /> Delete</button>
           </div>
         ) : birFile ? (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: '#F8FAFC', border: '1px solid #CBD5E1', borderRadius: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: 'var(--surface-hover)', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <MdInsertDriveFile size={24} color="#2563EB" />
+              <MdInsertDriveFile size={24} color="var(--brand-primary)" />
               <div>
-                <p style={{ margin: '0 0 2px 0', fontSize: '13px', fontWeight: '700', color: '#0F172A' }}>BIR Form 2303 (COR)</p>
-                <p style={{ margin: 0, fontSize: '12px', color: '#64748B' }}>{birFile.name} (Ready to upload)</p>
+                <p style={{ margin: '0 0 2px 0', fontSize: '13px', fontWeight: '700', color: 'var(--text-main)' }}>BIR Form 2303 (COR)</p>
+                <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)' }}>{birFile.name} (Ready to upload)</p>
               </div>
             </div>
             <button onClick={() => setBirFile(null)} disabled={loading} style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer' }}><MdClose size={20} /></button>
           </div>
         ) : (
-          <div style={{ border: '1px dashed #CBD5E1', padding: '20px', borderRadius: '8px', textAlign: 'center', backgroundColor: '#F8FAFC', transition: 'background-color 0.2s' }}>
+          <div style={{ border: '1px dashed var(--border-color)', padding: '20px', borderRadius: '8px', textAlign: 'center', backgroundColor: 'var(--surface-hover)', transition: 'background-color 0.2s' }}>
             <label style={{ cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-              <MdUploadFile size={28} color="#94A3B8" />
-              <span style={{ fontSize: '13px', fontWeight: '700', color: '#0F172A' }}>Upload BIR Certificate of Registration</span>
+              <MdUploadFile size={28} color="var(--icon-color)" />
+              <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-main)' }}>Upload BIR Certificate of Registration</span>
               <input type="file" accept="image/*,.pdf" onChange={(e) => handleFileSelect(e, 'bir')} disabled={loading} style={{ display: 'none' }} />
             </label>
           </div>
@@ -296,7 +295,7 @@ function VerificationPanel({ store, userId, onStoreUpdate }) {
       {(!existingDti || !existingBir) && (
         <button 
           onClick={handleSubmitVerification} disabled={loading || (!dtiFile && !birFile)} 
-          style={{ width: '100%', padding: '14px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '8px', fontWeight: '800', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: loading || (!dtiFile && !birFile) ? 'not-allowed' : 'pointer', opacity: (!dtiFile && !birFile) ? 0.5 : 1, transition: 'all 0.2s' }}
+          style={{ width: '100%', padding: '14px', backgroundColor: 'var(--brand-primary)', color: 'white', border: 'none', borderRadius: '8px', fontWeight: '800', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', cursor: loading || (!dtiFile && !birFile) ? 'not-allowed' : 'pointer', opacity: (!dtiFile && !birFile) ? 0.5 : 1, transition: 'all 0.2s' }}
         >
           {loading ? 'Processing Documents...' : 'Submit Documents for Verification'}
         </button>
@@ -361,7 +360,7 @@ export default function DashboardPage() {
   const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
   const [croppedPreview, setCroppedPreview] = useState(null);
 
-  const [storeTheme, setStoreTheme] = useState({ primaryColor: '#2563EB', layout: 'grid' });
+  const [storeTheme, setStoreTheme] = useState({ primaryColor: 'var(--brand-primary)', layout: 'grid' });
   const [isSavingTheme, setIsSavingTheme] = useState(false);
 
   const [inviteEmail, setInviteEmail] = useState('');
@@ -552,7 +551,7 @@ export default function DashboardPage() {
       });
       if (editStoreData.lng && editStoreData.lat) {
         const el = document.createElement('div');
-        el.innerHTML = `<div style="background-color: #2563eb; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); transform: translateY(-12px);"></div>`;
+        el.innerHTML = `<div style="background-color: var(--brand-primary); width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); transform: translateY(-12px);"></div>`;
         editPinRef.current = new mapboxgl.Marker({ element: el, anchor: 'bottom' }).setLngLat([editStoreData.lng, editStoreData.lat]).addTo(editMap.current);
       }
       editMap.current.on('click', async (e) => {
@@ -562,7 +561,7 @@ export default function DashboardPage() {
         setEditStoreData(prev => ({ ...prev, lat, lng, addressText }));
         if (!editPinRef.current) {
           const el = document.createElement('div');
-          el.innerHTML = `<div style="background-color: #2563eb; width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); transform: translateY(-12px);"></div>`;
+          el.innerHTML = `<div style="background-color: var(--brand-primary); width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); transform: translateY(-12px);"></div>`;
           editPinRef.current = new mapboxgl.Marker({ element: el, anchor: 'bottom' }).setLngLat([lng, lat]).addTo(editMap.current);
         } else { editPinRef.current.setLngLat([lng, lat]); }
       });
@@ -941,17 +940,17 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', backgroundColor: '#F8FAFC', padding: '30px' }}>
-        <div style={{ height: '80px', width: '100%', maxWidth: '1000px', margin: '0 auto 30px auto', backgroundColor: '#E2E8F0', borderRadius: '16px', animation: 'pulse 1.5s infinite' }} />
-        <div style={{ height: '320px', width: '100%', maxWidth: '1000px', margin: '0 auto', backgroundColor: '#E2E8F0', borderRadius: '24px', animation: 'pulse 1.5s infinite', marginBottom: '20px' }} />
-        <div style={{ height: '40px', width: '100%', maxWidth: '1000px', margin: '0 auto', backgroundColor: '#E2E8F0', borderRadius: '12px', animation: 'pulse 1.5s infinite', marginBottom: '20px' }} />
-        <div style={{ height: '70px', width: '100%', maxWidth: '1000px', margin: '0 auto', backgroundColor: '#E2E8F0', borderRadius: '16px', animation: 'pulse 1.5s infinite' }} />
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', backgroundColor: 'var(--bg-color)', padding: '30px' }}>
+        <div style={{ height: '80px', width: '100%', maxWidth: '1000px', margin: '0 auto 30px auto', backgroundColor: 'var(--border-color)', borderRadius: '16px', animation: 'pulse 1.5s infinite' }} />
+        <div style={{ height: '320px', width: '100%', maxWidth: '1000px', margin: '0 auto', backgroundColor: 'var(--border-color)', borderRadius: '24px', animation: 'pulse 1.5s infinite', marginBottom: '20px' }} />
+        <div style={{ height: '40px', width: '100%', maxWidth: '1000px', margin: '0 auto', backgroundColor: 'var(--border-color)', borderRadius: '12px', animation: 'pulse 1.5s infinite', marginBottom: '20px' }} />
+        <div style={{ height: '70px', width: '100%', maxWidth: '1000px', margin: '0 auto', backgroundColor: 'var(--border-color)', borderRadius: '16px', animation: 'pulse 1.5s infinite' }} />
       </div>
     );
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', backgroundColor: '#F8FAFC', fontFamily: 'inherit', overflowY: 'auto', position: 'relative' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', backgroundColor: 'var(--bg-color)', fontFamily: 'var(--font-main)', overflowY: 'auto', position: 'relative' }}>
       
       <style>{`.mapboxgl-ctrl-bottom-left, .mapboxgl-ctrl-bottom-right, .mapboxgl-ctrl-logo, .mapboxgl-ctrl-attrib { display: none !important; }`}</style>
 
@@ -978,12 +977,12 @@ export default function DashboardPage() {
             />
           </div>
           
-          <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center', backgroundColor: 'white', padding: '15px 30px', borderRadius: '50px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
-            <span style={{ fontSize: '13px', fontWeight: '800', color: '#475569' }}>Zoom</span>
-            <input type="range" value={zoom} min={1} max={3} step={0.1} onChange={(e) => setZoom(Number(e.target.value))} style={{ width: '150px', accentColor: '#2563EB' }} />
-            <div style={{ width: '1px', height: '24px', backgroundColor: '#E2E8F0', margin: '0 5px' }} />
-            <button onClick={() => { setImageToCrop(null); setZoom(1); }} style={{ padding: '10px 20px', backgroundColor: '#F1F5F9', color: '#475569', border: 'none', borderRadius: '24px', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
-            <button onClick={handleSaveCrop} style={{ padding: '10px 24px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '24px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}><MdCheckCircle size={18} /> Apply Crop</button>
+          <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center', backgroundColor: 'var(--surface-color)', padding: '15px 30px', borderRadius: '50px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
+            <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-muted)' }}>Zoom</span>
+            <input type="range" value={zoom} min={1} max={3} step={0.1} onChange={(e) => setZoom(Number(e.target.value))} style={{ width: '150px', accentColor: 'var(--brand-primary)' }} />
+            <div style={{ width: '1px', height: '24px', backgroundColor: 'var(--border-color)', margin: '0 5px' }} />
+            <button onClick={() => { setImageToCrop(null); setZoom(1); }} style={{ padding: '10px 20px', backgroundColor: 'var(--surface-hover)', color: 'var(--text-muted)', border: 'none', borderRadius: '24px', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
+            <button onClick={handleSaveCrop} style={{ padding: '10px 24px', backgroundColor: 'var(--brand-primary)', color: 'white', border: 'none', borderRadius: '24px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}><MdCheckCircle size={18} /> Apply Crop</button>
           </div>
         </div>
       )}
@@ -992,23 +991,23 @@ export default function DashboardPage() {
       
       {isVoucherModalOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
-          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '20px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
-            <h2 style={{ margin: '0 0 15px 0', fontSize: '20px', color: '#0F172A', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}><MdLocalOffer color="#2563EB" /> Redeem Free Days</h2>
+          <div style={{ backgroundColor: 'var(--surface-color)', padding: '30px', borderRadius: '20px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+            <h2 style={{ margin: '0 0 15px 0', fontSize: '20px', color: 'var(--text-main)', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}><MdLocalOffer color="var(--brand-primary)" /> Redeem Free Days</h2>
             <input 
               type="text" 
               placeholder="ENTER FREE DAYS CODE" 
               value={voucherCode} 
               onChange={e => setVoucherCode(e.target.value.toUpperCase())} 
-              style={{ width: '100%', padding: '12px', border: '1px solid #E2E8F0', borderRadius: '10px', boxSizing: 'border-box', marginBottom: '15px', textTransform: 'uppercase' }} 
+              style={{ width: '100%', padding: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '10px', boxSizing: 'border-box', marginBottom: '15px', textTransform: 'uppercase' }} 
             />
             {voucherMessage && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '15px', fontSize: '13px', color: voucherMessage.type === 'success' ? '#059669' : '#DC2626', fontWeight: 'bold' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '15px', fontSize: '13px', color: voucherMessage.type === 'success' ? '#10B981' : '#EF4444', fontWeight: 'bold' }}>
                 {voucherMessage.type === 'success' ? <MdCheckCircle size={16} /> : <MdCancel size={16} />} {voucherMessage.text}
               </div>
             )}
             <div style={{ display: 'flex', gap: '10px' }}>
-              <button onClick={() => setIsVoucherModalOpen(false)} style={{ flex: 1, padding: '12px', backgroundColor: '#F1F5F9', color: '#475569', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
-              <button onClick={handleRedeemVoucher} disabled={voucherLoading || !voucherCode.trim()} style={{ flex: 1, padding: '12px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: voucherLoading || !voucherCode.trim() ? 'not-allowed' : 'pointer' }}>{voucherLoading ? 'Redeeming...' : 'Redeem'}</button>
+              <button onClick={() => setIsVoucherModalOpen(false)} style={{ flex: 1, padding: '12px', backgroundColor: 'var(--surface-hover)', color: 'var(--text-main)', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
+              <button onClick={handleRedeemVoucher} disabled={voucherLoading || !voucherCode.trim()} style={{ flex: 1, padding: '12px', backgroundColor: 'var(--brand-primary)', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: voucherLoading || !voucherCode.trim() ? 'not-allowed' : 'pointer' }}>{voucherLoading ? 'Redeeming...' : 'Redeem'}</button>
             </div>
           </div>
         </div>
@@ -1016,38 +1015,38 @@ export default function DashboardPage() {
 
       {isUpgradeModalOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
-          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '20px', width: '100%', maxWidth: '450px', textAlign: 'center', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
-            <h2 style={{ margin: '0 0 10px 0', fontSize: '24px', color: '#0F172A', fontWeight: '900', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>Unlock Premium <MdRocketLaunch color="#2563EB" /></h2>
-            <p style={{ color: '#64748B', marginBottom: '25px', fontSize: '14px', lineHeight: '1.5' }}>Get full access to edit your menu, customize your store branding, and accept online orders.</p>
+          <div style={{ backgroundColor: 'var(--surface-color)', padding: '30px', borderRadius: '20px', width: '100%', maxWidth: '450px', textAlign: 'center', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+            <h2 style={{ margin: '0 0 10px 0', fontSize: '24px', color: 'var(--text-main)', fontWeight: '900', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>Unlock Premium <MdRocketLaunch color="var(--brand-primary)" /></h2>
+            <p style={{ color: 'var(--text-muted)', marginBottom: '25px', fontSize: '14px', lineHeight: '1.5' }}>Get full access to edit your menu, customize your store branding, and accept online orders.</p>
             
             <div style={{ marginBottom: '15px', textAlign: 'left' }}>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#64748B', marginBottom: '8px' }}>Have a percentage or fixed discount code?</label>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '8px' }}>Have a percentage or fixed discount code?</label>
               <input 
                 type="text" 
                 placeholder="e.g. SUMMER20" 
                 value={checkoutPromoCode} 
                 onChange={e => setCheckoutPromoCode(e.target.value.toUpperCase())} 
-                style={{ width: '100%', padding: '12px', border: '1px solid #E2E8F0', borderRadius: '10px', boxSizing: 'border-box', textTransform: 'uppercase' }} 
+                style={{ width: '100%', padding: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '10px', boxSizing: 'border-box', textTransform: 'uppercase' }} 
               />
             </div>
 
-            <div style={{ marginBottom: '15px', fontSize: '11px', color: '#475569', lineHeight: '1.4', textAlign: 'center', padding: '0 10px' }}>
-              By proceeding with this payment, you acknowledge that you have read and agree to our strictly non-refundable payment policy as outlined in our <a href="/terms" target="_blank" style={{ color: '#2563EB', textDecoration: 'underline' }}>Terms of Service</a>.
+            <div style={{ marginBottom: '15px', fontSize: '11px', color: 'var(--text-muted)', lineHeight: '1.4', textAlign: 'center', padding: '0 10px' }}>
+              By proceeding with this payment, you acknowledge that you have read and agree to our strictly non-refundable payment policy as outlined in our <a href="/terms" target="_blank" style={{ color: 'var(--brand-primary)', textDecoration: 'underline' }}>Terms of Service</a>.
             </div>
 
-            <button onClick={handleProceedToPayment} disabled={isProcessingPayment} style={{ width: '100%', padding: '14px', backgroundColor: '#F8FAFC', color: '#0F172A', border: '1px solid #E2E8F0', borderRadius: '12px', fontWeight: 'bold', cursor: isProcessingPayment ? 'not-allowed' : 'pointer', fontSize: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+            <button onClick={handleProceedToPayment} disabled={isProcessingPayment} style={{ width: '100%', padding: '14px', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '12px', fontWeight: 'bold', cursor: isProcessingPayment ? 'not-allowed' : 'pointer', fontSize: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
               <MdPayment size={18} /> {isProcessingPayment ? 'Redirecting...' : 'Pay via GCash / Maya'}
             </button>
             
-            <div style={{ margin: '20px 0', borderTop: '1px solid #E2E8F0', position: 'relative' }}>
-               <span style={{ position: 'absolute', top: '-10px', left: '50%', transform: 'translateX(-50%)', backgroundColor: 'white', padding: '0 10px', fontSize: '12px', color: '#94A3B8', fontWeight: 'bold' }}>OR</span>
+            <div style={{ margin: '20px 0', borderTop: '1px solid var(--border-color)', position: 'relative' }}>
+               <span style={{ position: 'absolute', top: '-10px', left: '50%', transform: 'translateX(-50%)', backgroundColor: 'var(--surface-color)', padding: '0 10px', fontSize: '12px', color: 'var(--text-muted)', fontWeight: 'bold' }}>OR</span>
             </div>
 
-            <button onClick={() => { setIsUpgradeModalOpen(false); setIsVoucherModalOpen(true); }} style={{ width: '100%', padding: '14px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer', marginBottom: '5px', fontSize: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+            <button onClick={() => { setIsUpgradeModalOpen(false); setIsVoucherModalOpen(true); }} style={{ width: '100%', padding: '14px', backgroundColor: 'var(--brand-primary)', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer', marginBottom: '5px', fontSize: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
               <MdLocalOffer size={18} /> Claim Free Days
             </button>
             
-            <button onClick={() => setIsUpgradeModalOpen(false)} style={{ marginTop: '15px', background: 'none', border: 'none', color: '#94A3B8', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
+            <button onClick={() => setIsUpgradeModalOpen(false)} style={{ marginTop: '15px', background: 'none', border: 'none', color: 'var(--text-muted)', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
           </div>
         </div>
       )}
@@ -1067,29 +1066,29 @@ export default function DashboardPage() {
 
       {isEditStoreModalOpen && activeStore && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
-          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '20px', width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+          <div style={{ backgroundColor: 'var(--surface-color)', padding: '30px', borderRadius: '20px', width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h2 style={{ margin: 0, fontSize: '20px', color: '#0F172A', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}><MdSettings color="#2563EB" /> Edit Store Profile</h2>
-              <button onClick={() => setIsEditStoreModalOpen(false)} style={{ background: 'none', border: 'none', color: '#94A3B8', fontSize: '24px', cursor: 'pointer', lineHeight: '1' }}><MdClose /></button>
+              <h2 style={{ margin: 0, fontSize: '20px', color: 'var(--text-main)', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}><MdSettings color="var(--brand-primary)" /> Edit Store Profile</h2>
+              <button onClick={() => setIsEditStoreModalOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '24px', cursor: 'pointer', lineHeight: '1' }}><MdClose /></button>
             </div>
             
             <form onSubmit={handleUpdateSettings} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '5px' }}>Store Name</label>
-                <input type="text" placeholder="Store Name" required value={editStoreData.store_name} onChange={(e) => setEditStoreData({...editStoreData, store_name: e.target.value})} style={{ padding: '12px', border: '1px solid #E2E8F0', borderRadius: '10px', width: '100%', boxSizing: 'border-box' }} />
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '5px' }}>Store Name</label>
+                <input type="text" placeholder="Store Name" required value={editStoreData.store_name} onChange={(e) => setEditStoreData({...editStoreData, store_name: e.target.value})} style={{ padding: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '10px', width: '100%', boxSizing: 'border-box' }} />
               </div>
               
               <div style={{ display: 'flex', gap: '10px' }}>
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '5px' }}>Category</label>
-                  <select required value={editStoreData.store_category} onChange={(e) => setEditStoreData({...editStoreData, store_category: e.target.value, industry: ''})} style={{ width: '100%', padding: '12px', border: '1px solid #E2E8F0', borderRadius: '10px', boxSizing: 'border-box', backgroundColor: 'white' }}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '5px' }}>Category</label>
+                  <select required value={editStoreData.store_category} onChange={(e) => setEditStoreData({...editStoreData, store_category: e.target.value, industry: ''})} style={{ width: '100%', padding: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '10px', boxSizing: 'border-box' }}>
                     <option value="" disabled>Select Category</option>
                     {Object.keys(BUSINESS_TAXONOMY).map(cat => <option key={cat} value={cat}>{cat}</option>)}
                   </select>
                 </div>
                 <div style={{ flex: 1 }}>
-                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '5px' }}>Industry</label>
-                  <select required value={editStoreData.industry} onChange={(e) => setEditStoreData({...editStoreData, industry: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid #E2E8F0', borderRadius: '10px', boxSizing: 'border-box', backgroundColor: 'white' }} disabled={!editStoreData.store_category}>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '5px' }}>Industry</label>
+                  <select required value={editStoreData.industry} onChange={(e) => setEditStoreData({...editStoreData, industry: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '10px', boxSizing: 'border-box' }} disabled={!editStoreData.store_category}>
                     <option value="" disabled>Select Industry</option>
                     {editStoreData.store_category && BUSINESS_TAXONOMY[editStoreData.store_category]?.map(ind => <option key={ind} value={ind}>{ind}</option>)}
                   </select>
@@ -1097,54 +1096,54 @@ export default function DashboardPage() {
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '5px' }}>Store Description</label>
-                <textarea placeholder="Store Description (Optional)" value={editStoreData.description} onChange={(e) => setEditStoreData({...editStoreData, description: e.target.value})} style={{ padding: '12px', border: '1px solid #E2E8F0', borderRadius: '10px', width: '100%', boxSizing: 'border-box', minHeight: '80px', fontFamily: 'inherit' }} />
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '5px' }}>Store Description</label>
+                <textarea placeholder="Store Description (Optional)" value={editStoreData.description} onChange={(e) => setEditStoreData({...editStoreData, description: e.target.value})} style={{ padding: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '10px', width: '100%', boxSizing: 'border-box', minHeight: '80px', fontFamily: 'inherit' }} />
               </div>
               
-              <div style={{ padding: '15px', backgroundColor: '#F8FAFC', borderRadius: '12px', border: '1px solid #E2E8F0' }}>
-                <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: '#374151' }}>Contact Details</h4>
+              <div style={{ padding: '15px', backgroundColor: 'var(--surface-hover)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
+                <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: 'var(--text-main)' }}>Contact Details</h4>
                 
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', marginBottom: editStoreData.showPhone ? '10px' : '5px', fontWeight: 'bold' }}><input type="checkbox" checked={editStoreData.showPhone} onChange={(e) => setEditStoreData({...editStoreData, showPhone: e.target.checked})} /> Show Phone Number</label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text-main)', cursor: 'pointer', marginBottom: editStoreData.showPhone ? '10px' : '5px', fontWeight: 'bold' }}><input type="checkbox" checked={editStoreData.showPhone} onChange={(e) => setEditStoreData({...editStoreData, showPhone: e.target.checked})} /> Show Phone Number</label>
                 {editStoreData.showPhone && (
                   <div style={{ marginBottom: '15px' }}>
-                    <input type="tel" pattern="[0-9]*" placeholder="e.g. 09123456789" value={editStoreData.phone} onChange={(e) => setEditStoreData({...editStoreData, phone: e.target.value.replace(/\D/g, '')})} style={{ padding: '10px', border: '1px solid #E2E8F0', borderRadius: '8px', width: '100%', boxSizing: 'border-box' }} />
+                    <input type="tel" pattern="[0-9]*" placeholder="e.g. 09123456789" value={editStoreData.phone} onChange={(e) => setEditStoreData({...editStoreData, phone: e.target.value.replace(/\D/g, '')})} style={{ padding: '10px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '8px', width: '100%', boxSizing: 'border-box' }} />
                   </div>
                 )}
                 
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', marginBottom: editStoreData.showEmail ? '10px' : '5px', fontWeight: 'bold' }}><input type="checkbox" checked={editStoreData.showEmail} onChange={(e) => setEditStoreData({...editStoreData, showEmail: e.target.checked})} /> Show Email</label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text-main)', cursor: 'pointer', marginBottom: editStoreData.showEmail ? '10px' : '5px', fontWeight: 'bold' }}><input type="checkbox" checked={editStoreData.showEmail} onChange={(e) => setEditStoreData({...editStoreData, showEmail: e.target.checked})} /> Show Email</label>
                 {editStoreData.showEmail && (
                   <div style={{ marginBottom: '15px' }}>
-                    <input type="email" placeholder="Business Email" value={editStoreData.email} onChange={(e) => setEditStoreData({...editStoreData, email: e.target.value})} style={{ padding: '10px', border: '1px solid #E2E8F0', borderRadius: '8px', width: '100%', boxSizing: 'border-box' }} />
+                    <input type="email" placeholder="Business Email" value={editStoreData.email} onChange={(e) => setEditStoreData({...editStoreData, email: e.target.value})} style={{ padding: '10px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '8px', width: '100%', boxSizing: 'border-box' }} />
                   </div>
                 )}
 
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', marginBottom: editStoreData.showWebsite ? '10px' : '5px', fontWeight: 'bold' }}><input type="checkbox" checked={editStoreData.showWebsite} onChange={(e) => setEditStoreData({...editStoreData, showWebsite: e.target.checked})} /> Show Website Link</label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text-main)', cursor: 'pointer', marginBottom: editStoreData.showWebsite ? '10px' : '5px', fontWeight: 'bold' }}><input type="checkbox" checked={editStoreData.showWebsite} onChange={(e) => setEditStoreData({...editStoreData, showWebsite: e.target.checked})} /> Show Website Link</label>
                 {editStoreData.showWebsite && (
                   <div style={{ marginBottom: '15px' }}>
-                    <input type="url" placeholder="https://yourstore.com" value={editStoreData.website} onChange={(e) => setEditStoreData({...editStoreData, website: e.target.value})} style={{ padding: '10px', border: '1px solid #E2E8F0', borderRadius: '8px', width: '100%', boxSizing: 'border-box' }} />
+                    <input type="url" placeholder="https://yourstore.com" value={editStoreData.website} onChange={(e) => setEditStoreData({...editStoreData, website: e.target.value})} style={{ padding: '10px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '8px', width: '100%', boxSizing: 'border-box' }} />
                   </div>
                 )}
                 
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', cursor: 'pointer', marginBottom: editStoreData.showAddress ? '10px' : '0', fontWeight: 'bold' }}><input type="checkbox" checked={editStoreData.showAddress} onChange={async (e) => { const checked = e.target.checked; let text = editStoreData.addressText; if (checked && !text && editStoreData.lng) text = await fetchAddressFromCoords(editStoreData.lng, editStoreData.lat); setEditStoreData({...editStoreData, showAddress: checked, addressText: text}); }} /> Show Exact Street Address</label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text-main)', cursor: 'pointer', marginBottom: editStoreData.showAddress ? '10px' : '0', fontWeight: 'bold' }}><input type="checkbox" checked={editStoreData.showAddress} onChange={async (e) => { const checked = e.target.checked; let text = editStoreData.addressText; if (checked && !text && editStoreData.lng) text = await fetchAddressFromCoords(editStoreData.lng, editStoreData.lat); setEditStoreData({...editStoreData, showAddress: checked, addressText: text}); }} /> Show Exact Street Address</label>
                 {editStoreData.showAddress && (
                   <div style={{ marginTop: '10px' }}>
-                    <input type="text" placeholder="Auto-detects when you drop a pin below" value={editStoreData.addressText} onChange={(e) => setEditStoreData({...editStoreData, addressText: e.target.value})} style={{ padding: '10px', border: '1px solid #E2E8F0', borderRadius: '8px', width: '100%', boxSizing: 'border-box' }} />
+                    <input type="text" placeholder="Auto-detects when you drop a pin below" value={editStoreData.addressText} onChange={(e) => setEditStoreData({...editStoreData, addressText: e.target.value})} style={{ padding: '10px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '8px', width: '100%', boxSizing: 'border-box' }} />
                   </div>
                 )}
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#475569', marginBottom: '8px' }}>Store Location (Drag map to move pin)</label>
-                <div style={{ position: 'relative', width: '100%', height: '240px', borderRadius: '12px', overflow: 'hidden', border: '1px solid #E2E8F0' }}>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '8px' }}>Store Location (Drag map to move pin)</label>
+                <div style={{ position: 'relative', width: '100%', height: '240px', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
                   <div ref={editMapContainer} style={{ position: 'absolute', inset: 0 }} />
                   <div style={{ position: 'absolute', bottom: '10px', right: '10px', zIndex: 10 }}>
-                    <button type="button" onClick={() => handleLocateMerchant(editMap, true)} style={{ width: '36px', height: '36px', backgroundColor: '#FFFFFF', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', border: 'none', boxShadow: '0 4px 10px rgba(0,0,0,0.15)', cursor: 'pointer' }}><MdOutlineNearMe size={20} color="#2563EB" style={{ transform: 'translate(-1px, 1px)' }} /></button>
+                    <button type="button" onClick={() => handleLocateMerchant(editMap, true)} style={{ width: '36px', height: '36px', backgroundColor: 'var(--surface-color)', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', border: 'none', boxShadow: '0 4px 10px rgba(0,0,0,0.15)', cursor: 'pointer' }}><MdOutlineNearMe size={20} color="var(--brand-primary)" style={{ transform: 'translate(-1px, 1px)' }} /></button>
                   </div>
                 </div>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', gap: '15px' }}>
-                 <button type="submit" disabled={isUploading} style={{ flex: 1, padding: '14px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: isUploading ? 'not-allowed' : 'pointer' }}>
+                 <button type="submit" disabled={isUploading} style={{ flex: 1, padding: '14px', backgroundColor: 'var(--brand-primary)', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: isUploading ? 'not-allowed' : 'pointer' }}>
                    {isUploading ? 'Saving...' : 'Save Profile Changes'}
                  </button>
                  {activeStore.merchant_id === user?.id && (
@@ -1160,38 +1159,38 @@ export default function DashboardPage() {
 
       {isItemModalOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
-          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '20px', width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+          <div style={{ backgroundColor: 'var(--surface-color)', padding: '30px', borderRadius: '20px', width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h2 style={{ margin: 0, fontSize: '20px', color: '#0F172A', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>{editingItemId ? <><MdEdit color="#2563EB" /> Edit Item</> : <><MdAdd color="#2563EB" /> Add New Item</>}</h2>
-              <button onClick={closeItemModal} style={{ background: 'none', border: 'none', color: '#94A3B8', fontSize: '24px', cursor: 'pointer', lineHeight: '1' }}><MdClose /></button>
+              <h2 style={{ margin: 0, fontSize: '20px', color: 'var(--text-main)', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>{editingItemId ? <><MdEdit color="var(--brand-primary)" /> Edit Item</> : <><MdAdd color="var(--brand-primary)" /> Add New Item</>}</h2>
+              <button onClick={closeItemModal} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '24px', cursor: 'pointer', lineHeight: '1' }}><MdClose /></button>
             </div>
             <form onSubmit={handleAddItem} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
               <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-                <div style={{ flex: '2 1 200px' }}><label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748B', marginBottom: '4px' }}>Item Name</label><input type="text" placeholder="Item Name" required value={newItem.name} onChange={(e) => setNewItem({...newItem, name: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid #E2E8F0', borderRadius: '10px', boxSizing: 'border-box' }} /></div>
-                <div style={{ flex: '1 1 100px' }}><label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748B', marginBottom: '4px' }}>Price (₱)</label><input type="number" step="0.01" placeholder="Price" required value={newItem.price} onChange={(e) => setNewItem({...newItem, price: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid #E2E8F0', borderRadius: '10px', boxSizing: 'border-box' }} /></div>
+                <div style={{ flex: '2 1 200px' }}><label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '4px' }}>Item Name</label><input type="text" placeholder="Item Name" required value={newItem.name} onChange={(e) => setNewItem({...newItem, name: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '10px', boxSizing: 'border-box' }} /></div>
+                <div style={{ flex: '1 1 100px' }}><label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '4px' }}>Price (₱)</label><input type="number" step="0.01" placeholder="Price" required value={newItem.price} onChange={(e) => setNewItem({...newItem, price: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '10px', boxSizing: 'border-box' }} /></div>
               </div>
               <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-                <div style={{ flex: '2 1 200px' }}><label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748B', marginBottom: '4px' }}>Description (Optional)</label><input type="text" placeholder="Brief details about the item..." value={newItem.description} onChange={(e) => setNewItem({...newItem, description: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid #E2E8F0', borderRadius: '10px', boxSizing: 'border-box' }} /></div>
+                <div style={{ flex: '2 1 200px' }}><label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '4px' }}>Description (Optional)</label><input type="text" placeholder="Brief details about the item..." value={newItem.description} onChange={(e) => setNewItem({...newItem, description: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '10px', boxSizing: 'border-box' }} /></div>
                 <div style={{ flex: '1 1 150px' }}>
-                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#64748B', marginBottom: '4px' }}>Category Menu</label>
-                  <input type="text" list="category-suggestions" placeholder="Category" required value={newItem.category} onChange={(e) => setNewItem({...newItem, category: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid #E2E8F0', borderRadius: '10px', boxSizing: 'border-box' }} />
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '4px' }}>Category Menu</label>
+                  <input type="text" list="category-suggestions" placeholder="Category" required value={newItem.category} onChange={(e) => setNewItem({...newItem, category: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '10px', boxSizing: 'border-box' }} />
                   <datalist id="category-suggestions"><option value="General" /><option value="Best Sellers" /><option value="Promos" /></datalist>
                 </div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', padding: '15px', backgroundColor: '#F8FAFC', border: '1px dashed #CBD5E1', borderRadius: '12px', flexWrap: 'wrap', gap: '15px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', padding: '15px', backgroundColor: 'var(--bg-color)', border: '1px dashed var(--border-color)', borderRadius: '12px', flexWrap: 'wrap', gap: '15px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                   {croppedPreview ? (
                     <div style={{ position: 'relative' }}>
-                      <img src={croppedPreview} alt="Preview" style={{ width: '120px', height: '90px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #E2E8F0' }} />
+                      <img src={croppedPreview} alt="Preview" style={{ width: '120px', height: '90px', objectFit: 'cover', borderRadius: '8px', border: '1px solid var(--border-color)' }} />
                       <button type="button" onClick={() => { setCroppedPreview(null); setNewItem({...newItem, imageFile: null}) }} style={{ position: 'absolute', top: '-8px', right: '-8px', background: '#EF4444', color: 'white', border: 'none', borderRadius: '50%', width: '20px', height: '20px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><MdClose /></button>
                     </div>
                   ) : (
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      <div><label htmlFor="item-upload" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 12px', backgroundColor: 'white', border: '1px solid #E2E8F0', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', color: '#475569' }}><MdCameraAlt size={16} color="#2563EB" /> Upload Image</label><input id="item-upload" type="file" accept="image/*" onChange={onItemFileSelect} style={{ display: 'none' }} /></div>
+                      <div><label htmlFor="item-upload" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 12px', backgroundColor: 'var(--surface-color)', border: '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)' }}><MdCameraAlt size={16} color="var(--brand-primary)" /> Upload Image</label><input id="item-upload" type="file" accept="image/*" onChange={onItemFileSelect} style={{ display: 'none' }} /></div>
                     </div>
                   )}
                 </div>
-                <button type="submit" disabled={isUploading} style={{ padding: '10px 24px', backgroundColor: editingItemId ? '#F59E0B' : '#2563EB', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: isUploading ? 'not-allowed' : 'pointer' }}>{isUploading ? 'Saving...' : (editingItemId ? 'Update Item' : 'Save New Item')}</button>
+                <button type="submit" disabled={isUploading} style={{ padding: '10px 24px', backgroundColor: editingItemId ? '#F59E0B' : 'var(--brand-primary)', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: isUploading ? 'not-allowed' : 'pointer' }}>{isUploading ? 'Saving...' : (editingItemId ? 'Update Item' : 'Save New Item')}</button>
               </div>
             </form>
           </div>
@@ -1200,15 +1199,15 @@ export default function DashboardPage() {
 
       {isDeleteStoreModalOpen && activeStore && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
-          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '20px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+          <div style={{ backgroundColor: 'var(--surface-color)', padding: '30px', borderRadius: '20px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
             <h2 style={{ margin: '0 0 15px 0', fontSize: '20px', color: '#DC2626', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}><MdWarning /> Delete Store</h2>
-            <p style={{ margin: '0 0 20px 0', color: '#475569', fontSize: '14px', lineHeight: '1.5' }}>This action cannot be undone. This will permanently delete <strong>{activeStore.store_name}</strong> and all of its items.</p>
+            <p style={{ margin: '0 0 20px 0', color: 'var(--text-muted)', fontSize: '14px', lineHeight: '1.5' }}>This action cannot be undone. This will permanently delete <strong>{activeStore.store_name}</strong> and all of its items.</p>
             <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#64748B', marginBottom: '8px' }}>Type <strong style={{ color: '#0F172A' }}>{activeStore.store_name}</strong> to confirm:</label>
-              <input type="text" value={deleteConfirmationText} onChange={(e) => setDeleteConfirmationText(e.target.value)} style={{ padding: '12px', border: '1px solid #E2E8F0', borderRadius: '10px', width: '100%', boxSizing: 'border-box' }} />
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '8px' }}>Type <strong style={{ color: 'var(--text-main)' }}>{activeStore.store_name}</strong> to confirm:</label>
+              <input type="text" value={deleteConfirmationText} onChange={(e) => setDeleteConfirmationText(e.target.value)} style={{ padding: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '10px', width: '100%', boxSizing: 'border-box' }} />
             </div>
             <div style={{ display: 'flex', gap: '10px' }}>
-              <button onClick={() => setIsDeleteStoreModalOpen(false)} style={{ flex: 1, padding: '12px', backgroundColor: '#F1F5F9', color: '#475569', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
+              <button onClick={() => setIsDeleteStoreModalOpen(false)} style={{ flex: 1, padding: '12px', backgroundColor: 'var(--surface-hover)', color: 'var(--text-main)', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
               <button onClick={handleDeleteStore} disabled={deleteConfirmationText !== activeStore.store_name || isUploading} style={{ flex: 1, padding: '12px', backgroundColor: '#DC2626', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: deleteConfirmationText !== activeStore.store_name || isUploading ? 'not-allowed' : 'pointer', opacity: deleteConfirmationText !== activeStore.store_name ? 0.5 : 1 }}>{isUploading ? 'Deleting...' : 'Delete Store'}</button>
             </div>
           </div>
@@ -1217,29 +1216,29 @@ export default function DashboardPage() {
 
       {isQrModalOpen && activeStore && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
-          <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '24px', width: '100%', maxWidth: '350px', textAlign: 'center', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '10px' }}><button onClick={() => setIsQrModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8' }}><MdClose size={24} /></button></div>
-            <h2 style={{ margin: '0 0 5px 0', fontSize: '20px', fontWeight: '900', color: '#0F172A' }}>Share your Store</h2>
-            <p style={{ margin: '0 0 20px 0', color: '#64748B', fontSize: '14px' }}>Print this code for customers to instantly access your digital menu and leave reviews.</p>
-            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '25px', padding: '20px', backgroundColor: '#F8FAFC', borderRadius: '16px', border: '1px solid #E2E8F0' }}>
+          <div style={{ backgroundColor: 'var(--surface-color)', padding: '30px', borderRadius: '24px', width: '100%', maxWidth: '350px', textAlign: 'center', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '10px' }}><button onClick={() => setIsQrModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><MdClose size={24} /></button></div>
+            <h2 style={{ margin: '0 0 5px 0', fontSize: '20px', fontWeight: '900', color: 'var(--text-main)' }}>Share your Store</h2>
+            <p style={{ margin: '0 0 20px 0', color: 'var(--text-muted)', fontSize: '14px' }}>Print this code for customers to instantly access your digital menu and leave reviews.</p>
+            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '25px', padding: '20px', backgroundColor: 'var(--bg-color)', borderRadius: '16px', border: '1px solid var(--border-color)' }}>
               <QRCodeCanvas id="qr-code-canvas" value={`${window.location.origin}/store/${activeStore.id}`} size={200} level={"H"} includeMargin={true} />
             </div>
-            <button onClick={downloadQRCode} style={{ width: '100%', padding: '14px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px' }}>Download QR Image</button>
+            <button onClick={downloadQRCode} style={{ width: '100%', padding: '14px', backgroundColor: 'var(--brand-primary)', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer', fontSize: '15px' }}>Download QR Image</button>
           </div>
         </div>
       )}
 
       {/* --- HEADER BAR --- */}
-      <div style={{ height: '70px', flexShrink: 0, boxSizing: 'border-box', zIndex: 40, backgroundColor: '#FFFFFF', padding: '0 30px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #E2E8F0', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
+      <div style={{ height: '70px', flexShrink: 0, boxSizing: 'border-box', zIndex: 40, backgroundColor: 'var(--surface-color)', padding: '0 30px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px', overflow: 'hidden', flexGrow: 1, marginRight: '20px' }}>
-          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '900', color: '#0F172A', paddingRight: '15px', borderRight: '1px solid #E2E8F0', flexShrink: 0 }}>Merchant's Hub</h2>
+          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '900', color: 'var(--text-main)', paddingRight: '15px', borderRight: '1px solid var(--border-color)', flexShrink: 0 }}>Merchant's Hub</h2>
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center', overflow: 'hidden', flexGrow: 1 }}>
-            {showStoreLeft && <button onClick={() => storeScrollRef.current.scrollBy({ left: -200, behavior: 'smooth' })} style={{ position: 'absolute', left: 0, zIndex: 5, background: 'linear-gradient(to right, white 70%, transparent)', border: 'none', height: '100%', padding: '0 10px 0 0', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><MdChevronLeft size={24} color="#0F172A" /></button>}
+            {showStoreLeft && <button onClick={() => storeScrollRef.current.scrollBy({ left: -200, behavior: 'smooth' })} style={{ position: 'absolute', left: 0, zIndex: 5, background: 'linear-gradient(to right, var(--surface-color) 70%, transparent)', border: 'none', height: '100%', padding: '0 10px 0 0', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><MdChevronLeft size={24} color="var(--text-main)" /></button>}
             <div ref={storeScrollRef} onScroll={checkHeaderScroll} onMouseDown={handleHeaderMouseDown} onMouseLeave={handleHeaderMouseLeave} onMouseUp={handleHeaderMouseUp} onMouseMove={handleHeaderMouseMove} style={{ display: 'flex', gap: '8px', overflowX: 'auto', scrollbarWidth: 'none', padding: '5px 0', width: '100%', cursor: 'grab', userSelect: 'none' }}>
-              {stores.map(s => <button key={s.id} onClick={() => setActiveStore(s)} style={{ flexShrink: 0, padding: '8px 16px', borderRadius: '20px', backgroundColor: activeStore?.id === s.id ? '#2563EB' : 'transparent', color: activeStore?.id === s.id ? 'white' : '#64748B', border: activeStore?.id === s.id ? '1px solid transparent' : '1px solid #E2E8F0', fontWeight: '700', fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap', boxShadow: activeStore?.id === s.id ? '0 4px 10px rgba(37,99,235,0.2)' : 'none' }}>{s.store_name}</button>)}
-              <button onClick={() => navigate('/create-business')} style={{ flexShrink: 0, padding: '8px 16px', borderRadius: '20px', backgroundColor: '#EFF6FF', color: '#2563EB', border: '1px dashed #BFDBFE', fontWeight: '700', fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '4px' }}><MdAdd size={16} /> Add Store</button>
+              {stores.map(s => <button key={s.id} onClick={() => setActiveStore(s)} style={{ flexShrink: 0, padding: '8px 16px', borderRadius: '20px', backgroundColor: activeStore?.id === s.id ? 'var(--brand-primary)' : 'transparent', color: activeStore?.id === s.id ? 'white' : 'var(--text-muted)', border: activeStore?.id === s.id ? '1px solid transparent' : '1px solid var(--border-color)', fontWeight: '700', fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap', boxShadow: activeStore?.id === s.id ? '0 4px 10px rgba(37,99,235,0.2)' : 'none' }}>{s.store_name}</button>)}
+              <button onClick={() => navigate('/create-business')} style={{ flexShrink: 0, padding: '8px 16px', borderRadius: '20px', backgroundColor: 'var(--surface-hover)', color: 'var(--brand-primary)', border: '1px dashed var(--brand-primary)', fontWeight: '700', fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '4px' }}><MdAdd size={16} /> Add Store</button>
             </div>
-            {showStoreRight && <button onClick={() => storeScrollRef.current.scrollBy({ left: 200, behavior: 'smooth' })} style={{ position: 'absolute', right: 0, zIndex: 5, background: 'linear-gradient(to left, white 70%, transparent)', border: 'none', height: '100%', padding: '0 0 0 10px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><MdChevronRight size={24} color="#0F172A" /></button>}
+            {showStoreRight && <button onClick={() => storeScrollRef.current.scrollBy({ left: 200, behavior: 'smooth' })} style={{ position: 'absolute', right: 0, zIndex: 5, background: 'linear-gradient(to left, var(--surface-color) 70%, transparent)', border: 'none', height: '100%', padding: '0 0 0 10px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><MdChevronRight size={24} color="var(--text-main)" /></button>}
           </div>
         </div>
         <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#EF4444', fontWeight: '700', cursor: 'pointer', fontSize: '14px', flexShrink: 0 }}>Sign Out</button>
@@ -1251,23 +1250,22 @@ export default function DashboardPage() {
         
         {stores.length === 0 && (
            <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
-              <div style={{ width: '80px', height: '80px', backgroundColor: '#EFF6FF', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: '20px' }}><MdStorefront size={40} color="#2563EB" /></div>
-              <h2 style={{ margin: '0 0 10px 0', color: '#0F172A', fontSize: '24px', fontWeight: '900' }}>Welcome to LocalLook Hub</h2>
-              <button onClick={() => navigate('/create-business')} style={{ padding: '14px 28px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '800', fontSize: '15px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 15px rgba(37, 99, 235, 0.2)' }}><MdAdd size={20} /> Register a Store</button>
+              <div style={{ width: '80px', height: '80px', backgroundColor: 'var(--surface-hover)', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: '20px' }}><MdStorefront size={40} color="var(--brand-primary)" /></div>
+              <h2 style={{ margin: '0 0 10px 0', color: 'var(--text-main)', fontSize: '24px', fontWeight: '900' }}>Welcome to LocalLook Hub</h2>
+              <button onClick={() => navigate('/create-business')} style={{ padding: '14px 28px', backgroundColor: 'var(--brand-primary)', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '800', fontSize: '15px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 15px rgba(37, 99, 235, 0.2)' }}><MdAdd size={20} /> Register a Store</button>
            </div>
         )}
 
         {activeStore && (
           <div style={{ width: '100%', maxWidth: '1000px', margin: '0 auto' }}>
             
-            {/* 🚀 FIXED BANNER: Increased marginBottom to 60px to give tabs more breathing room */}
             <div style={{ position: 'relative', marginBottom: '60px' }}>
               <div style={{ width: '100%', height: '320px', borderRadius: '24px', overflow: 'hidden', backgroundImage: `url(${getStoreCoverImage(activeStore)})`, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative', boxShadow: '0 10px 30px rgba(0,0,0,0.08)' }}>
                 <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0) 100%)', pointerEvents: 'none' }} />
                 
                 <div style={{ position: 'absolute', top: '20px', right: '20px', zIndex: 20 }}>
                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(4px)', color: '#0F172A', borderRadius: '10px', fontSize: '12px', fontWeight: 'bold', cursor: isUploadingCover ? 'not-allowed' : 'pointer', border: 'none', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
-                      {isUploadingCover ? 'Uploading...' : <><MdCameraAlt size={16} color="#2563EB" /> Edit Cover</>}
+                      {isUploadingCover ? 'Uploading...' : <><MdCameraAlt size={16} color="var(--brand-primary)" /> Edit Cover</>}
                       <input type="file" accept="image/*" onChange={onCoverFileSelect} disabled={isUploadingCover} style={{ display: 'none' }} />
                    </label>
                 </div>
@@ -1289,9 +1287,9 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              <div style={{ position: 'absolute', bottom: '-40px', left: '40px', width: '160px', height: '160px', borderRadius: '50%', border: '6px solid #F8FAFC', backgroundColor: 'white', zIndex: 30, backgroundImage: activeStore.logo_url ? `url(${activeStore.logo_url})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center', boxShadow: '0 8px 25px rgba(0,0,0,0.1)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                {!activeStore.logo_url && <MdStorefront size={60} color="#CBD5E1" />}
-                <label style={{ position: 'absolute', bottom: '5px', right: '0px', backgroundColor: '#2563EB', color: 'white', width: '36px', height: '36px', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: isUploadingLogo ? 'not-allowed' : 'pointer', border: '3px solid #F8FAFC', boxShadow: '0 4px 10px rgba(0,0,0,0.15)' }}>
+              <div style={{ position: 'absolute', bottom: '-40px', left: '40px', width: '160px', height: '160px', borderRadius: '50%', border: '6px solid var(--surface-color)', backgroundColor: 'var(--surface-color)', zIndex: 30, backgroundImage: activeStore.logo_url ? `url(${activeStore.logo_url})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center', boxShadow: '0 8px 25px rgba(0,0,0,0.1)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                {!activeStore.logo_url && <MdStorefront size={60} color="var(--icon-color)" />}
+                <label style={{ position: 'absolute', bottom: '5px', right: '0px', backgroundColor: 'var(--brand-primary)', color: 'white', width: '36px', height: '36px', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: isUploadingLogo ? 'not-allowed' : 'pointer', border: '3px solid var(--surface-color)', boxShadow: '0 4px 10px rgba(0,0,0,0.15)' }}>
                   {isUploadingLogo ? <div style={{ width: '14px', height: '14px', border: '2px solid white', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /> : <MdCameraAlt size={16} />}
                   <input type="file" accept="image/*" onChange={onLogoFileSelect} disabled={isUploadingLogo} style={{ display: 'none' }} />
                 </label>
@@ -1315,8 +1313,8 @@ export default function DashboardPage() {
                     style={{ 
                       padding: '10px 22px', 
                       borderRadius: '24px', 
-                      backgroundColor: isActive ? '#2563EB' : 'transparent', 
-                      color: isActive ? 'white' : '#64748B', 
+                      backgroundColor: isActive ? 'var(--brand-primary)' : 'transparent', 
+                      color: isActive ? 'white' : 'var(--text-muted)', 
                       border: 'none', 
                       fontWeight: '800', 
                       fontSize: '14px', 
@@ -1339,41 +1337,39 @@ export default function DashboardPage() {
             {activeTab === 'menu' && (
               <div>
                 
-                {/* 🚀 FIXED: Control Panel isolated entirely inside the Menu tab */}
-                <div style={{ backgroundColor: 'white', padding: '18px 24px', borderRadius: '16px', border: '1px solid #E2E8F0', boxShadow: '0 4px 10px rgba(0,0,0,0.02)', marginBottom: '30px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ backgroundColor: 'var(--surface-color)', padding: '18px 24px', borderRadius: '16px', border: '1px solid var(--border-color)', boxShadow: '0 4px 10px rgba(0,0,0,0.02)', marginBottom: '30px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <span style={{ fontSize: '13px', fontWeight: '800', color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Store Status</span>
+                      <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Store Status</span>
                       <button 
                         onClick={toggleStoreStatus} 
-                        style={{ display: 'flex', alignItems: 'center', gap: '12px', backgroundColor: activeStore.is_open ? '#ECFDF5' : '#F8FAFC', padding: '8px 16px', borderRadius: '50px', border: activeStore.is_open ? '1px solid #10B981' : '1px solid #CBD5E1', cursor: 'pointer', transition: 'all 0.3s' }}
+                        style={{ display: 'flex', alignItems: 'center', gap: '12px', backgroundColor: activeStore.is_open ? 'rgba(16, 185, 129, 0.1)' : 'var(--bg-color)', padding: '8px 16px', borderRadius: '50px', border: activeStore.is_open ? '1px solid #10B981' : '1px solid var(--border-color)', cursor: 'pointer', transition: 'all 0.3s' }}
                       >
-                        <span style={{ fontWeight: '900', fontSize: '12px', color: activeStore.is_open ? '#10B981' : '#94A3B8' }}>OPEN</span>
-                        <div style={{ width: '44px', height: '24px', backgroundColor: activeStore.is_open ? '#10B981' : '#CBD5E1', borderRadius: '24px', position: 'relative', transition: 'all 0.3s' }}>
+                        <span style={{ fontWeight: '900', fontSize: '12px', color: activeStore.is_open ? '#10B981' : 'var(--text-muted)' }}>OPEN</span>
+                        <div style={{ width: '44px', height: '24px', backgroundColor: activeStore.is_open ? '#10B981' : 'var(--border-color)', borderRadius: '24px', position: 'relative', transition: 'all 0.3s' }}>
                           <div style={{ width: '18px', height: '18px', backgroundColor: 'white', borderRadius: '50%', position: 'absolute', top: '3px', left: activeStore.is_open ? '23px' : '3px', transition: 'left 0.3s cubic-bezier(0.4, 0.0, 0.2, 1)', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }} />
                         </div>
-                        <span style={{ fontWeight: '900', fontSize: '12px', color: !activeStore.is_open ? '#EF4444' : '#94A3B8' }}>CLOSED</span>
+                        <span style={{ fontWeight: '900', fontSize: '12px', color: !activeStore.is_open ? '#EF4444' : 'var(--text-muted)' }}>CLOSED</span>
                       </button>
                     </div>
 
                     <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                      <button onClick={() => setIsQrModalOpen(true)} style={{ padding: '10px 16px', backgroundColor: '#F8FAFC', color: '#0F172A', border: '1px solid #E2E8F0', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><MdQrCode size={18} /> QR Code</button>
-                      <button onClick={() => setIsScheduleModalOpen(true)} style={{ padding: '10px 16px', backgroundColor: '#F8FAFC', color: '#0F172A', border: '1px solid #E2E8F0', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><MdSchedule size={18} /> Operating Hours</button>
-                      <button onClick={handleOpenEditModal} style={{ padding: '10px 16px', backgroundColor: '#EFF6FF', color: '#2563EB', border: '1px dashed #BFDBFE', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><MdEdit size={18} /> Edit Info</button>
+                      <button onClick={() => setIsQrModalOpen(true)} style={{ padding: '10px 16px', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><MdQrCode size={18} /> QR Code</button>
+                      <button onClick={() => setIsScheduleModalOpen(true)} style={{ padding: '10px 16px', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><MdSchedule size={18} /> Operating Hours</button>
+                      <button onClick={handleOpenEditModal} style={{ padding: '10px 16px', backgroundColor: 'var(--surface-hover)', color: 'var(--brand-primary)', border: '1px dashed var(--brand-primary)', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><MdEdit size={18} /> Edit Info</button>
                     </div>
                   </div>
 
                   {activeStore.merchant_id === user?.id && (
-                    <div style={{ borderTop: '1px solid #F1F5F9', paddingTop: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                    <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <MdPalette size={18} color="#2563EB" />
-                        <span style={{ fontSize: '13px', fontWeight: '800', color: '#0F172A' }}>Brand Theme Color:</span>
-                        <span style={{ fontSize: '12px', color: '#64748B' }}>Choose an accent color for your storefront</span>
+                        <MdPalette size={18} color="var(--brand-primary)" />
+                        <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-main)' }}>Brand Theme Color:</span>
+                        <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Choose an accent color for your storefront</span>
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                        {/* 🚀 FIXED: "Saving..." loader placed safely on the left so elements do not jump */}
-                        {isSavingTheme && <span style={{ fontSize: '12px', color: '#64748B', fontStyle: 'italic', fontWeight: 'bold', marginRight: '4px' }}>Saving...</span>}
+                        {isSavingTheme && <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontStyle: 'italic', fontWeight: 'bold', marginRight: '4px' }}>Saving...</span>}
                         
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                           {PRESET_COLORS.map(color => (
@@ -1386,9 +1382,8 @@ export default function DashboardPage() {
                                 height: '28px',
                                 borderRadius: '50%',
                                 backgroundColor: color,
-                                // 🚀 FIXED: Thinner, cleaner selection ring
                                 border: 'none',
-                                boxShadow: storeTheme.primaryColor === color ? `0 0 0 2px white, 0 0 0 4px ${color}` : '0 2px 5px rgba(0,0,0,0.15)',
+                                boxShadow: storeTheme.primaryColor === color ? `0 0 0 2px var(--surface-color), 0 0 0 4px ${color}` : '0 2px 5px rgba(0,0,0,0.15)',
                                 cursor: 'pointer',
                                 outline: 'none',
                                 transform: storeTheme.primaryColor === color ? 'scale(1.1)' : 'scale(1)',
@@ -1398,9 +1393,9 @@ export default function DashboardPage() {
                             />
                           ))}
 
-                          <div style={{ width: '1px', height: '20px', backgroundColor: '#E2E8F0', margin: '0 4px' }} />
+                          <div style={{ width: '1px', height: '20px', backgroundColor: 'var(--border-color)', margin: '0 4px' }} />
 
-                          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', color: '#475569' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)' }}>
                             <input 
                               type="color" 
                               value={storeTheme.primaryColor} 
@@ -1418,9 +1413,9 @@ export default function DashboardPage() {
                 <div style={{ position: 'relative' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <h2 style={{ margin: '0 0 0 0', fontSize: '20px', color: '#0F172A', fontWeight: '800' }}>Manage Menu & Products</h2>
+                      <h2 style={{ margin: '0 0 0 0', fontSize: '20px', color: 'var(--text-main)', fontWeight: '800' }}>Manage Menu & Products</h2>
                       {isMenuLocked && (
-                        <span style={{ padding: '4px 10px', backgroundColor: '#FEF2F2', color: '#EF4444', borderRadius: '20px', fontSize: '11px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <span style={{ padding: '4px 10px', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#EF4444', borderRadius: '20px', fontSize: '11px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
                           <MdLock size={12}/> LOCKED
                         </span>
                       )}
@@ -1430,7 +1425,7 @@ export default function DashboardPage() {
                       onClick={isMenuLocked ? () => setIsUpgradeModalOpen(true) : openAddModal} 
                       style={{ 
                         padding: '10px 20px', 
-                        backgroundColor: isMenuLocked ? '#F59E0B' : '#2563EB', 
+                        backgroundColor: isMenuLocked ? '#F59E0B' : 'var(--brand-primary)', 
                         color: 'white', 
                         border: 'none', 
                         borderRadius: '12px', 
@@ -1448,9 +1443,9 @@ export default function DashboardPage() {
                   </div>
 
                   {categoryOrder.length > 0 && (
-                    <div style={{ position: 'sticky', top: '70px', zIndex: 30, backgroundColor: '#F8FAFC', padding: '10px 0', margin: '0 -10px', paddingLeft: '10px', paddingRight: '10px' }}>
+                    <div style={{ position: 'sticky', top: '70px', zIndex: 30, backgroundColor: 'var(--bg-color)', padding: '10px 0', margin: '0 -10px', paddingLeft: '10px', paddingRight: '10px' }}>
                       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={[restrictToHorizontalAxis]}>
-                        <div style={{ display: 'flex', gap: '10px', padding: '10px', overflowX: 'auto', backgroundColor: '#E2E8F0', borderRadius: '16px', boxShadow: '0 4px 10px rgba(0,0,0,0.05)', scrollbarWidth: 'none' }}>
+                        <div style={{ display: 'flex', gap: '10px', padding: '10px', overflowX: 'auto', backgroundColor: 'var(--surface-color)', borderRadius: '16px', border: '1px solid var(--border-color)', boxShadow: '0 4px 10px rgba(0,0,0,0.05)', scrollbarWidth: 'none' }}>
                           <SortableContext items={categoryOrder} strategy={horizontalListSortingStrategy}>
                             {categoryOrder.map(cat => <SortableCategory key={cat} id={cat} activeCategory={activeCategory} brandColor={storeTheme.primaryColor} onClick={scrollToCategory} />)}
                           </SortableContext>
@@ -1459,34 +1454,34 @@ export default function DashboardPage() {
                     </div>
                   )}
 
-                  <div style={{ backgroundColor: 'white', borderRadius: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.02)', border: '1px solid #E2E8F0', overflow: 'hidden' }}>
+                  <div style={{ backgroundColor: 'var(--surface-color)', borderRadius: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.02)', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
                     <div style={{ display: 'flex', flexDirection: 'column' }}>
                       {Object.keys(groupedItems).length === 0 ? (
-                        <div style={{ padding: '60px 40px', textAlign: 'center', color: '#94A3B8', fontStyle: 'italic', fontWeight: '500', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}><MdRestaurantMenu size={32} /> Your menu is currently empty.</div>
+                        <div style={{ padding: '60px 40px', textAlign: 'center', color: 'var(--text-muted)', fontStyle: 'italic', fontWeight: '500', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}><MdRestaurantMenu size={32} /> Your menu is currently empty.</div>
                       ) : (
                         categoryOrder.map(category => {
                           if (!groupedItems[category]) return null;
                           return (
                             <div key={category} ref={(el) => (sectionRefs.current[category] = el)}>
-                              <div style={{ padding: '12px 30px', backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0', borderTop: '1px solid #E2E8F0' }}><h3 style={{ margin: '0', fontSize: '13px', color: '#64748B', fontWeight: '800', textTransform: 'uppercase' }}>{category}</h3></div>
+                              <div style={{ padding: '12px 30px', backgroundColor: 'var(--bg-color)', borderBottom: '1px solid var(--border-color)', borderTop: '1px solid var(--border-color)' }}><h3 style={{ margin: '0', fontSize: '13px', color: 'var(--text-muted)', fontWeight: '800', textTransform: 'uppercase' }}>{category}</h3></div>
                               {groupedItems[category].map(item => (
-                                <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 30px', borderBottom: '1px solid #F8FAFC' }}>
+                                <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 30px', borderBottom: '1px solid var(--border-color)' }}>
                                   <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
-                                    {item.image_url ? <img src={item.image_url} alt={item.item_name} style={{ width: '80px', height: '60px', objectFit: 'cover', borderRadius: '10px' }} /> : <div style={{ width: '80px', height: '60px', backgroundColor: '#F1F5F9', borderRadius: '10px', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#CBD5E1' }}><MdRestaurantMenu size={24} /></div>}
-                                    <div><h4 style={{ margin: '0 0 4px 0', fontSize: '16px', color: '#0F172A', fontWeight: '800' }}>{item.item_name}</h4><p style={{ margin: '0', color: '#64748B', fontSize: '13px', fontWeight: '500' }}>{item.description}</p></div>
+                                    {item.image_url ? <img src={item.image_url} alt={item.item_name} style={{ width: '80px', height: '60px', objectFit: 'cover', borderRadius: '10px' }} /> : <div style={{ width: '80px', height: '60px', backgroundColor: 'var(--surface-hover)', borderRadius: '10px', display: 'flex', justifyContent: 'center', alignItems: 'center', color: 'var(--icon-color)' }}><MdRestaurantMenu size={24} /></div>}
+                                    <div><h4 style={{ margin: '0 0 4px 0', fontSize: '16px', color: 'var(--text-main)', fontWeight: '800' }}>{item.item_name}</h4><p style={{ margin: '0', color: 'var(--text-muted)', fontSize: '13px', fontWeight: '500' }}>{item.description}</p></div>
                                   </div>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                                    <div style={{ fontSize: '18px', fontWeight: '800', color: '#0F172A' }}>₱{parseFloat(item.price).toFixed(2)}</div>
+                                    <div style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-main)' }}>₱{parseFloat(item.price).toFixed(2)}</div>
                                     <div style={{ display: 'flex', gap: '5px', marginLeft: '10px' }}>
                                       <button 
                                         onClick={isMenuLocked ? () => setIsUpgradeModalOpen(true) : () => startEditItem(item)} 
-                                        style={{ background: '#EFF6FF', color: '#2563EB', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' }}
+                                        style={{ background: 'var(--surface-hover)', color: 'var(--brand-primary)', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' }}
                                       >
                                         {isMenuLocked ? <MdLock size={16} /> : <MdEdit size={16} />}
                                       </button>
                                       <button 
                                         onClick={isMenuLocked ? () => setIsUpgradeModalOpen(true) : () => handleDeleteItem(item.id, item.item_name)} 
-                                        style={{ background: '#FEF2F2', color: '#EF4444', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' }}
+                                        style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#EF4444', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' }}
                                       >
                                         {isMenuLocked ? <MdLock size={16} /> : <MdDelete size={16} />}
                                       </button>
@@ -1506,22 +1501,22 @@ export default function DashboardPage() {
 
             {/* --- TAB 2: STAFF --- */}
             {activeTab === 'staff' && (
-              <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '20px', border: '1px solid #E2E8F0' }}>
-                <h3 style={{ margin: '0 0 10px 0', color: '#0F172A', fontSize: '18px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}><MdSecurity color="#2563EB" /> Operator Access</h3>
-                <p style={{ margin: '0 0 20px 0', color: '#64748B', fontSize: '14px' }}>Invite trusted staff to manage inventory and open/close the store.</p>
+              <div style={{ backgroundColor: 'var(--surface-color)', padding: '30px', borderRadius: '20px', border: '1px solid var(--border-color)' }}>
+                <h3 style={{ margin: '0 0 10px 0', color: 'var(--text-main)', fontSize: '18px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}><MdSecurity color="var(--brand-primary)" /> Operator Access</h3>
+                <p style={{ margin: '0 0 20px 0', color: 'var(--text-muted)', fontSize: '14px' }}>Invite trusted staff to manage inventory and open/close the store.</p>
                 <form onSubmit={handleInviteOperator} style={{ display: 'flex', gap: '10px', marginBottom: '30px', maxWidth: '400px' }}>
-                  <input type="email" placeholder="Staff Email Address" required value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} style={{ padding: '12px 15px', borderRadius: '10px', border: '1px solid #CBD5E1', flexGrow: 1, outline: 'none' }} />
-                  <button type="submit" disabled={isInviting} style={{ padding: '12px 20px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: isInviting ? 'not-allowed' : 'pointer' }}>{isInviting ? 'Sending...' : 'Invite'}</button>
+                  <input type="email" placeholder="Staff Email Address" required value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} style={{ padding: '12px 15px', borderRadius: '10px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', flexGrow: 1, outline: 'none' }} />
+                  <button type="submit" disabled={isInviting} style={{ padding: '12px 20px', backgroundColor: 'var(--brand-primary)', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: isInviting ? 'not-allowed' : 'pointer' }}>{isInviting ? 'Sending...' : 'Invite'}</button>
                 </form>
                 {inviteMessage && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 'bold', padding: '12px', borderRadius: '10px', marginBottom: '20px', backgroundColor: inviteMessage.type === 'success' ? '#D1FAE5' : '#FEE2E2', color: inviteMessage.type === 'success' ? '#059669' : '#DC2626' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 'bold', padding: '12px', borderRadius: '10px', marginBottom: '20px', backgroundColor: inviteMessage.type === 'success' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)', color: inviteMessage.type === 'success' ? '#10B981' : '#EF4444' }}>
                     {inviteMessage.type === 'success' ? <MdCheckCircle size={18} /> : <MdCancel size={18} />} {inviteMessage.text}
                   </div>
                 )}
                 
                 <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                   <thead>
-                    <tr style={{ borderBottom: '2px solid #E2E8F0', color: '#64748B', fontSize: '13px' }}>
+                    <tr style={{ borderBottom: '2px solid var(--border-color)', color: 'var(--text-muted)', fontSize: '13px' }}>
                       <th style={{ padding: '12px 0' }}>User Email</th>
                       <th style={{ padding: '12px 0' }}>Status</th>
                       <th style={{ padding: '12px 0', textAlign: 'right' }}>Action</th>
@@ -1529,29 +1524,29 @@ export default function DashboardPage() {
                   </thead>
                   <tbody>
                     {activeStore.merchant_id === user?.id && (
-                      <tr style={{ borderBottom: '1px solid #F1F5F9' }}>
-                        <td style={{ padding: '16px 0', fontWeight: '600', color: '#0F172A' }}>{user?.email}</td>
+                      <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                        <td style={{ padding: '16px 0', fontWeight: '600', color: 'var(--text-main)' }}>{user?.email}</td>
                         <td style={{ padding: '16px 0' }}>
-                          <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '12px', backgroundColor: '#EFF6FF', color: '#2563EB', fontWeight: 'bold' }}>STORE OWNER</span>
+                          <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '12px', backgroundColor: 'var(--surface-hover)', color: 'var(--brand-primary)', fontWeight: 'bold' }}>STORE OWNER</span>
                         </td>
                         <td style={{ padding: '16px 0', textAlign: 'right' }}></td>
                       </tr>
                     )}
                     {storeOperators.filter(op => op.user_id !== activeStore.merchant_id).map((op, idx) => (
-                      <tr key={op.id || idx} style={{ borderBottom: '1px solid #F1F5F9' }}>
-                        <td style={{ padding: '16px 0', fontWeight: '600', color: '#0F172A' }}>{op.email}</td>
+                      <tr key={op.id || idx} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                        <td style={{ padding: '16px 0', fontWeight: '600', color: 'var(--text-main)' }}>{op.email}</td>
                         <td style={{ padding: '16px 0' }}>
-                          <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '12px', backgroundColor: op.status === 'pending' ? '#FEF3C7' : '#D1FAE5', color: op.status === 'pending' ? '#D97706' : '#059669', fontWeight: 'bold' }}>{op.status === 'pending' ? 'PENDING' : 'ACTIVE STAFF'}</span>
+                          <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '12px', backgroundColor: op.status === 'pending' ? 'rgba(245, 158, 11, 0.1)' : 'rgba(16, 185, 129, 0.1)', color: op.status === 'pending' ? '#D97706' : '#10B981', fontWeight: 'bold' }}>{op.status === 'pending' ? 'PENDING' : 'ACTIVE STAFF'}</span>
                         </td>
                         <td style={{ padding: '16px 0', textAlign: 'right' }}>
                           {activeStore.merchant_id === user?.id && op.status !== 'pending' && (
-                             <button onClick={() => handleRemoveStaff(op.user_id, op.email)} style={{ padding: '6px 12px', backgroundColor: '#FEE2E2', color: '#DC2626', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' }}>Remove</button>
+                             <button onClick={() => handleRemoveStaff(op.user_id, op.email)} style={{ padding: '6px 12px', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#EF4444', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' }}>Remove</button>
                           )}
                         </td>
                       </tr>
                     ))}
                     {storeOperators.filter(op => op.user_id !== activeStore.merchant_id).length === 0 && activeStore.merchant_id === user?.id && (
-                      <tr><td colSpan="3" style={{ padding: '20px 0', textAlign: 'center', color: '#94A3B8' }}>No staff members added yet.</td></tr>
+                      <tr><td colSpan="3" style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-muted)' }}>No staff members added yet.</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -1572,67 +1567,67 @@ export default function DashboardPage() {
 
             {/* --- TAB 4: REVIEWS --- */}
             {activeTab === 'reviews' && (
-              <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '20px', border: '1px solid #E2E8F0' }}>
-                <h3 style={{ margin: '0 0 10px 0', color: '#0F172A', fontSize: '18px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}><MdStar color="#F59E0B" /> Customer Reviews</h3>
-                <p style={{ margin: '0 0 20px 0', color: '#64748B', fontSize: '14px' }}>Read and respond to customer feedback to build trust and loyalty.</p>
+              <div style={{ backgroundColor: 'var(--surface-color)', padding: '30px', borderRadius: '20px', border: '1px solid var(--border-color)' }}>
+                <h3 style={{ margin: '0 0 10px 0', color: 'var(--text-main)', fontSize: '18px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}><MdStar color="#F59E0B" /> Customer Reviews</h3>
+                <p style={{ margin: '0 0 20px 0', color: 'var(--text-muted)', fontSize: '14px' }}>Read and respond to customer feedback to build trust and loyalty.</p>
                 {loadingReviews ? (
-                   <div style={{ textAlign: 'center', padding: '40px', color: '#94A3B8' }}>Loading reviews...</div>
+                   <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>Loading reviews...</div>
                 ) : storeReviews.length === 0 ? (
-                   <div style={{ textAlign: 'center', padding: '40px', color: '#94A3B8', border: '1px dashed #CBD5E1', borderRadius: '12px' }}>No reviews yet.</div>
+                   <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)', border: '1px dashed var(--border-color)', borderRadius: '12px' }}>No reviews yet.</div>
                 ) : (
                    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                      {storeReviews.map(review => (
-                       <div key={review.id} style={{ padding: '20px', border: '1px solid #E2E8F0', borderRadius: '12px', backgroundColor: '#F8FAFC' }}>
+                       <div key={review.id} style={{ padding: '20px', border: '1px solid var(--border-color)', borderRadius: '12px', backgroundColor: 'var(--bg-color)' }}>
                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
                            <div>
-                             <div style={{ fontWeight: '800', color: '#0F172A', fontSize: '14px' }}>{review.reviewer_name}</div>
-                             <div style={{ color: '#64748B', fontSize: '12px' }}>{new Date(review.created_at).toLocaleDateString()}</div>
+                             <div style={{ fontWeight: '800', color: 'var(--text-main)', fontSize: '14px' }}>{review.reviewer_name}</div>
+                             <div style={{ color: 'var(--text-muted)', fontSize: '12px' }}>{new Date(review.created_at).toLocaleDateString()}</div>
                            </div>
-                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: '#FFFBEB', padding: '4px 8px', borderRadius: '8px', border: '1px solid #FEF3C7' }}>
-                             <span style={{ fontWeight: 'bold', color: '#D97706', fontSize: '13px' }}>{review.rating.toFixed(1)}</span>
+                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: 'rgba(245, 158, 11, 0.1)', padding: '4px 8px', borderRadius: '8px', border: '1px solid rgba(245, 158, 11, 0.2)' }}>
+                             <span style={{ fontWeight: 'bold', color: '#F59E0B', fontSize: '13px' }}>{review.rating.toFixed(1)}</span>
                              <MdStar size={14} color="#F59E0B" />
                            </div>
                          </div>
-                         <p style={{ margin: '0 0 15px 0', fontSize: '14px', color: '#334155', lineHeight: '1.5', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-                           {review.comment || <span style={{ fontStyle: 'italic', color: '#94A3B8' }}>No written comment.</span>}
+                         <p style={{ margin: '0 0 15px 0', fontSize: '14px', color: 'var(--text-main)', lineHeight: '1.5', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                           {review.comment || <span style={{ fontStyle: 'italic', color: 'var(--text-muted)' }}>No written comment.</span>}
                          </p>
                          {review.photo_urls && review.photo_urls.length > 0 && (
                             <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', marginBottom: '15px' }}>
-                              {review.photo_urls.map((url, i) => <img key={i} src={url} alt="Review" style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #E2E8F0' }} />)}
+                              {review.photo_urls.map((url, i) => <img key={i} src={url} alt="Review" style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px', border: '1px solid var(--border-color)' }} />)}
                             </div>
                          )}
                          {review.owner_reply ? (
-                           <div style={{ backgroundColor: 'white', padding: '15px', borderRadius: '8px', borderLeft: `4px solid ${storeTheme.primaryColor}` }}>
+                           <div style={{ backgroundColor: 'var(--surface-color)', padding: '15px', borderRadius: '8px', borderLeft: `4px solid ${storeTheme.primaryColor}` }}>
                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '5px' }}>
                                <div style={{ fontSize: '12px', fontWeight: 'bold', color: storeTheme.primaryColor }}>Your Response:</div>
                                <div style={{ position: 'relative' }}>
-                                 <button onClick={() => setActiveReviewMenuId(activeReviewMenuId === review.id ? null : review.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0', color: '#94A3B8' }}><MdMoreVert size={18} /></button>
+                                 <button onClick={() => setActiveReviewMenuId(activeReviewMenuId === review.id ? null : review.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0', color: 'var(--text-muted)' }}><MdMoreVert size={18} /></button>
                                  {activeReviewMenuId === review.id && (
                                    <>
                                      <div onClick={() => setActiveReviewMenuId(null)} style={{ position: 'fixed', inset: 0, zIndex: 90 }} />
-                                     <div style={{ position: 'absolute', top: '100%', right: 0, backgroundColor: 'white', border: '1px solid #E2E8F0', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 100, width: '120px', overflow: 'hidden' }}>
+                                     <div style={{ position: 'absolute', top: '100%', right: 0, backgroundColor: 'var(--surface-color)', border: '1px solid var(--border-color)', borderRadius: '8px', boxShadow: '0 4px 12px rgba(0,0,0,0.2)', zIndex: 100, width: '120px', overflow: 'hidden' }}>
                                        <button onClick={() => handleDeleteReply(review.id)} style={{ width: '100%', padding: '10px', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', color: '#DC2626' }}>Delete Reply</button>
                                      </div>
                                    </>
                                  )}
                                </div>
                              </div>
-                             <div style={{ fontSize: '13px', color: '#475569', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{review.owner_reply}</div>
+                             <div style={{ fontSize: '13px', color: 'var(--text-muted)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{review.owner_reply}</div>
                            </div>
                          ) : (
                            replyingToId === review.id ? (
                              <div style={{ marginTop: '10px' }}>
-                               <textarea autoFocus maxLength={500} value={replyText} onChange={(e) => setReplyText(e.target.value)} placeholder="Write your response to the customer..." style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #CBD5E1', minHeight: '80px', fontSize: '13px', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit', wordBreak: 'break-word' }} />
+                               <textarea autoFocus maxLength={500} value={replyText} onChange={(e) => setReplyText(e.target.value)} placeholder="Write your response to the customer..." style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', backgroundColor: 'var(--surface-color)', color: 'var(--text-main)', minHeight: '80px', fontSize: '13px', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit', wordBreak: 'break-word' }} />
                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
-                                 <div style={{ fontSize: '12px', color: replyText.length >= 500 ? '#EF4444' : '#64748B', fontWeight: 'bold' }}>{replyText.length} / 500 characters</div>
+                                 <div style={{ fontSize: '12px', color: replyText.length >= 500 ? '#EF4444' : 'var(--text-muted)', fontWeight: 'bold' }}>{replyText.length} / 500 characters</div>
                                  <div style={{ display: 'flex', gap: '10px' }}>
-                                   <button onClick={() => { setReplyingToId(null); setReplyText(''); }} style={{ padding: '8px 16px', background: 'none', border: 'none', color: '#64748B', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}>Cancel</button>
+                                   <button onClick={() => { setReplyingToId(null); setReplyText(''); }} style={{ padding: '8px 16px', background: 'none', border: 'none', color: 'var(--text-muted)', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}>Cancel</button>
                                    <button onClick={() => submitReply(review.id)} disabled={isSubmittingReply || !replyText.trim()} style={{ padding: '8px 16px', backgroundColor: storeTheme.primaryColor, color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: isSubmittingReply || !replyText.trim() ? 'not-allowed' : 'pointer', fontSize: '13px', opacity: isSubmittingReply || !replyText.trim() ? 0.7 : 1 }}>{isSubmittingReply ? 'Posting...' : 'Post Reply'}</button>
                                  </div>
                                </div>
                              </div>
                            ) : (
-                             <button onClick={() => { setReplyingToId(review.id); setReplyText(''); }} style={{ padding: '8px 16px', backgroundColor: 'white', color: storeTheme.primaryColor, border: `1px solid ${storeTheme.primaryColor}`, borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}><MdReply size={16} /> Reply to Review</button>
+                             <button onClick={() => { setReplyingToId(review.id); setReplyText(''); }} style={{ padding: '8px 16px', backgroundColor: 'var(--surface-color)', color: storeTheme.primaryColor, border: `1px solid ${storeTheme.primaryColor}`, borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}><MdReply size={16} /> Reply to Review</button>
                            )
                          )}
                        </div>
@@ -1644,12 +1639,12 @@ export default function DashboardPage() {
 
             {/* --- TAB 5: PREVIEW --- */}
             {activeTab === 'preview' && (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px', backgroundColor: '#F1F5F9', borderRadius: '24px', border: '1px dashed #CBD5E1' }}>
-                <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', backgroundColor: '#E2E8F0', padding: '6px', borderRadius: '12px' }}>
-                  <button onClick={() => setIsPreviewMobile(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', border: 'none', transition: 'all 0.2s', backgroundColor: isPreviewMobile ? 'white' : 'transparent', color: isPreviewMobile ? '#0F172A' : '#64748B', boxShadow: isPreviewMobile ? '0 2px 4px rgba(0,0,0,0.05)' : 'none' }}><MdSmartphone size={18} /> Mobile</button>
-                  <button onClick={() => setIsPreviewMobile(false)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', border: 'none', transition: 'all 0.2s', backgroundColor: !isPreviewMobile ? 'white' : 'transparent', color: !isPreviewMobile ? '#0F172A' : '#64748B', boxShadow: !isPreviewMobile ? '0 2px 4px rgba(0,0,0,0.05)' : 'none' }}><MdDesktopMac size={18} /> Desktop</button>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px', backgroundColor: 'var(--surface-hover)', borderRadius: '24px', border: '1px dashed var(--border-color)' }}>
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', backgroundColor: 'var(--border-color)', padding: '6px', borderRadius: '12px' }}>
+                  <button onClick={() => setIsPreviewMobile(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', border: 'none', transition: 'all 0.2s', backgroundColor: isPreviewMobile ? 'var(--surface-color)' : 'transparent', color: isPreviewMobile ? 'var(--text-main)' : 'var(--text-muted)', boxShadow: isPreviewMobile ? '0 2px 4px rgba(0,0,0,0.05)' : 'none' }}><MdSmartphone size={18} /> Mobile</button>
+                  <button onClick={() => setIsPreviewMobile(false)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', border: 'none', transition: 'all 0.2s', backgroundColor: !isPreviewMobile ? 'var(--surface-color)' : 'transparent', color: !isPreviewMobile ? 'var(--text-main)' : 'var(--text-muted)', boxShadow: !isPreviewMobile ? '0 2px 4px rgba(0,0,0,0.05)' : 'none' }}><MdDesktopMac size={18} /> Desktop</button>
                 </div>
-                <div style={{ width: isPreviewMobile ? '375px' : '100%', height: isPreviewMobile ? '700px' : '800px', transition: 'width 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.1), height 0.4s ease', border: isPreviewMobile ? '12px solid #0F172A' : '1px solid #E2E8F0', borderRadius: isPreviewMobile ? '40px' : '16px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', backgroundColor: 'white' }}>
+                <div style={{ width: isPreviewMobile ? '375px' : '100%', height: isPreviewMobile ? '700px' : '800px', transition: 'width 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.1), height 0.4s ease', border: isPreviewMobile ? '12px solid #0F172A' : '1px solid var(--border-color)', borderRadius: isPreviewMobile ? '40px' : '16px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.25)', backgroundColor: 'var(--surface-color)' }}>
                   <iframe src={`${window.location.origin}/store/${activeStore.id}`} style={{ width: '100%', height: '100%', border: 'none' }} title="Live Preview" />
                 </div>
               </div>

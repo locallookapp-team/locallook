@@ -84,7 +84,6 @@ export default function MerchantOnboarding({ activeStoreId, onAction }) {
 
   if (loading) return null; 
 
-  // 🚀 UPDATED SEQUENCE: Permits moved to the final step
   const steps = [
     { id: 1, title: "Identity Verified", icon: <MdBadge size={20} />, isComplete: status.hasId, actionKey: null },
     { id: 2, title: "Store Created", icon: <MdStorefront size={20} />, isComplete: status.hasStore, actionKey: null },
@@ -109,26 +108,26 @@ export default function MerchantOnboarding({ activeStoreId, onAction }) {
   };
 
   return (
-    <div style={{ backgroundColor: 'white', borderRadius: '16px', border: '1px solid #E2E8F0', padding: '30px', marginBottom: '30px', fontFamily: 'Inter, sans-serif', boxShadow: '0 4px 10px rgba(0,0,0,0.02)' }}>
+    <div style={{ backgroundColor: 'var(--surface-color)', borderRadius: '16px', border: '1px solid var(--border-color)', padding: '30px', marginBottom: '30px', fontFamily: 'var(--font-main)', boxShadow: '0 4px 10px rgba(0,0,0,0.02)' }}>
       
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '25px' }}>
         <div>
-          <h2 style={{ margin: '0 0 5px 0', fontSize: '20px', color: '#0F172A', fontWeight: '800' }}>
+          <h2 style={{ margin: '0 0 5px 0', fontSize: '20px', color: 'var(--text-main)', fontWeight: '800' }}>
             Store Setup Guide
           </h2>
-          <p style={{ margin: 0, color: '#64748B', fontSize: '14px' }}>
+          <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '14px' }}>
             Complete these steps to build your storefront. ({completedSteps}/{totalSteps})
           </p>
         </div>
-        <div style={{ fontSize: '14px', fontWeight: '800', color: '#2563EB', backgroundColor: '#EFF6FF', padding: '6px 12px', borderRadius: '20px' }}>
+        <div style={{ fontSize: '14px', fontWeight: '800', color: 'var(--brand-primary)', backgroundColor: 'var(--surface-hover)', padding: '6px 12px', borderRadius: '20px', border: '1px solid var(--border-color)' }}>
           {progressPercentage}% Completed
         </div>
       </div>
 
       {status.hasPermits && !status.isStoreVerified && (
-        <div style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE047', borderRadius: '12px', padding: '15px 20px', marginBottom: '25px', display: 'flex', alignItems: 'center', gap: '15px' }}>
-          <MdPendingActions size={24} color="#D97706" style={{ flexShrink: 0 }} />
-          <p style={{ margin: 0, color: '#B45309', fontSize: '13px', lineHeight: '1.5' }}>
+        <div style={{ backgroundColor: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '12px', padding: '15px 20px', marginBottom: '25px', display: 'flex', alignItems: 'center', gap: '15px' }}>
+          <MdPendingActions size={24} color="#F59E0B" style={{ flexShrink: 0 }} />
+          <p style={{ margin: 0, color: '#D97706', fontSize: '13px', lineHeight: '1.5' }}>
             <strong>Permits Submitted:</strong> Your DTI/BIR documents are currently under review. Once approved by the administrator, your store will receive an official Blue Verified Badge.
           </p>
         </div>
@@ -154,7 +153,7 @@ export default function MerchantOnboarding({ activeStoreId, onAction }) {
                   flex: 1, 
                   position: 'relative',
                   cursor: isClickable ? 'pointer' : 'default',
-                  opacity: 1, // 🚀 Fully opaque to prevent glitchy looks
+                  opacity: 1,
                   transition: 'opacity 0.3s ease'
                 }}
               >
@@ -167,7 +166,7 @@ export default function MerchantOnboarding({ activeStoreId, onAction }) {
                     width: 'calc(100% - 36px)', 
                     marginRight: '18px',
                     height: '4px',
-                    backgroundColor: step.isComplete || steps[index - 1].isComplete ? '#2563EB' : '#F1F5F9',
+                    backgroundColor: step.isComplete || steps[index - 1].isComplete ? 'var(--brand-primary)' : 'var(--border-color)',
                     zIndex: -1,
                     transition: 'background-color 0.3s ease'
                   }} />
@@ -176,10 +175,10 @@ export default function MerchantOnboarding({ activeStoreId, onAction }) {
                 {/* THE CIRCLE */}
                 <div style={{ 
                   width: '36px', height: '36px', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: '10px',
-                  backgroundColor: isActive ? '#2563EB' : 'white',
-                  color: isActive ? 'white' : isCurrent ? '#2563EB' : '#CBD5E1',
-                  border: `2px solid ${isActive || isCurrent ? '#2563EB' : '#E2E8F0'}`,
-                  boxShadow: isCurrent ? '0 0 0 6px #EFF6FF' : 'none',
+                  backgroundColor: isActive ? 'var(--brand-primary)' : 'var(--surface-color)',
+                  color: isActive ? 'white' : isCurrent ? 'var(--brand-primary)' : 'var(--text-muted)',
+                  border: `2px solid ${isActive || isCurrent ? 'var(--brand-primary)' : 'var(--border-color)'}`,
+                  boxShadow: isCurrent ? '0 0 0 6px var(--surface-hover)' : 'none',
                   transition: 'all 0.3s ease',
                   transform: isCurrent ? 'scale(1.1)' : 'scale(1)',
                   zIndex: 2
@@ -191,7 +190,7 @@ export default function MerchantOnboarding({ activeStoreId, onAction }) {
                 <div style={{ 
                   fontSize: '13px', 
                   fontWeight: isActive || isCurrent ? '800' : '600', 
-                  color: isActive ? '#0F172A' : isCurrent ? '#2563EB' : '#94A3B8', 
+                  color: isActive ? 'var(--text-main)' : isCurrent ? 'var(--brand-primary)' : 'var(--text-muted)', 
                   marginBottom: '4px', 
                   textAlign: 'center',
                   transition: 'color 0.2s ease'

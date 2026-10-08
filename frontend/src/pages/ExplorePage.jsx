@@ -83,24 +83,20 @@ export default function ExplorePage() {
     const fetchData = async () => {
       setLoading(true);
       try {
-        // 🚀 FIX: Fetch stores from API so we get the correctly formatted lat/lng
         const storesRes = await fetch(`${API_BASE_URL}/api/stores`);
         if (!storesRes.ok) throw new Error("Failed to fetch stores");
         const storesData = await storesRes.json();
 
-        // Fetch reviews from Supabase to attach ratings
         const { data: reviewsData, error: reviewsError } = await supabase
           .from('reviews')
           .select('store_id, rating');
         if (reviewsError) throw reviewsError;
 
-        // Fetch items from Supabase
         const { data: itemsData, error: itemsError } = await supabase
           .from('items')
           .select('*, stores(store_name, is_open, store_category)');
         if (itemsError) throw itemsError;
 
-        // Merge API stores with Supabase ratings
         const processedStores = storesData.map(store => {
           const storeReviews = reviewsData ? reviewsData.filter(r => r.store_id === store.id) : [];
           const ratings = storeReviews.map(r => r.rating);
@@ -135,10 +131,8 @@ export default function ExplorePage() {
     return () => { supabase.removeChannel(subscription); };
   }, []);
 
-  // Handle resets when switching tabs
   useEffect(() => { setFocusedSwimlane(null); }, [activeCategory, viewMode]);
 
-  // Dynamically calculate distance and apply filters during render
   const processedStoreList = stores.map(store => ({
     ...store,
     distance: calculateDistance(userLocation.lat, userLocation.lng, store.lat, store.lng)
@@ -156,13 +150,12 @@ export default function ExplorePage() {
     return true;
   });
 
-  // Swimlane Datasets
   const allTopRatedStores = [...filteredStores].sort((a, b) => b.avgRating - a.avgRating);
   const allNearYouStores = [...filteredStores].sort((a, b) => a.distance - b.distance);
   const allNewlyAddedStores = [...filteredStores].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
   const renderStoreCard = (store, index) => {
-    const brandColor = store.theme_settings?.primaryColor || '#2563EB';
+    const brandColor = store.theme_settings?.primaryColor || 'var(--brand-primary)';
     return (
       <div 
         key={`${store.id}-${index}`}
@@ -170,9 +163,14 @@ export default function ExplorePage() {
         style={{ 
           minWidth: focusedSwimlane ? '100%' : '260px', 
           width: focusedSwimlane ? '100%' : '260px', 
-          backgroundColor: 'white', borderRadius: '16px', 
-          overflow: 'hidden', border: '1px solid #E2E8F0', cursor: 'pointer', 
-          boxShadow: '0 4px 10px rgba(0,0,0,0.03)', flexShrink: 0, scrollSnapAlign: 'start',
+          backgroundColor: 'var(--surface-color)', 
+          borderRadius: '16px', 
+          overflow: 'hidden', 
+          border: '1px solid var(--border-color)', 
+          cursor: 'pointer', 
+          boxShadow: '0 4px 10px rgba(0,0,0,0.03)', 
+          flexShrink: 0, 
+          scrollSnapAlign: 'start',
           transition: 'transform 0.2s',
         }}
         onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-4px)'}
@@ -190,22 +188,22 @@ export default function ExplorePage() {
           
           <div style={{ 
             position: 'absolute', top: '10px', right: '10px', 
-            backgroundColor: store.is_open ? 'rgba(209, 250, 229, 0.85)' : 'rgba(254, 242, 242, 0.85)', 
-            backdropFilter: 'blur(4px)', color: store.is_open ? '#059669' : '#E11D48', 
+            backgroundColor: store.is_open ? 'rgba(16, 185, 129, 0.2)' : 'rgba(225, 29, 72, 0.2)', 
+            backdropFilter: 'blur(4px)', color: store.is_open ? '#10B981' : '#E11D48', 
             padding: '4px 8px', borderRadius: '8px', fontSize: '11px', fontWeight: '800', zIndex: 2 
           }}>
             {store.is_open ? 'OPEN' : 'CLOSED'}
           </div>
         </div>
         <div style={{ padding: '16px' }}>
-          <h3 style={{ margin: '0 0 4px 0', fontSize: '16px', fontWeight: '800', color: '#0F172A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{store.store_name}</h3>
-          <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: '#64748B', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{store.industry || store.store_category}</p>
+          <h3 style={{ margin: '0 0 4px 0', fontSize: '16px', fontWeight: '800', color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{store.store_name}</h3>
+          <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{store.industry || store.store_category}</p>
           
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#D97706', fontSize: '13px', fontWeight: '700' }}>
               <MdStar size={16} /> {store.reviewCount > 0 ? store.avgRating.toFixed(1) : 'New'}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#64748B', fontSize: '12px', fontWeight: '600' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-muted)', fontSize: '12px', fontWeight: '600' }}>
               <MdLocationOn size={14} /> {formatDistance(store.distance)}
             </div>
           </div>
@@ -219,24 +217,26 @@ export default function ExplorePage() {
       key={item.id}
       onClick={() => navigate(`/store/${item.store_id}`)}
       style={{ 
-        backgroundColor: 'white', borderRadius: '16px', border: '1px solid #E2E8F0', 
+        backgroundColor: 'var(--surface-color)', 
+        borderRadius: '16px', 
+        border: '1px solid var(--border-color)', 
         overflow: 'hidden', cursor: 'pointer', boxShadow: '0 4px 10px rgba(0,0,0,0.03)',
         transition: 'transform 0.2s'
       }}
       onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-4px)'}
       onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
     >
-      <div style={{ height: '160px', backgroundColor: '#F1F5F9', backgroundImage: item.image_url ? `url(${item.image_url})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-        {!item.image_url && <MdRestaurantMenu size={32} color="#CBD5E1" />}
+      <div style={{ height: '160px', backgroundColor: 'var(--surface-hover)', backgroundImage: item.image_url ? `url(${item.image_url})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        {!item.image_url && <MdRestaurantMenu size={32} color="var(--icon-color)" />}
       </div>
       <div style={{ padding: '16px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '8px' }}>
-          <h4 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: '#0F172A', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+          <h4 style={{ margin: 0, fontSize: '15px', fontWeight: '800', color: 'var(--text-main)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
             {item.item_name}
           </h4>
-          <span style={{ fontSize: '15px', fontWeight: '900', color: '#2563EB' }}>₱{parseFloat(item.price).toFixed(0)}</span>
+          <span style={{ fontSize: '15px', fontWeight: '900', color: 'var(--brand-primary)' }}>₱{parseFloat(item.price).toFixed(0)}</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#64748B', fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: 'var(--text-muted)', fontWeight: '600', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           <MdStorefront size={14} flexShrink={0} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.stores?.store_name || 'Unknown Store'}</span>
         </div>
       </div>
@@ -244,31 +244,31 @@ export default function ExplorePage() {
   );
 
   const StoreSkeleton = () => (
-    <div style={{ minWidth: '260px', width: '260px', height: '220px', backgroundColor: 'white', borderRadius: '16px', border: '1px solid #E2E8F0', overflow: 'hidden', flexShrink: 0 }}>
-      <div style={{ height: '120px', backgroundColor: '#E2E8F0', animation: 'pulse 1.5s infinite' }} />
+    <div style={{ minWidth: '260px', width: '260px', height: '220px', backgroundColor: 'var(--surface-color)', borderRadius: '16px', border: '1px solid var(--border-color)', overflow: 'hidden', flexShrink: 0 }}>
+      <div style={{ height: '120px', backgroundColor: 'var(--surface-hover)', animation: 'pulse 1.5s infinite' }} />
       <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        <div style={{ height: '16px', width: '70%', backgroundColor: '#E2E8F0', borderRadius: '6px', animation: 'pulse 1.5s infinite' }} />
-        <div style={{ height: '14px', width: '50%', backgroundColor: '#F1F5F9', borderRadius: '6px', animation: 'pulse 1.5s infinite' }} />
+        <div style={{ height: '16px', width: '70%', backgroundColor: 'var(--border-color)', borderRadius: '6px', animation: 'pulse 1.5s infinite' }} />
+        <div style={{ height: '14px', width: '50%', backgroundColor: 'var(--surface-hover)', borderRadius: '6px', animation: 'pulse 1.5s infinite' }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
-          <div style={{ height: '14px', width: '30%', backgroundColor: '#F1F5F9', borderRadius: '6px', animation: 'pulse 1.5s infinite' }} />
-          <div style={{ height: '14px', width: '20%', backgroundColor: '#F1F5F9', borderRadius: '6px', animation: 'pulse 1.5s infinite' }} />
+          <div style={{ height: '14px', width: '30%', backgroundColor: 'var(--surface-hover)', borderRadius: '6px', animation: 'pulse 1.5s infinite' }} />
+          <div style={{ height: '14px', width: '20%', backgroundColor: 'var(--surface-hover)', borderRadius: '6px', animation: 'pulse 1.5s infinite' }} />
         </div>
       </div>
     </div>
   );
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', backgroundColor: '#F8FAFC', paddingBottom: '40px', fontFamily: 'Inter, sans-serif' }}>
+    <div style={{ height: '100%', overflowY: 'auto', backgroundColor: 'var(--bg-color)', paddingBottom: '40px', fontFamily: 'var(--font-main)' }}>
       
       <style>{`@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }`}</style>
 
       {/* HEADER & UTILITY BAR (Sticky) */}
-      <div style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: 'rgba(248, 250, 252, 0.95)', backdropFilter: 'blur(10px)', padding: '20px', borderBottom: '1px solid #E2E8F0' }}>
+      <div style={{ position: 'sticky', top: 0, zIndex: 100, backgroundColor: 'var(--bg-color)', padding: '20px', borderBottom: '1px solid var(--border-color)' }}>
         
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <div>
-            <h1 style={{ margin: 0, fontSize: '24px', fontWeight: '900', color: '#0F172A' }}>Explore</h1>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', color: locationError ? '#D97706' : '#64748B', marginTop: '4px', fontWeight: '500' }}>
+            <h1 style={{ margin: 0, fontSize: '24px', fontWeight: '900', color: 'var(--text-main)' }}>Explore</h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', color: locationError ? '#D97706' : 'var(--text-muted)', marginTop: '4px', fontWeight: '500' }}>
               {locationError ? <MdLocationOff size={14} /> : <MdLocationOn size={14} />}
               {locationError ? 'Location disabled. Using Odiongan Plaza.' : 'Showing places near you'}
             </div>
@@ -284,9 +284,9 @@ export default function ExplorePage() {
               style={{ 
                 display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '20px', 
                 whiteSpace: 'nowrap', border: 'none', fontWeight: '700', fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s',
-                backgroundColor: activeCategory === category.name ? '#2563EB' : 'white',
-                color: activeCategory === category.name ? 'white' : '#475569',
-                border: activeCategory === category.name ? '1px solid #2563EB' : '1px solid #E2E8F0',
+                backgroundColor: activeCategory === category.name ? 'var(--brand-primary)' : 'var(--surface-color)',
+                color: activeCategory === category.name ? 'white' : 'var(--text-muted)',
+                border: activeCategory === category.name ? '1px solid var(--brand-primary)' : '1px solid var(--border-color)',
                 boxShadow: activeCategory === category.name ? '0 4px 10px rgba(37, 99, 235, 0.2)' : 'none'
               }}
             >
@@ -297,26 +297,26 @@ export default function ExplorePage() {
         </div>
 
         {/* Modern Utility Bar */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', padding: '6px', borderRadius: '14px', border: '1px solid #E2E8F0', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'var(--surface-color)', padding: '6px', borderRadius: '14px', border: '1px solid var(--border-color)', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
           
-          <div style={{ display: 'flex', backgroundColor: '#F1F5F9', padding: '4px', borderRadius: '10px' }}>
+          <div style={{ display: 'flex', backgroundColor: 'var(--surface-hover)', padding: '4px', borderRadius: '10px' }}>
             <button 
               onClick={() => setViewMode('places')}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 16px', borderRadius: '8px', border: 'none', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s', backgroundColor: viewMode === 'places' ? 'white' : 'transparent', color: viewMode === 'places' ? '#2563EB' : '#64748B', boxShadow: viewMode === 'places' ? '0 2px 6px rgba(0,0,0,0.05)' : 'none' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 16px', borderRadius: '8px', border: 'none', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s', backgroundColor: viewMode === 'places' ? 'var(--surface-color)' : 'transparent', color: viewMode === 'places' ? 'var(--brand-primary)' : 'var(--text-muted)', boxShadow: viewMode === 'places' ? '0 2px 6px rgba(0,0,0,0.05)' : 'none' }}
             >
               <MdStorefront size={16} /> Places
             </button>
             <button 
               onClick={() => setViewMode('products')}
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 16px', borderRadius: '8px', border: 'none', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s', backgroundColor: viewMode === 'products' ? 'white' : 'transparent', color: viewMode === 'products' ? '#2563EB' : '#64748B', boxShadow: viewMode === 'products' ? '0 2px 6px rgba(0,0,0,0.05)' : 'none' }}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 16px', borderRadius: '8px', border: 'none', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s', backgroundColor: viewMode === 'products' ? 'var(--surface-color)' : 'transparent', color: viewMode === 'products' ? 'var(--brand-primary)' : 'var(--text-muted)', boxShadow: viewMode === 'products' ? '0 2px 6px rgba(0,0,0,0.05)' : 'none' }}
             >
               <MdLocalOffer size={16} /> Products
             </button>
           </div>
           
           <div onClick={() => setOnlyOpen(!onlyOpen)} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', paddingRight: '8px', userSelect: 'none' }}>
-            <span style={{ fontSize: '13px', fontWeight: '700', color: onlyOpen ? '#10B981' : '#64748B', transition: 'color 0.3s' }}>Open Now</span>
-            <div style={{ width: '36px', height: '20px', backgroundColor: onlyOpen ? '#10B981' : '#E2E8F0', borderRadius: '12px', position: 'relative', transition: 'background-color 0.3s' }}>
+            <span style={{ fontSize: '13px', fontWeight: '700', color: onlyOpen ? '#10B981' : 'var(--text-muted)', transition: 'color 0.3s' }}>Open Now</span>
+            <div style={{ width: '36px', height: '20px', backgroundColor: onlyOpen ? '#10B981' : 'var(--border-color)', borderRadius: '12px', position: 'relative', transition: 'background-color 0.3s' }}>
               <div style={{ width: '16px', height: '16px', backgroundColor: 'white', borderRadius: '50%', position: 'absolute', top: '2px', left: onlyOpen ? '18px' : '2px', transition: 'left 0.3s cubic-bezier(0.4, 0.0, 0.2, 1)', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }} />
             </div>
           </div>
@@ -329,13 +329,13 @@ export default function ExplorePage() {
         {loading ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '40px' }}>
              <div>
-                <div style={{ height: '24px', width: '150px', backgroundColor: '#E2E8F0', borderRadius: '6px', marginBottom: '16px', animation: 'pulse 1.5s infinite' }} />
+                <div style={{ height: '24px', width: '150px', backgroundColor: 'var(--border-color)', borderRadius: '6px', marginBottom: '16px', animation: 'pulse 1.5s infinite' }} />
                 <div style={{ display: 'flex', gap: '16px', overflow: 'hidden' }}>
                   {[1, 2, 3, 4].map(n => <StoreSkeleton key={`s1-${n}`} />)}
                 </div>
              </div>
              <div>
-                <div style={{ height: '24px', width: '180px', backgroundColor: '#E2E8F0', borderRadius: '6px', marginBottom: '16px', animation: 'pulse 1.5s infinite' }} />
+                <div style={{ height: '24px', width: '180px', backgroundColor: 'var(--border-color)', borderRadius: '6px', marginBottom: '16px', animation: 'pulse 1.5s infinite' }} />
                 <div style={{ display: 'flex', gap: '16px', overflow: 'hidden' }}>
                   {[1, 2, 3, 4].map(n => <StoreSkeleton key={`s2-${n}`} />)}
                 </div>
@@ -349,10 +349,10 @@ export default function ExplorePage() {
                 {focusedSwimlane && activeCategory === 'All' ? (
                    <div>
                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-                       <button onClick={() => setFocusedSwimlane(null)} style={{ background: 'white', border: '1px solid #E2E8F0', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', color: '#0F172A', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+                       <button onClick={() => setFocusedSwimlane(null)} style={{ background: 'var(--surface-color)', border: '1px solid var(--border-color)', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', color: 'var(--text-main)', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
                          <MdArrowBack size={20} />
                        </button>
-                       <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '900', color: '#0F172A' }}>
+                       <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '900', color: 'var(--text-main)' }}>
                          {focusedSwimlane === 'near' && 'Near You'}
                          {focusedSwimlane === 'top' && 'Top Rated Locals'}
                          {focusedSwimlane === 'new' && 'Just Opened'}
@@ -372,10 +372,10 @@ export default function ExplorePage() {
                     {allNearYouStores.length > 0 && (
                       <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '900', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <MdLocationOn color="#2563EB" /> Near You
+                          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '900', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <MdLocationOn color="var(--brand-primary)" /> Near You
                           </h2>
-                          <button onClick={() => setFocusedSwimlane('near')} style={{ background: 'none', border: 'none', color: '#2563EB', fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', zIndex: 10 }}>See All <MdChevronRight size={18} /></button>
+                          <button onClick={() => setFocusedSwimlane('near')} style={{ background: 'none', border: 'none', color: 'var(--brand-primary)', fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', zIndex: 10 }}>See All <MdChevronRight size={18} /></button>
                         </div>
                         <div style={{ display: 'flex', gap: '16px', overflowX: 'auto', paddingBottom: '10px', scrollSnapType: 'x mandatory', scrollbarWidth: 'none' }}>
                           {allNearYouStores.slice(0, 8).map((store, i) => renderStoreCard(store, `near-${i}`))}
@@ -387,10 +387,10 @@ export default function ExplorePage() {
                     {allTopRatedStores.length > 0 && (
                       <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '900', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <MdStar color="#2563EB" /> Top Rated Locals
+                          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '900', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <MdStar color="var(--brand-primary)" /> Top Rated Locals
                           </h2>
-                          <button onClick={() => setFocusedSwimlane('top')} style={{ background: 'none', border: 'none', color: '#2563EB', fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', zIndex: 10 }}>See All <MdChevronRight size={18} /></button>
+                          <button onClick={() => setFocusedSwimlane('top')} style={{ background: 'none', border: 'none', color: 'var(--brand-primary)', fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', zIndex: 10 }}>See All <MdChevronRight size={18} /></button>
                         </div>
                         <div style={{ display: 'flex', gap: '16px', overflowX: 'auto', paddingBottom: '10px', scrollSnapType: 'x mandatory', scrollbarWidth: 'none' }}>
                           {allTopRatedStores.slice(0, 8).map((store, i) => renderStoreCard(store, `top-${i}`))}
@@ -402,10 +402,10 @@ export default function ExplorePage() {
                     {allNewlyAddedStores.length > 0 && (
                       <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '900', color: '#0F172A', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                            <MdCheckCircle color="#2563EB" /> Just Opened
+                          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '900', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <MdCheckCircle color="var(--brand-primary)" /> Just Opened
                           </h2>
-                          <button onClick={() => setFocusedSwimlane('new')} style={{ background: 'none', border: 'none', color: '#2563EB', fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', zIndex: 10 }}>See All <MdChevronRight size={18} /></button>
+                          <button onClick={() => setFocusedSwimlane('new')} style={{ background: 'none', border: 'none', color: 'var(--brand-primary)', fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', zIndex: 10 }}>See All <MdChevronRight size={18} /></button>
                         </div>
                         <div style={{ display: 'flex', gap: '16px', overflowX: 'auto', paddingBottom: '10px', scrollSnapType: 'x mandatory', scrollbarWidth: 'none' }}>
                           {allNewlyAddedStores.slice(0, 8).map((store, i) => renderStoreCard(store, `new-${i}`))}
@@ -416,9 +416,9 @@ export default function ExplorePage() {
                 ) : (
                   // GRID LAYOUT (Filtered by Category)
                   <div>
-                    <h2 style={{ fontSize: '18px', fontWeight: '900', color: '#0F172A', marginBottom: '20px' }}>{activeCategory} Places</h2>
+                    <h2 style={{ fontSize: '18px', fontWeight: '900', color: 'var(--text-main)', marginBottom: '20px' }}>{activeCategory} Places</h2>
                     {filteredStores.length === 0 ? (
-                      <div style={{ textAlign: 'center', padding: '60px 20px', color: '#94A3B8', border: '1px dashed #CBD5E1', borderRadius: '16px' }}>
+                      <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)', border: '1px dashed var(--border-color)', borderRadius: '16px' }}>
                         <MdStorefront size={40} style={{ opacity: 0.5, marginBottom: '10px' }} />
                         <p style={{ margin: 0, fontWeight: '600' }}>No places found in this category.</p>
                       </div>
@@ -435,11 +435,11 @@ export default function ExplorePage() {
             {/* ====== VIEW: PRODUCTS ====== */}
             {viewMode === 'products' && (
               <div>
-                 <h2 style={{ fontSize: '18px', fontWeight: '900', color: '#0F172A', marginBottom: '20px' }}>
+                 <h2 style={{ fontSize: '18px', fontWeight: '900', color: 'var(--text-main)', marginBottom: '20px' }}>
                    {activeCategory === 'All' ? 'Popular Offerings' : `${activeCategory} Offerings`}
                  </h2>
                  {filteredItems.length === 0 ? (
-                   <div style={{ textAlign: 'center', padding: '60px 20px', color: '#94A3B8', border: '1px dashed #CBD5E1', borderRadius: '16px' }}>
+                   <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)', border: '1px dashed var(--border-color)', borderRadius: '16px' }}>
                      <MdLocalOffer size={40} style={{ opacity: 0.5, marginBottom: '10px' }} />
                      <p style={{ margin: 0, fontWeight: '600' }}>No items found right now.</p>
                    </div>
