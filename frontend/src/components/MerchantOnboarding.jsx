@@ -5,8 +5,7 @@ import {
   MdRestaurantMenu, MdCheckCircle, MdPendingActions, MdUploadFile
 } from 'react-icons/md';
 
-// 1. Accept the activeStoreId as a prop
-export default function MerchantOnboarding({ activeStoreId }) {
+export default function MerchantOnboarding({ activeStoreId, onAction }) {
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState({
     hasId: false,
@@ -19,7 +18,6 @@ export default function MerchantOnboarding({ activeStoreId }) {
 
   useEffect(() => {
     const fetchOnboardingStatus = async () => {
-      // 2. Don't run the fetch until we know which store is active
       if (!activeStoreId) return; 
 
       try {
@@ -28,14 +26,12 @@ export default function MerchantOnboarding({ activeStoreId }) {
         if (!session) return;
         const userId = session.user.id;
 
-        // 1. Check Identity Status (Tied to the User)
         const { data: merchantProfile } = await supabase
           .from('merchant_profiles')
           .select('kyc_status')
           .eq('id', userId)
           .maybeSingle();
 
-        // 2. Check Store & Permits (Tied to the ACTIVE STORE)
         const { data: store } = await supabase
           .from('stores')
           .select('id, dti_permit_url, bir_cor_url, is_verified')
@@ -46,18 +42,19 @@ export default function MerchantOnboarding({ activeStoreId }) {
         let hasItems = false;
 
         if (store) {
-          // 3. Check Subscription for this specific store
           const { data: sub } = await supabase
             .from('subscriptions')
-            .select('plan_type, end_date')
+            .select('*')
             .eq('store_id', store.id)
-            .order('created_at', { ascending: false })
+            .eq('status', 'active')
             .limit(1)
             .maybeSingle();
             
-          premiumActive = sub && sub.plan_type === 'premium' && new Date(sub.end_date) > new Date();
+          premiumActive = sub && 
+                          sub.plan_type === 'premium' && 
+                          sub.status === 'active' && 
+                          (!sub.end_date || new Date(sub.end_date) > new Date());
 
-          // 4. Check Items for this specific store
           const { count } = await supabase
             .from('items')
             .select('*', { count: 'exact', head: true })
@@ -83,16 +80,17 @@ export default function MerchantOnboarding({ activeStoreId }) {
     };
 
     fetchOnboardingStatus();
-  }, [activeStoreId]); // 3. Add activeStoreId to the dependency array so it refetches when you change tabs
+  }, [activeStoreId]); 
 
   if (loading) return null; 
 
+  // 🚀 UPDATED SEQUENCE: Permits moved to the final step
   const steps = [
-    { id: 1, title: "Identity Verified", icon: <MdBadge size={20} />, isComplete: status.hasId },
-    { id: 2, title: "Store Created", icon: <MdStorefront size={20} />, isComplete: status.hasStore },
-    { id: 3, title: "Submit Permits", icon: <MdUploadFile size={20} />, isComplete: status.hasPermits },
-    { id: 4, title: "Unlock Premium", icon: <MdRocketLaunch size={20} />, isComplete: status.isPremium },
-    { id: 5, title: "Publish Menu", icon: <MdRestaurantMenu size={20} />, isComplete: status.hasMenuItem }
+    { id: 1, title: "Identity Verified", icon: <MdBadge size={20} />, isComplete: status.hasId, actionKey: null },
+    { id: 2, title: "Store Created", icon: <MdStorefront size={20} />, isComplete: status.hasStore, actionKey: null },
+    { id: 3, title: "Unlock Premium", icon: <MdRocketLaunch size={20} />, isComplete: status.isPremium, actionKey: 'premium' },
+    { id: 4, title: "Publish Menu", icon: <MdRestaurantMenu size={20} />, isComplete: status.hasMenuItem, actionKey: 'menu' },
+    { id: 5, title: "Submit Permits", icon: <MdUploadFile size={20} />, isComplete: status.hasPermits, actionKey: 'verify' }
   ];
 
   const completedSteps = steps.filter(step => step.isComplete).length;
@@ -103,6 +101,12 @@ export default function MerchantOnboarding({ activeStoreId }) {
   if (isFullyOnboarded && status.isStoreVerified) {
     return null; 
   }
+
+  const handleStepClick = (actionKey) => {
+    if (actionKey && onAction) {
+      onAction(actionKey);
+    }
+  };
 
   return (
     <div style={{ backgroundColor: 'white', borderRadius: '16px', border: '1px solid #E2E8F0', padding: '30px', marginBottom: '30px', fontFamily: 'Inter, sans-serif', boxShadow: '0 4px 10px rgba(0,0,0,0.02)' }}>
@@ -130,47 +134,68 @@ export default function MerchantOnboarding({ activeStoreId }) {
         </div>
       )}
 
-      {/* PROGRESS BAR & STEPPER */}
       <div style={{ position: 'relative', marginTop: '20px' }}>
-        
-        {/* Notice we completely deleted the two absolute background track <div>s here */}
-
         <div style={{ display: 'flex', justifyContent: 'space-between', position: 'relative', zIndex: 10 }}>
           {steps.map((step, index) => {
             const isActive = step.isComplete;
-            
-            // This ensures only the FIRST incomplete step gets the blue glowing highlight
             const firstIncompleteIndex = steps.findIndex(s => !s.isComplete);
             const isCurrent = index === firstIncompleteIndex;
+            const isClickable = !!step.actionKey; 
 
             return (
-              <div key={step.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: 1, position: 'relative' }}>
-                
-                {/* 🚀 NEW: INDIVIDUAL SEGMENTED LINES */}
+              <div 
+                key={step.id} 
+                onClick={() => handleStepClick(step.actionKey)}
+                title={isClickable ? `Click to ${step.title}` : undefined}
+                style={{ 
+                  display: 'flex', 
+                  flexDirection: 'column', 
+                  alignItems: 'center', 
+                  flex: 1, 
+                  position: 'relative',
+                  cursor: isClickable ? 'pointer' : 'default',
+                  opacity: 1, // 🚀 Fully opaque to prevent glitchy looks
+                  transition: 'opacity 0.3s ease'
+                }}
+              >
+                {/* CONNECTING LINES */}
                 {index !== 0 && (
                   <div style={{
                     position: 'absolute',
                     top: '16px', 
-                    right: '50%', // Starts perfectly at the center of the current circle
-                    width: '100%', // Stretches perfectly to the center of the previous circle
+                    right: '50%', 
+                    width: 'calc(100% - 36px)', 
+                    marginRight: '18px',
                     height: '4px',
-                    backgroundColor: steps[index - 1].isComplete ? '#2563EB' : '#F1F5F9', // Only blue if the previous step is done
+                    backgroundColor: step.isComplete || steps[index - 1].isComplete ? '#2563EB' : '#F1F5F9',
                     zIndex: -1,
                     transition: 'background-color 0.3s ease'
                   }} />
                 )}
 
+                {/* THE CIRCLE */}
                 <div style={{ 
                   width: '36px', height: '36px', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: '10px',
-                  backgroundColor: isActive ? '#2563EB' : isCurrent ? 'white' : '#F8FAFC',
-                  color: isActive ? 'white' : isCurrent ? '#2563EB' : '#94A3B8',
+                  backgroundColor: isActive ? '#2563EB' : 'white',
+                  color: isActive ? 'white' : isCurrent ? '#2563EB' : '#CBD5E1',
                   border: `2px solid ${isActive || isCurrent ? '#2563EB' : '#E2E8F0'}`,
-                  boxShadow: isCurrent ? '0 0 0 4px #EFF6FF' : 'none',
-                  transition: 'all 0.3s ease'
+                  boxShadow: isCurrent ? '0 0 0 6px #EFF6FF' : 'none',
+                  transition: 'all 0.3s ease',
+                  transform: isCurrent ? 'scale(1.1)' : 'scale(1)',
+                  zIndex: 2
                 }}>
                   {isActive ? <MdCheckCircle size={22} /> : step.icon}
                 </div>
-                <div style={{ fontSize: '13px', fontWeight: isActive || isCurrent ? '800' : '600', color: isActive ? '#0F172A' : isCurrent ? '#1E3A8A' : '#64748B', marginBottom: '4px', textAlign: 'center' }}>
+                
+                {/* THE TEXT */}
+                <div style={{ 
+                  fontSize: '13px', 
+                  fontWeight: isActive || isCurrent ? '800' : '600', 
+                  color: isActive ? '#0F172A' : isCurrent ? '#2563EB' : '#94A3B8', 
+                  marginBottom: '4px', 
+                  textAlign: 'center',
+                  transition: 'color 0.2s ease'
+                }}>
                   {step.title}
                 </div>
               </div>

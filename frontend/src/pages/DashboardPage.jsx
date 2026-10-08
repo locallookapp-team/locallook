@@ -13,7 +13,7 @@ import {
   MdLocalOffer, MdRocketLaunch, MdPayment, MdRestaurantMenu, MdCheckCircle, 
   MdCancel, MdWarning, MdClose, MdSettings, MdStorefront, MdVerifiedUser, MdUploadFile,
   MdInsertDriveFile, MdStar, MdReply, MdMoreVert, MdDesktopMac, MdQrCode,
-  MdLocationOn, MdVisibility, MdLock, MdSchedule
+  MdLocationOn, MdVisibility, MdLock, MdSchedule, MdPalette
 } from "react-icons/md";
 
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
@@ -38,6 +38,9 @@ const BUSINESS_TAXONOMY = {
   'Home & Professional Services': ['Laundry Shop', 'Tailor / Dress Shop', 'Printing / Copy Center', 'Gadget Repair', 'Appliance / AC Repair', 'Home Repair / Handyman', 'Glass & Aluminum', 'Courier & Freight Service', 'Internet Cafe', 'Photography / Video Studio', 'Event Services & Rentals', 'IT Services'],
   'Financial & Business': ['Bank / ATM', 'Pawnshop / Remittance', 'Money Changer', 'Lending / Cooperative', 'Insurance Agency', 'Law & Accounting Office', 'Real Estate Office']
 };
+
+// 🚀 UPDATED COLOR SPECTRUM: Added standard spectrum, Pink, and Black
+const PRESET_COLORS = ['#DC2626', '#EA580C', '#F59E0B', '#EAB308', '#84CC16', '#10B981', '#06B6D4', '#3B82F6', '#000000', '#EC4899'];
 
 const fetchAddressFromCoords = async (lng, lat) => {
   if (!MAPBOX_TOKEN) return '';
@@ -212,8 +215,8 @@ function VerificationPanel({ store, userId, onStoreUpdate }) {
       <h3 style={{ margin: '0 0 16px 0', color: '#0F172A', fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
         <MdVerifiedUser size={20} color="#64748B" /> Business Verification Status
       </h3>
-      <p style={{ fontSize: '13px', color: '#64748B', marginBottom: '20px' }}>
-        Manage your legal documents here. Valid submissions will unlock premium platform features.
+      <p style={{ fontSize: '13px', color: '#64748B', marginBottom: '20px', lineHeight: '1.5' }}>
+        Submit your official documents to earn a Blue Verified Badge. This proves your store is legitimate, protects your brand, and builds trust with customers on the map.
       </p>
 
       {message && (
@@ -451,9 +454,22 @@ export default function DashboardPage() {
 
   const fetchSubscription = async (storeId) => {
     try {
-      const { data } = await supabase.from('subscriptions').select('*').eq('store_id', storeId).order('created_at', { ascending: false }).limit(1).maybeSingle(); 
-      if (data) setSubscription(data); else setSubscription({ plan_type: 'free', end_date: null });
-    } catch (err) { console.error(err); }
+      const { data } = await supabase
+        .from('subscriptions')
+        .select('*')
+        .eq('store_id', storeId)
+        .eq('status', 'active')
+        .limit(1)
+        .maybeSingle(); 
+
+      if (data) {
+        setSubscription(data); 
+      } else {
+        setSubscription({ plan_type: 'free', end_date: null });
+      }
+    } catch (err) { 
+      console.error(err); 
+    }
   };
 
   const fetchStoreReviews = async () => {
@@ -492,11 +508,7 @@ export default function DashboardPage() {
     }
   }, [activeStore?.id]);
 
-  // ---------------------------------------------------------
-  // 🚀 REAL-TIME STORE STATUS LISTENER
-  // ---------------------------------------------------------
   useEffect(() => {
-    // Only set up the listener if a store is actively selected
     if (!activeStore?.id) return;
 
     const storeChannel = supabase.channel(`realtime-store-${activeStore.id}`)
@@ -506,7 +518,6 @@ export default function DashboardPage() {
         table: 'stores', 
         filter: `id=eq.${activeStore.id}` 
       }, (payload) => {
-        // When the auto-scheduler (or an admin) updates the store, magically flip the UI!
         if (payload.new) {
           setActiveStore(prev => ({ ...prev, is_open: payload.new.is_open }));
           setStores(prevStores => prevStores.map(s => 
@@ -516,11 +527,10 @@ export default function DashboardPage() {
       })
       .subscribe();
 
-    // Clean up the channel when they switch to a different store tab
     return () => { 
       supabase.removeChannel(storeChannel); 
     };
-  }, [activeStore?.id]); // Re-run this setup only when the active store changes
+  }, [activeStore?.id]);
 
   useEffect(() => {
     if (activeTab === 'reviews' && activeStore?.id) fetchStoreReviews();
@@ -695,8 +705,6 @@ export default function DashboardPage() {
   const toggleStoreStatus = async () => {
     try {
       const nextStatus = !activeStore.is_open;
-      console.log(`[Toggle Debug] Attempting to set store ${activeStore.id} to is_open: ${nextStatus}`);
-      
       const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/toggle`, { 
         method: 'PATCH', 
         headers: await getAuthHeaders(), 
@@ -704,16 +712,13 @@ export default function DashboardPage() {
       });
       
       if (response.ok) { 
-        console.log(`[Toggle Debug] Success! Store ${activeStore.id} is now ${nextStatus ? 'OPEN' : 'CLOSED'}`);
         setActiveStore({ ...activeStore, is_open: nextStatus }); 
         setStores(stores.map(s => s.id === activeStore.id ? { ...s, is_open: nextStatus } : s)); 
       } else {
         const errData = await response.json();
-        console.error("[Toggle Debug] Server Error:", errData);
         alert(`Failed to toggle status: ${errData.error || 'Server rejected the update.'}`);
       }
     } catch (err) {
-      console.error("[Toggle Debug] Network Error:", err);
       alert("Network Error: " + err.message);
     }
   };
@@ -740,12 +745,10 @@ export default function DashboardPage() {
       });
       setIsEditStoreModalOpen(true);
     } catch (err) {
-      console.error("[Edit Modal Debug] Error loading data:", err);
       alert("Error loading store data. Check console for details.");
     }
   };
   
-
   const handleUpdateSettings = async (e) => {
     e.preventDefault(); if (!editStoreData.lat || !editStoreData.lng) return alert("Please drop a pin on the map!"); setIsUploading(true);
     try {
@@ -767,14 +770,23 @@ export default function DashboardPage() {
     } catch (err) { alert("Failed to save settings."); } finally { setIsUploading(false); }
   };
 
-  const handleSaveTheme = async () => {
+  const handleSelectColor = async (color) => {
+    const updatedTheme = { ...storeTheme, primaryColor: color };
+    setStoreTheme(updatedTheme);
     setIsSavingTheme(true);
     try {
       const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/theme`, { 
-        method: 'PATCH', headers: await getAuthHeaders(), body: JSON.stringify({ theme_settings: { ...storeTheme, categoryOrder } }) 
+        method: 'PATCH', 
+        headers: await getAuthHeaders(), 
+        body: JSON.stringify({ theme_settings: { ...updatedTheme, categoryOrder } }) 
       });
       if (!response.ok) throw new Error("Failed to save theme");
-    } catch (err) { alert(err.message); } finally { setIsSavingTheme(false); }
+      setActiveStore(prev => ({ ...prev, theme_settings: { ...updatedTheme, categoryOrder } }));
+    } catch (err) { 
+      alert("Error saving color: " + err.message); 
+    } finally { 
+      setIsSavingTheme(false); 
+    }
   };
 
   const handleDeleteStore = async () => {
@@ -909,8 +921,20 @@ export default function DashboardPage() {
     }
   };
 
+  const handleOnboardingAction = (action) => {
+    if (action === 'verify') setActiveTab('verification');
+    if (action === 'menu') {
+      setActiveTab('menu');
+      if (!isMenuLocked) openAddModal();
+    }
+    if (action === 'premium') setIsUpgradeModalOpen(true);
+  };
+
   const groupedItems = items.reduce((groups, item) => { const category = item.item_category || 'Uncategorized'; if (!groups[category]) groups[category] = []; groups[category].push(item); return groups; }, {});
-  const isMenuLocked = subscription?.plan_type === 'free' || (subscription?.plan_type === 'premium' && subscription?.end_date && new Date(subscription.end_date) <= new Date());
+  const isMenuLocked = !subscription || 
+                       subscription.plan_type === 'free' || 
+                       subscription.status !== 'active' || 
+                       (subscription.end_date && new Date(subscription.end_date) <= new Date());
 
   const reviewCount = storeReviews.length;
   const avgRating = reviewCount > 0 ? (storeReviews.reduce((sum, r) => sum + r.rating, 0) / reviewCount).toFixed(1) : 0;
@@ -918,18 +942,53 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', backgroundColor: '#F8FAFC', padding: '30px' }}>
-        <div style={{ height: '70px', width: '100%', backgroundColor: '#E2E8F0', borderRadius: '12px', animation: 'pulse 1.5s infinite', marginBottom: '30px' }} />
+        <div style={{ height: '80px', width: '100%', maxWidth: '1000px', margin: '0 auto 30px auto', backgroundColor: '#E2E8F0', borderRadius: '16px', animation: 'pulse 1.5s infinite' }} />
         <div style={{ height: '320px', width: '100%', maxWidth: '1000px', margin: '0 auto', backgroundColor: '#E2E8F0', borderRadius: '24px', animation: 'pulse 1.5s infinite', marginBottom: '20px' }} />
+        <div style={{ height: '40px', width: '100%', maxWidth: '1000px', margin: '0 auto', backgroundColor: '#E2E8F0', borderRadius: '12px', animation: 'pulse 1.5s infinite', marginBottom: '20px' }} />
+        <div style={{ height: '70px', width: '100%', maxWidth: '1000px', margin: '0 auto', backgroundColor: '#E2E8F0', borderRadius: '16px', animation: 'pulse 1.5s infinite' }} />
       </div>
     );
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', backgroundColor: '#F8FAFC', fontFamily: 'Inter, sans-serif', overflowY: 'auto', position: 'relative' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', backgroundColor: '#F8FAFC', fontFamily: 'inherit', overflowY: 'auto', position: 'relative' }}>
       
       <style>{`.mapboxgl-ctrl-bottom-left, .mapboxgl-ctrl-bottom-right, .mapboxgl-ctrl-logo, .mapboxgl-ctrl-attrib { display: none !important; }`}</style>
 
-      {/* 🚀 FIXED: RESTORED ALL MISSING MODAL JSX BLOCKS */}
+      {/* 🚀 UNIVERSAL CROPPER MODAL */}
+      {imageToCrop && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: 'rgba(15,23,42,0.95)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px', backdropFilter: 'blur(5px)' }}>
+          <div style={{ width: '100%', maxWidth: '800px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', color: 'white' }}>
+            <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '800' }}>
+              {cropType === 'cover' ? 'Adjust Cover Photo (3:1)' : cropType === 'logo' ? 'Adjust Store Logo (1:1)' : 'Adjust Item Image (4:3)'}
+            </h3>
+            <button onClick={() => { setImageToCrop(null); setZoom(1); }} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}><MdClose size={28} /></button>
+          </div>
+          
+          <div style={{ position: 'relative', width: '100%', maxWidth: '800px', height: '60vh', backgroundColor: '#000', borderRadius: '16px', overflow: 'hidden', marginBottom: '20px', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
+            <Cropper
+              image={imageToCrop}
+              crop={crop}
+              zoom={zoom}
+              aspect={cropType === 'cover' ? 3 / 1 : cropType === 'logo' ? 1 / 1 : 4 / 3}
+              onCropChange={setCrop}
+              onCropComplete={onCropComplete}
+              onZoomChange={setZoom}
+              objectFit="contain"
+            />
+          </div>
+          
+          <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center', backgroundColor: 'white', padding: '15px 30px', borderRadius: '50px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
+            <span style={{ fontSize: '13px', fontWeight: '800', color: '#475569' }}>Zoom</span>
+            <input type="range" value={zoom} min={1} max={3} step={0.1} onChange={(e) => setZoom(Number(e.target.value))} style={{ width: '150px', accentColor: '#2563EB' }} />
+            <div style={{ width: '1px', height: '24px', backgroundColor: '#E2E8F0', margin: '0 5px' }} />
+            <button onClick={() => { setImageToCrop(null); setZoom(1); }} style={{ padding: '10px 20px', backgroundColor: '#F1F5F9', color: '#475569', border: 'none', borderRadius: '24px', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
+            <button onClick={handleSaveCrop} style={{ padding: '10px 24px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '24px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}><MdCheckCircle size={18} /> Apply Crop</button>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODALS (Voucher, Upgrade, Schedule, Edit Store, Item, Delete, QR) --- */}
       
       {isVoucherModalOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
@@ -972,7 +1031,6 @@ export default function DashboardPage() {
               />
             </div>
 
-            {/* 🚀 NEW: Clickwrap Payment Disclaimer */}
             <div style={{ marginBottom: '15px', fontSize: '11px', color: '#475569', lineHeight: '1.4', textAlign: 'center', padding: '0 10px' }}>
               By proceeding with this payment, you acknowledge that you have read and agree to our strictly non-refundable payment policy as outlined in our <a href="/terms" target="_blank" style={{ color: '#2563EB', textDecoration: 'underline' }}>Terms of Service</a>.
             </div>
@@ -992,9 +1050,8 @@ export default function DashboardPage() {
             <button onClick={() => setIsUpgradeModalOpen(false)} style={{ marginTop: '15px', background: 'none', border: 'none', color: '#94A3B8', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
           </div>
         </div>
-
       )}
-      {/* 🚀 Render the Schedule Modal down here in the return block! */}
+
       {isScheduleModalOpen && activeStore && (
         <StoreScheduleModal 
           store={activeStore}
@@ -1172,6 +1229,7 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* --- HEADER BAR --- */}
       <div style={{ height: '70px', flexShrink: 0, boxSizing: 'border-box', zIndex: 40, backgroundColor: '#FFFFFF', padding: '0 30px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #E2E8F0', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px', overflow: 'hidden', flexGrow: 1, marginRight: '20px' }}>
           <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '900', color: '#0F172A', paddingRight: '15px', borderRight: '1px solid #E2E8F0', flexShrink: 0 }}>Merchant's Hub</h2>
@@ -1188,7 +1246,9 @@ export default function DashboardPage() {
       </div>
 
       <div ref={scrollContainerRef} onScroll={handleScroll} style={{ flexGrow: 1, padding: '30px', paddingBottom: '90px', position: 'relative', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
-        <MerchantOnboarding activeStoreId={activeStore?.id} />
+        
+        <MerchantOnboarding activeStoreId={activeStore?.id} onAction={handleOnboardingAction} />
+        
         {stores.length === 0 && (
            <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
               <div style={{ width: '80px', height: '80px', backgroundColor: '#EFF6FF', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: '20px' }}><MdStorefront size={40} color="#2563EB" /></div>
@@ -1200,10 +1260,9 @@ export default function DashboardPage() {
         {activeStore && (
           <div style={{ width: '100%', maxWidth: '1000px', margin: '0 auto' }}>
             
-            <div style={{ position: 'relative', marginBottom: '80px' }}>
-              
+            {/* 🚀 FIXED BANNER: Increased marginBottom to 60px to give tabs more breathing room */}
+            <div style={{ position: 'relative', marginBottom: '60px' }}>
               <div style={{ width: '100%', height: '320px', borderRadius: '24px', overflow: 'hidden', backgroundImage: `url(${getStoreCoverImage(activeStore)})`, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative', boxShadow: '0 10px 30px rgba(0,0,0,0.08)' }}>
-                
                 <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0) 100%)', pointerEvents: 'none' }} />
                 
                 <div style={{ position: 'absolute', top: '20px', right: '20px', zIndex: 20 }}>
@@ -1222,98 +1281,141 @@ export default function DashboardPage() {
                     <p style={{ margin: '4px 0 12px 0', color: '#E2E8F0', fontSize: '15px', fontWeight: '600' }}>{activeStore.industry || activeStore.store_category}</p>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '20px', color: '#F8FAFC', fontSize: '14px', fontWeight: '500' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <MdLocationOn size={18} /> {activeStore.theme_settings?.addressText || 'Location not set'}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <MdStar size={18} /> {reviewCount > 0 ? `${avgRating} (${reviewCount} reviews)` : 'No reviews yet'}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <MdVisibility size={18} /> 1.2K views
-                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><MdLocationOn size={18} /> {activeStore.theme_settings?.addressText || 'Location not set'}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><MdStar size={18} /> {reviewCount > 0 ? `${avgRating} (${reviewCount} reviews)` : 'No reviews yet'}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><MdVisibility size={18} /> 1.2K views</div>
                     </div>
                   </div>
-
-                  <button 
-                    onClick={toggleStoreStatus} 
-                    style={{ display: 'flex', alignItems: 'center', gap: '15px', backgroundColor: 'rgba(15, 23, 42, 0.65)', backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)', padding: '12px 24px', borderRadius: '50px', border: '1px solid rgba(255,255,255,0.15)', boxShadow: '0 8px 32px rgba(0,0,0,0.2)', cursor: 'pointer', outline: 'none', pointerEvents: 'auto' }}
-                  >
-                    <span style={{ fontWeight: '800', fontSize: '13px', color: activeStore.is_open ? '#34D399' : '#94A3B8', letterSpacing: '0.5px', transition: 'color 0.3s' }}>OPEN</span>
-                    <div style={{ width: '48px', height: '24px', backgroundColor: activeStore.is_open ? '#10B981' : 'rgba(255,255,255,0.2)', borderRadius: '24px', position: 'relative', transition: 'all 0.3s' }}>
-                      <div style={{ width: '20px', height: '20px', backgroundColor: 'white', borderRadius: '50%', position: 'absolute', top: '2px', left: activeStore.is_open ? '26px' : '2px', transition: 'left 0.3s cubic-bezier(0.4, 0.0, 0.2, 1)', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }} />
-                    </div>
-                    <span style={{ fontWeight: '800', fontSize: '13px', color: !activeStore.is_open ? '#F87171' : '#94A3B8', letterSpacing: '0.5px', transition: 'color 0.3s' }}>CLOSED</span>
-                  </button>
                 </div>
               </div>
 
               <div style={{ position: 'absolute', bottom: '-40px', left: '40px', width: '160px', height: '160px', borderRadius: '50%', border: '6px solid #F8FAFC', backgroundColor: 'white', zIndex: 30, backgroundImage: activeStore.logo_url ? `url(${activeStore.logo_url})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center', boxShadow: '0 8px 25px rgba(0,0,0,0.1)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                 {!activeStore.logo_url && <MdStorefront size={60} color="#CBD5E1" />}
-                
                 <label style={{ position: 'absolute', bottom: '5px', right: '0px', backgroundColor: '#2563EB', color: 'white', width: '36px', height: '36px', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: isUploadingLogo ? 'not-allowed' : 'pointer', border: '3px solid #F8FAFC', boxShadow: '0 4px 10px rgba(0,0,0,0.15)' }}>
                   {isUploadingLogo ? <div style={{ width: '14px', height: '14px', border: '2px solid white', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /> : <MdCameraAlt size={16} />}
                   <input type="file" accept="image/*" onChange={onLogoFileSelect} disabled={isUploadingLogo} style={{ display: 'none' }} />
                 </label>
               </div>
-
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', borderBottom: '1px solid #E2E8F0', paddingBottom: '10px', gap: '15px', flexWrap: 'wrap' }}>
-              <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', scrollbarWidth: 'none' }}>
-                {['menu', 'staff', 'verification', 'reviews', 'preview'].map(tab => {
-                  const labels = { 
-                    menu: <><MdDashboard size={18} /> Dashboard & Menu</>, 
-                    staff: <><MdPeople size={18} /> Staff Access</>, 
-                    verification: <><MdVerifiedUser size={18} /> Verification</>,
-                    reviews: <><MdStar size={18} /> Reviews</>,
-                    preview: <><MdSmartphone size={18} /> Live Preview</> 
-                  };
-                  return (
-                    <button key={tab} onClick={() => setActiveTab(tab)} style={{ padding: '10px 20px', borderRadius: '20px', backgroundColor: activeTab === tab ? '#0F172A' : 'transparent', color: activeTab === tab ? 'white' : '#64748B', border: 'none', fontWeight: '800', fontSize: '14px', cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      {labels[tab]}
-                    </button>
-                  );
-                })}
-              </div>
-              
-              <div style={{ display: 'flex', gap: '10px', position: 'relative', zIndex: 100 }}>
-                <button onClick={() => setIsQrModalOpen(true)} style={{ padding: '8px 16px', backgroundColor: '#F8FAFC', color: '#0F172A', border: '1px solid #E2E8F0', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><MdQrCode size={16} /> QR Code</button>
-                <button 
-                  onClick={handleOpenEditModal} 
-                  style={{ padding: '8px 16px', backgroundColor: '#EFF6FF', color: '#2563EB', border: '1px dashed #BFDBFE', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-                >
-                  <MdEdit size={16} /> Edit Store Info
-                </button>
-              </div>
-                {/* Add this inside the flex container with the QR Code and Edit Store Info buttons */}
-                <button 
-                  onClick={() => setIsScheduleModalOpen(true)} 
-                  style={{ padding: '8px 16px', backgroundColor: '#F8FAFC', color: '#0F172A', border: '1px solid #E2E8F0', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-                >
-                  <MdSchedule size={16} /> Operating Hours
-                </button>
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', overflowX: 'auto', scrollbarWidth: 'none', marginBottom: '20px', padding: '0 10px' }}>
+              {['menu', 'staff', 'verification', 'reviews', 'preview'].map(tab => {
+                const labels = { 
+                  menu: <><MdDashboard size={18} /> Dashboard & Menu</>, 
+                  staff: <><MdPeople size={18} /> Staff Access</>, 
+                  verification: <><MdVerifiedUser size={18} /> Verification</>,
+                  reviews: <><MdStar size={18} /> Reviews</>,
+                  preview: <><MdSmartphone size={18} /> Live Preview</> 
+                };
+                const isActive = activeTab === tab;
+                return (
+                  <button 
+                    key={tab} 
+                    onClick={() => setActiveTab(tab)} 
+                    style={{ 
+                      padding: '10px 22px', 
+                      borderRadius: '24px', 
+                      backgroundColor: isActive ? '#2563EB' : 'transparent', 
+                      color: isActive ? 'white' : '#64748B', 
+                      border: 'none', 
+                      fontWeight: '800', 
+                      fontSize: '14px', 
+                      cursor: 'pointer', 
+                      whiteSpace: 'nowrap', 
+                      transition: 'all 0.2s', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '8px',
+                      boxShadow: isActive ? '0 4px 14px rgba(37,99,235,0.35)' : 'none'
+                    }}
+                  >
+                    {labels[tab]}
+                  </button>
+                );
+              })}
             </div>
 
+            {/* --- TAB 1: MENU --- */}
             {activeTab === 'menu' && (
               <div>
-                {activeStore.merchant_id === user?.id && (
-                  <div style={{ display: 'flex', gap: '20px', marginBottom: '30px', flexWrap: 'wrap' }}>
-                    <div style={{ flex: 1, backgroundColor: 'white', padding: '25px', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.02)', border: '1px solid #E2E8F0', minWidth: '300px' }}>
-                      <h3 style={{ margin: '0 0 15px 0', color: '#0F172A', fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}><MdSettings color="#64748B" /> Storefront Branding</h3>
-                      <p style={{ margin: '0 0 15px 0', color: '#64748B', fontSize: '12px' }}>Drag and drop categories below to set sorting, set your color, then click save!</p>
-                      <div style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}>
-                        <div style={{ flex: 1 }}>
-                          <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: '#64748B', marginBottom: '5px' }}>BRAND COLOR</label>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}><input type="color" value={storeTheme.primaryColor} onChange={(e) => setStoreTheme({...storeTheme, primaryColor: e.target.value})} style={{ width: '40px', height: '40px', padding: 0, border: 'none', borderRadius: '8px', cursor: 'pointer' }} /><span style={{ fontSize: '14px', fontWeight: 'bold', color: '#374151' }}>{storeTheme.primaryColor.toUpperCase()}</span></div>
+                
+                {/* 🚀 FIXED: Control Panel isolated entirely inside the Menu tab */}
+                <div style={{ backgroundColor: 'white', padding: '18px 24px', borderRadius: '16px', border: '1px solid #E2E8F0', boxShadow: '0 4px 10px rgba(0,0,0,0.02)', marginBottom: '30px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <span style={{ fontSize: '13px', fontWeight: '800', color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Store Status</span>
+                      <button 
+                        onClick={toggleStoreStatus} 
+                        style={{ display: 'flex', alignItems: 'center', gap: '12px', backgroundColor: activeStore.is_open ? '#ECFDF5' : '#F8FAFC', padding: '8px 16px', borderRadius: '50px', border: activeStore.is_open ? '1px solid #10B981' : '1px solid #CBD5E1', cursor: 'pointer', transition: 'all 0.3s' }}
+                      >
+                        <span style={{ fontWeight: '900', fontSize: '12px', color: activeStore.is_open ? '#10B981' : '#94A3B8' }}>OPEN</span>
+                        <div style={{ width: '44px', height: '24px', backgroundColor: activeStore.is_open ? '#10B981' : '#CBD5E1', borderRadius: '24px', position: 'relative', transition: 'all 0.3s' }}>
+                          <div style={{ width: '18px', height: '18px', backgroundColor: 'white', borderRadius: '50%', position: 'absolute', top: '3px', left: activeStore.is_open ? '23px' : '3px', transition: 'left 0.3s cubic-bezier(0.4, 0.0, 0.2, 1)', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }} />
                         </div>
-                      </div>
-                      <button onClick={handleSaveTheme} disabled={isSavingTheme} style={{ width: '100%', padding: '10px', backgroundColor: '#0F172A', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: isSavingTheme ? 'not-allowed' : 'pointer' }}>{isSavingTheme ? 'Saving...' : 'Save Theme & Sorting'}</button>
+                        <span style={{ fontWeight: '900', fontSize: '12px', color: !activeStore.is_open ? '#EF4444' : '#94A3B8' }}>CLOSED</span>
+                      </button>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                      <button onClick={() => setIsQrModalOpen(true)} style={{ padding: '10px 16px', backgroundColor: '#F8FAFC', color: '#0F172A', border: '1px solid #E2E8F0', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><MdQrCode size={18} /> QR Code</button>
+                      <button onClick={() => setIsScheduleModalOpen(true)} style={{ padding: '10px 16px', backgroundColor: '#F8FAFC', color: '#0F172A', border: '1px solid #E2E8F0', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><MdSchedule size={18} /> Operating Hours</button>
+                      <button onClick={handleOpenEditModal} style={{ padding: '10px 16px', backgroundColor: '#EFF6FF', color: '#2563EB', border: '1px dashed #BFDBFE', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><MdEdit size={18} /> Edit Info</button>
                     </div>
                   </div>
-                )}
-                
+
+                  {activeStore.merchant_id === user?.id && (
+                    <div style={{ borderTop: '1px solid #F1F5F9', paddingTop: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <MdPalette size={18} color="#2563EB" />
+                        <span style={{ fontSize: '13px', fontWeight: '800', color: '#0F172A' }}>Brand Theme Color:</span>
+                        <span style={{ fontSize: '12px', color: '#64748B' }}>Choose an accent color for your storefront</span>
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                        {/* 🚀 FIXED: "Saving..." loader placed safely on the left so elements do not jump */}
+                        {isSavingTheme && <span style={{ fontSize: '12px', color: '#64748B', fontStyle: 'italic', fontWeight: 'bold', marginRight: '4px' }}>Saving...</span>}
+                        
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          {PRESET_COLORS.map(color => (
+                            <button
+                              key={color}
+                              type="button"
+                              onClick={() => handleSelectColor(color)}
+                              style={{
+                                width: '28px',
+                                height: '28px',
+                                borderRadius: '50%',
+                                backgroundColor: color,
+                                // 🚀 FIXED: Thinner, cleaner selection ring
+                                border: 'none',
+                                boxShadow: storeTheme.primaryColor === color ? `0 0 0 2px white, 0 0 0 4px ${color}` : '0 2px 5px rgba(0,0,0,0.15)',
+                                cursor: 'pointer',
+                                outline: 'none',
+                                transform: storeTheme.primaryColor === color ? 'scale(1.1)' : 'scale(1)',
+                                transition: 'all 0.15s ease'
+                              }}
+                              title={`Select ${color}`}
+                            />
+                          ))}
+
+                          <div style={{ width: '1px', height: '20px', backgroundColor: '#E2E8F0', margin: '0 4px' }} />
+
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', color: '#475569' }}>
+                            <input 
+                              type="color" 
+                              value={storeTheme.primaryColor} 
+                              onChange={(e) => handleSelectColor(e.target.value)} 
+                              style={{ width: '28px', height: '28px', padding: 0, border: 'none', borderRadius: '50%', cursor: 'pointer', background: 'none' }} 
+                            />
+                            Custom
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div style={{ position: 'relative' }}>
-                  
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                       <h2 style={{ margin: '0 0 0 0', fontSize: '20px', color: '#0F172A', fontWeight: '800' }}>Manage Menu & Products</h2>
@@ -1324,7 +1426,6 @@ export default function DashboardPage() {
                       )}
                     </div>
                     
-                    {/* 🚀 FIXED: Dynamic Button. Opens Modal if locked, Opens Add form if unlocked */}
                     <button 
                       onClick={isMenuLocked ? () => setIsUpgradeModalOpen(true) : openAddModal} 
                       style={{ 
@@ -1403,6 +1504,7 @@ export default function DashboardPage() {
               </div>
             )}
 
+            {/* --- TAB 2: STAFF --- */}
             {activeTab === 'staff' && (
               <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '20px', border: '1px solid #E2E8F0' }}>
                 <h3 style={{ margin: '0 0 10px 0', color: '#0F172A', fontSize: '18px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}><MdSecurity color="#2563EB" /> Operator Access</h3>
@@ -1456,6 +1558,7 @@ export default function DashboardPage() {
               </div>
             )}
 
+            {/* --- TAB 3: VERIFICATION --- */}
             {activeTab === 'verification' && (
               <VerificationPanel 
                 store={activeStore} 
@@ -1467,6 +1570,7 @@ export default function DashboardPage() {
               />
             )}
 
+            {/* --- TAB 4: REVIEWS --- */}
             {activeTab === 'reviews' && (
               <div style={{ backgroundColor: 'white', padding: '30px', borderRadius: '20px', border: '1px solid #E2E8F0' }}>
                 <h3 style={{ margin: '0 0 10px 0', color: '#0F172A', fontSize: '18px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}><MdStar color="#F59E0B" /> Customer Reviews</h3>
@@ -1538,6 +1642,7 @@ export default function DashboardPage() {
               </div>
             )}
 
+            {/* --- TAB 5: PREVIEW --- */}
             {activeTab === 'preview' && (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px', backgroundColor: '#F1F5F9', borderRadius: '24px', border: '1px dashed #CBD5E1' }}>
                 <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', backgroundColor: '#E2E8F0', padding: '6px', borderRadius: '12px' }}>

@@ -24,6 +24,7 @@ import { PiStethoscope } from 'react-icons/pi';
 import { HiMiniBeaker } from 'react-icons/hi2';
 import { LuCroissant } from 'react-icons/lu';
 
+
 const CATEGORY_COLORS = {
   'Food & Dining': '#EF4444',             
   'Grocery & Retail': '#3B82F6',          
@@ -122,9 +123,19 @@ const CATEGORY_FALLBACK_ICONS = {
   'Financial & Business': MdAccountBalance
 };
 
-export const CustomMapPin = ({ category, industry, storeName, showLabel = true, isDotMode = false, size = 30 }) => {
+export const CustomMapPin = ({ category, industry, storeName, showLabel = true, isDotMode = false, size = 30, isOpen = false, isDarkMode = false }) => {
   const pinColor = CATEGORY_COLORS[category] || '#1E293B';
   const Icon = INDUSTRY_ICONS[industry] || CATEGORY_FALLBACK_ICONS[category] || MdStorefront;
+
+  // 🌙 Dynamic Dark Mode Variables
+  const strokeColor = isDarkMode ? '#1E293B' : '#FFFFFF'; 
+  const outlineColor = isDarkMode ? '#0B1121' : '#FFFFFF'; 
+  
+  // 🚀 Always use the category color for the text, regardless of theme
+  const textColor = pinColor; 
+  
+  // Custom text-shadow to create a seamless cutout effect against the map
+  const textShadowString = `1px 1px 0 ${outlineColor}, -1px -1px 0 ${outlineColor}, 1px -1px 0 ${outlineColor}, -1px 1px 0 ${outlineColor}, 0px 1px 0 ${outlineColor}, 0px -1px 0 ${outlineColor}, -1px 0px 0 ${outlineColor}, 1px 0px 0 ${outlineColor}, 0px 2px 4px rgba(0,0,0,0.4)`;
 
   if (isDotMode) {
     return (
@@ -133,8 +144,9 @@ export const CustomMapPin = ({ category, industry, storeName, showLabel = true, 
         height: '12px',
         backgroundColor: pinColor,
         borderRadius: '50%',
-        border: '2px solid #FFFFFF',
-        boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
+        border: `2px solid ${strokeColor}`,
+        // Add a glowing effect to the dots in dark mode
+        boxShadow: isDarkMode ? `0 0 8px ${pinColor}` : '0 2px 4px rgba(0,0,0,0.3)',
         cursor: 'pointer'
       }} />
     );
@@ -155,33 +167,52 @@ export const CustomMapPin = ({ category, industry, storeName, showLabel = true, 
         display: 'flex',
         justifyContent: 'center',
         transition: 'transform 0.2s ease, filter 0.2s ease',
-        zIndex: 2 
+        zIndex: 2,
+        // Emissive neon glow matching the category color in dark mode
+        filter: isDarkMode ? `drop-shadow(0px 0px 6px ${pinColor}99)` : 'none'
       }}>
         <div style={{ position: 'absolute', bottom: '-2px', width: '10px', height: '3px', backgroundColor: 'rgba(0, 0, 0, 0.4)', borderRadius: '50%', filter: 'blur(1px)', zIndex: 0 }} />
-        <svg viewBox="0 0 32 40" style={{ position: 'absolute', width: '100%', height: '100%', top: 0, left: 0, zIndex: 1, filter: 'drop-shadow(0px 2px 3px rgba(0,0,0,0.2))' }}>
-          <path d="M16 0 C7.16 0 0 7.16 0 16 C0 24 12 36 15 39 C15.5 39.5 16.5 39.5 17 39 C20 36 32 24 32 16 C32 7.16 24.84 0 16 0 Z" fill="#FFFFFF" />
+        
+        <svg viewBox="0 0 32 40" style={{ position: 'absolute', width: '100%', height: '100%', top: 0, left: 0, zIndex: 1, filter: isDarkMode ? 'none' : 'drop-shadow(0px 2px 3px rgba(0,0,0,0.2))' }}>
+          <path d="M16 0 C7.16 0 0 7.16 0 16 C0 24 12 36 15 39 C15.5 39.5 16.5 39.5 17 39 C20 36 32 24 32 16 C32 7.16 24.84 0 16 0 Z" fill={strokeColor} />
         </svg>
+        
         <div style={{ position: 'absolute', top: '6%', width: `${size * 0.76}px`, height: `${size * 0.76}px`, backgroundColor: pinColor, borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#FFFFFF', zIndex: 2 }}>
           <Icon size={size * 0.45} />
         </div>
+
+        <div style={{ 
+          position: 'absolute', 
+          top: '1px', 
+          right: '1px', 
+          width: '8px', 
+          height: '8px', 
+          backgroundColor: isOpen ? '#10B981' : '#94A3B8', 
+          border: `1.5px solid ${strokeColor}`, 
+          borderRadius: '50%', 
+          zIndex: 10, 
+          boxShadow: (isOpen && isDarkMode) 
+            ? '0 0 6px #10B981, 0 0 10px rgba(16, 185, 129, 0.4)' 
+            : '0 1px 3px rgba(0,0,0,0.2)' 
+        }} />
       </div>
       
-      {/* 🚀 UPDATED: Perfectly centered vertically with the circular part of the pin */}
       {showLabel && storeName && (
         <div style={{
           position: 'absolute',
           left: '100%', 
-          marginLeft: '2px', // Brought closer to the pin without touching
-          top: '38%', // Center of the bulbous part of the map pin
-          transform: 'translateY(-50%)', // Anchors the text vertically exactly on the 38% mark
+          marginLeft: '4px', 
+          top: '38%', 
+          transform: 'translateY(-50%)', 
           fontSize: '11.5px',
           fontWeight: '900',
           fontFamily: '"Plus Jakarta Sans", sans-serif',
-          color: pinColor,
+          color: textColor,
           whiteSpace: 'nowrap',
-          textShadow: '1px 1px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 0px 1px 0 #fff, 0px -1px 0 #fff, -1px 0px 0 #fff, 1px 0px 0 #fff, 0px 2px 4px rgba(0,0,0,0.2)',
+          textShadow: textShadowString,
           zIndex: 3,
-          pointerEvents: 'none' 
+          pointerEvents: 'none',
+          letterSpacing: '0.2px'
         }}>
           {storeName}
         </div>

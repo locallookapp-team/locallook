@@ -1,14 +1,14 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
 
 :root {
-  /* Core Brand Colors from Mockup */
-  --brand-primary: #2563EB; /* The solid blue */
-  --brand-gradient: linear-gradient(135deg, #7C3AED, #3B82F6); /* The Promoted badge */
+  /* Core Brand Colors */
+  --brand-primary: #2563EB; 
+  --brand-gradient: linear-gradient(135deg, #7C3AED, #3B82F6); 
   --font-main: 'Inter', sans-serif;
-  --app-radius: 24px; /* For the map and cards */
+  --app-radius: 24px; 
 }
 
-/* Light Mode (Matches image_4121c7.jpg) */
+/* Light Mode (Default) */
 body {
   --bg-color: #F8FAFC;
   --surface-color: #FFFFFF;
@@ -23,22 +23,23 @@ body {
   font-family: var(--font-main);
   margin: 0;
   -webkit-font-smoothing: antialiased;
+  
+  /* Smoothly fades colors when the toggle is clicked */
+  transition: background-color 0.3s ease, color 0.3s ease; 
 }
 
-/* Dark Mode (Matches image_34d3a6.jpg) */
-@media (prefers-color-scheme: dark) {
-  body {
-    --bg-color: #0B1121; /* Deepest navy */
-    --surface-color: #161F33; /* Slightly lighter for cards/sidebar */
-    --surface-hover: #1E293B;
-    --text-main: #F8FAFC;
-    --text-muted: #94A3B8;
-    --border-color: #1E293B;
-    --icon-color: #64748B;
-  }
+/* Dark Mode (Triggered by your toggle switch) */
+body.dark {
+  --bg-color: #0B1121; 
+  --surface-color: #161F33; 
+  --surface-hover: #1E293B;
+  --text-main: #F8FAFC;
+  --text-muted: #94A3B8;
+  --border-color: #1E293B;
+  --icon-color: #64748B;
 }
 
-/* Custom Scrollbar to match the sleek design */
+/* Custom Scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 10px; }

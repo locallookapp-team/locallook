@@ -1,7 +1,10 @@
 import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { supabase } from './supabaseClient'; 
+import { ThemeProvider } from './components/ThemeContext';
+import './App.css';
 
+import LandingPage from './components/LandingPage'; 
 import MapPage from './pages/MapPage';
 import StoreProfilePage from './pages/StoreProfilePage';
 import LoginPage from './pages/LoginPage';
@@ -13,14 +16,11 @@ import ExplorePage from './pages/ExplorePage';
 import ProfilePage from './pages/ProfilePage'; 
 import CreateBusinessPage from './pages/CreateBusinessPage'; 
 import IdentityVerificationPage from './pages/IdentityVerificationPage';
-import TestPages from './pages/TestPages'; 
 import ReviewsFeedPage from './pages/ReviewsFeedPage';
 import PublicUserProfilePage from './pages/PublicUserProfilePage';
 import AppLayout from './components/AppLayout'; 
 import ProtectedRoute from './components/ProtectedRoute'; 
 import BillingPage from './pages/BillingPage';
-
-// 🚀 IMPORT THE NEW LEGAL PAGES HERE
 import TermsOfService from './pages/TermsOfService';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 
@@ -36,10 +36,14 @@ function App() {
   }, []);
 
   return (
+    <ThemeProvider>
     <BrowserRouter>
       <Routes>
+        {/* 🚀 NEW PUBLIC FRONT DOOR */}
+        <Route path="/" element={<LandingPage />} />
+
         {/* PUBLIC ROUTES */}
-        <Route path="/" element={<AppLayout><MapPage /></AppLayout>} />
+        <Route path="/map" element={<AppLayout><MapPage /></AppLayout>} />
         <Route path="/explore" element={<AppLayout><ExplorePage /></AppLayout>} />
         <Route path="/store/:id" element={<AppLayout><StoreProfilePage /></AppLayout>} />
         <Route path="/reviews" element={<AppLayout><ReviewsFeedPage /></AppLayout>} />
@@ -68,10 +72,9 @@ function App() {
         <Route path="/terms" element={<TermsOfService />} />
         <Route path="/privacy" element={<PrivacyPolicy />} />
         
-        {/* SVG TEST ROUTE */}
-        <Route path="/test" element={<TestPages />} />
       </Routes>
     </BrowserRouter>
+    </ThemeProvider>
   );
 }
 

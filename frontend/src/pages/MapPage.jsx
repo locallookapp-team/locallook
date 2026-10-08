@@ -5,11 +5,12 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { supabase } from '../supabaseClient';
 import { CustomMapPin } from '../components/MapMarkers';
+import { useTheme } from '../components/ThemeContext';
 import NotificationBell from '../components/NotificationBell'; 
 import { 
   MdSearch, MdTune, MdExpandMore, MdLocationOn, 
   MdStorefront, MdFastfood, MdClose, MdStar, MdChevronLeft, 
-  MdChevronRight, MdOutlineNearMe
+  MdChevronRight, MdOutlineNearMe, MdDarkMode, MdLightMode
 } from "react-icons/md";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || '';
@@ -44,7 +45,7 @@ export default function MapPage() {
   const mapContainer = useRef(null);
   const map = useRef(null);
   const markersRef = useRef({}); 
-  
+  const { isDarkMode, toggleDarkMode } = useTheme();
   const categoryScrollRef = useRef(null);
   const dragState = useRef({ isDown: false, startX: 0, scrollLeft: 0 });
   
@@ -68,7 +69,6 @@ export default function MapPage() {
 
   const [activeLocation, setActiveLocation] = useState(TABLAS_MUNICIPALITIES[0]); 
   
-  // 🚀 NEW: Store the actual GPS coordinates of the user
   const [actualUserLocation, setActualUserLocation] = useState(null);
 
   const [isLocationDropdownOpen, setIsLocationDropdownOpen] = useState(false);
@@ -96,7 +96,16 @@ export default function MapPage() {
     'Home & Professional Services', 'Financial & Business'
   ];
 
-  // 🚀 NEW: Automatically fetch actual GPS location on page load
+  // Dynamic Theme Colors
+  const bgColors = {
+    primary: isDarkMode ? '#1E293B' : '#FFFFFF',
+    secondary: isDarkMode ? '#0F172A' : '#F8FAFC',
+    border: isDarkMode ? '#334155' : '#E2E8F0',
+    textMain: isDarkMode ? '#F8FAFC' : '#0F172A',
+    textMuted: isDarkMode ? '#94A3B8' : '#64748B',
+    hover: isDarkMode ? '#334155' : '#F8FAFC',
+  };
+
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -154,7 +163,6 @@ export default function MapPage() {
       (pos) => {
         const { longitude, latitude, heading } = pos.coords;
         
-        // 🚀 FIX: Update actual location state so popups update instantly
         setActualUserLocation({ lat: latitude, lng: longitude });
 
         map.current.getSource('user-location').setData({
@@ -201,12 +209,15 @@ export default function MapPage() {
     } catch (err) { console.error(err); }
   };
 
+  // 1. Initial Map Load
   useEffect(() => {
     if (map.current || !mapContainer.current) return; 
     
     map.current = new mapboxgl.Map({
       container: mapContainer.current, 
-      style: 'mapbox://styles/locallook/cmqttzcqe004h01rc8ya580zb', 
+      style: isDarkMode 
+        ? 'mapbox://styles/locallook/cmuya47zw00gk01r7gs3thdzs' // 🌙 Your custom dark map
+        : 'mapbox://styles/locallook/cmqttzcqe004h01rc8ya580zb', // ☀️ Your custom light map
       center: [activeLocation.lng, activeLocation.lat], 
       zoom: 16, 
       pitch: 60 
@@ -281,6 +292,26 @@ export default function MapPage() {
     return () => { if (map.current) { map.current.remove(); map.current = null; } };
   }, []);
 
+  // 2. Mapbox Style Switcher (Dark Mode Toggle)
+  useEffect(() => {
+    if (!map.current || !isMapLoaded) return;
+    
+    const targetStyle = isDarkMode 
+      ? 'mapbox://styles/locallook/cmuya47zw00gk01r7gs3thdzs' // 🌙 Your custom dark map
+      : 'mapbox://styles/locallook/cmqttzcqe004h01rc8ya580zb'; // ☀️ Your custom light map
+      
+    map.current.setStyle(targetStyle);
+  }, [isDarkMode, isMapLoaded]);
+
+  useEffect(() => {
+    if (!mapContainer.current) return;
+    const resizeObserver = new ResizeObserver(() => {
+      if (map.current) map.current.resize();
+    });
+    resizeObserver.observe(mapContainer.current);
+    return () => resizeObserver.disconnect();
+  }, []);
+
   const handleLocationSelect = (loc) => {
     setActiveLocation(loc);
     setIsLocationDropdownOpen(false);
@@ -323,7 +354,6 @@ export default function MapPage() {
     return stores.filter(store => {
       if (!store.lat || !store.lng) return false;
       if (activeCategory !== 'All' && store.store_category !== activeCategory) return false;
-      // We still filter map radius based on the active dropdown location
       if (calculateDistance(activeLocation.lat, activeLocation.lng, store.lat, store.lng) > filters.distance) return false;
       if (filters.openNow && store.is_open === false) return false;
       return true;
@@ -356,8 +386,11 @@ export default function MapPage() {
           showLabel={zoom >= 16.5} 
           isDotMode={isZoomedOut} 
           size={30} 
+          isOpen={store.is_open} 
+          isDarkMode={isDarkMode}
         />
       );
+      
 
       if (!markersRef.current[id]) {
         const el = document.createElement('div');
@@ -389,7 +422,6 @@ export default function MapPage() {
     const onPopupClose = () => setSelectedStore(null);
 
     if (selectedStore) {
-      // 🚀 FIX: Calculate popup distance using actual GPS, falling back to dropdown if GPS denied
       const distanceBase = actualUserLocation || activeLocation;
       const dist = calculateDistance(distanceBase.lat, distanceBase.lng, selectedStore.lat, selectedStore.lng).toFixed(2);
       
@@ -399,12 +431,18 @@ export default function MapPage() {
       const rating = selectedStore.rating || 0;
       const reviewCount = selectedStore.review_count || 0;
 
+      // 🚀 Dark Mode Popup Colors
+      const popupBg = isDarkMode ? '#1E293B' : '#FFFFFF';
+      const popupText = isDarkMode ? '#F8FAFC' : '#0F172A';
+      const popupSub = isDarkMode ? '#94A3B8' : '#64748B';
+      const popupBorder = isDarkMode ? '#334155' : '#E2E8F0';
+
       const div = document.createElement('div');
       
       div.innerHTML = `
-        <div style="font-family: 'Plus Jakarta Sans', sans-serif; width: 240px; display: flex; flex-direction: column; box-sizing: border-box; overflow: hidden;">
+        <div style="font-family: 'Plus Jakarta Sans', sans-serif; width: 240px; display: flex; flex-direction: column; box-sizing: border-box; overflow: hidden; background-color: ${popupBg}; border-radius: 12px;">
           
-          <div style="width: 100%; height: 80px; background-image: url('${coverImage}'); background-size: cover; background-position: center; border-bottom: 1px solid #E2E8F0; position: relative;">
+          <div style="width: 100%; height: 80px; background-image: url('${coverImage}'); background-size: cover; background-position: center; border-bottom: 1px solid ${popupBorder}; position: relative;">
              
              <div style="position: absolute; top: 10px; right: 10px; background-color: ${isOpen ? 'rgba(209, 250, 229, 0.85)' : 'rgba(254, 242, 242, 0.85)'}; backdrop-filter: blur(4px); padding: 4px 10px; border-radius: 9999px; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.08);">
     
@@ -423,11 +461,11 @@ export default function MapPage() {
           </div>
           
           <div style="padding: 10px 12px; box-sizing: border-box; width: 100%;">
-            <h3 style="margin: 0 0 2px 0; font-size: 14px; font-weight: 800; color: #0F172A; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;">
+            <h3 style="margin: 0 0 2px 0; font-size: 14px; font-weight: 800; color: ${popupText}; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;">
               ${selectedStore.store_name}
             </h3>
             
-            <div style="font-size: 11px; color: #64748B; font-weight: 600; margin-bottom: 8px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;">
+            <div style="font-size: 11px; color: ${popupSub}; font-weight: 600; margin-bottom: 8px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;">
               ${selectedStore.industry || selectedStore.store_category}
             </div>
             
@@ -435,14 +473,14 @@ export default function MapPage() {
               ${reviewCount > 0 ? `
                 <div style="display: flex; align-items: center; gap: 4px;">
                   <span style="color: #F59E0B; font-size: 13px;">★</span>
-                  <span style="color: #0F172A; font-weight: 800;">${rating.toFixed(1)}</span>
-                  <span style="color: #64748B; font-weight: 500;">(${reviewCount})</span>
+                  <span style="color: ${popupText}; font-weight: 800;">${rating.toFixed(1)}</span>
+                  <span style="color: ${popupSub}; font-weight: 500;">(${reviewCount})</span>
                 </div>
               ` : `
                 <span style="color: #94A3B8; font-weight: 600; font-style: italic;">No reviews yet</span>
               `}
               
-              <div style="color: #64748B; font-weight: 700; display: flex; align-items: center; gap: 3px; flex-shrink: 0;">
+              <div style="color: ${popupSub}; font-weight: 700; display: flex; align-items: center; gap: 3px; flex-shrink: 0;">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
                 ${dist} km
               </div>
@@ -468,7 +506,7 @@ export default function MapPage() {
       popupRef.current.remove();
     }
     return () => popupRef.current.off('close', onPopupClose);
-  }, [selectedStore, navigate, actualUserLocation, activeLocation]); // Added dependencies
+  }, [selectedStore, navigate, actualUserLocation, activeLocation, isDarkMode]);
 
   return (
     <>
@@ -503,27 +541,44 @@ export default function MapPage() {
           overflow: hidden !important;
           box-shadow: 0 10px 25px rgba(0,0,0,0.15) !important;
           border: none !important;
+          background: transparent !important;
         }
 
         .mapboxgl-ctrl-logo,
         .mapboxgl-ctrl-attrib {
           display: none !important;
         }
+
+        /* Custom thin blue scrollbar for dropdown menus */
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #2563EB;
+          border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #1D4ED8;
+        }
           
       `}</style>
 
+      {/* Filters Modal */}
       {isFilterOpen && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)', zIndex: 999999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-          <div style={{ backgroundColor: '#FFFFFF', padding: '24px', borderRadius: '20px', width: '90%', maxWidth: '360px', boxShadow: '0 20px 40px rgba(0,0,0,0.1)' }}>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: isDarkMode ? 'rgba(15, 23, 42, 0.7)' : 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)', zIndex: 999999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+          <div style={{ backgroundColor: bgColors.primary, padding: '24px', borderRadius: '20px', width: '90%', maxWidth: '360px', boxShadow: '0 20px 40px rgba(0,0,0,0.1)' }}>
             
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: '#0F172A' }}>Filters</h3>
-              <button onClick={() => setIsFilterOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}><MdClose size={22} /></button>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: bgColors.textMain }}>Filters</h3>
+              <button onClick={() => setIsFilterOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: bgColors.textMuted }}><MdClose size={22} /></button>
             </div>
 
             <div style={{ marginBottom: '24px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <label style={{ fontSize: '13px', fontWeight: '700', color: '#475569' }}>Distance Radius</label>
+                <label style={{ fontSize: '13px', fontWeight: '700', color: bgColors.textMuted }}>Distance Radius</label>
                 <span style={{ fontSize: '13px', fontWeight: '800', color: '#2563EB' }}>{filters.distance} km</span>
               </div>
               <input 
@@ -531,16 +586,16 @@ export default function MapPage() {
                 onChange={(e) => setFilters({...filters, distance: Number(e.target.value)})} 
                 style={{ width: '100%', accentColor: '#2563EB' }} 
               />
-              <div style={{ fontSize: '11px', color: '#94A3B8', marginTop: '4px' }}>Searching from {activeLocation.name} plaza</div>
+              <div style={{ fontSize: '11px', color: bgColors.textMuted, marginTop: '4px' }}>Searching from {activeLocation.name} plaza</div>
             </div>
 
             <div style={{ marginBottom: '24px' }}>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: '#475569', marginBottom: '8px' }}>Minimum Rating</label>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: bgColors.textMuted, marginBottom: '8px' }}>Minimum Rating</label>
               <div style={{ display: 'flex', gap: '8px' }}>
                 {[0, 3, 4, 5].map(rating => (
                   <button 
                     key={rating} onClick={() => setFilters({...filters, minRating: rating})}
-                    style={{ flex: 1, padding: '8px 0', borderRadius: '8px', border: filters.minRating === rating ? '2px solid #2563EB' : '1px solid #E2E8F0', backgroundColor: filters.minRating === rating ? '#EFF6FF' : '#FFFFFF', color: filters.minRating === rating ? '#2563EB' : '#64748B', fontWeight: '700', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
+                    style={{ flex: 1, padding: '8px 0', borderRadius: '8px', border: filters.minRating === rating ? '2px solid #2563EB' : `1px solid ${bgColors.border}`, backgroundColor: filters.minRating === rating ? (isDarkMode ? '#1E3A8A' : '#EFF6FF') : bgColors.primary, color: filters.minRating === rating ? (isDarkMode ? '#60A5FA' : '#2563EB') : bgColors.textMuted, fontWeight: '700', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}
                   >
                     {rating === 0 ? 'Any' : <>{rating}+ <MdStar size={14} /></>}
                   </button>
@@ -550,12 +605,12 @@ export default function MapPage() {
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '700', color: '#0F172A' }}>Open Now</label>
-                <span style={{ fontSize: '11px', color: '#64748B' }}>Hide closed businesses</span>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '700', color: bgColors.textMain }}>Open Now</label>
+                <span style={{ fontSize: '11px', color: bgColors.textMuted }}>Hide closed businesses</span>
               </div>
               <div 
                 onClick={() => setFilters({...filters, openNow: !filters.openNow})}
-                style={{ width: '44px', height: '24px', backgroundColor: filters.openNow ? '#10B981' : '#E2E8F0', borderRadius: '12px', position: 'relative', cursor: 'pointer', transition: 'background-color 0.2s' }}
+                style={{ width: '44px', height: '24px', backgroundColor: filters.openNow ? '#10B981' : bgColors.border, borderRadius: '12px', position: 'relative', cursor: 'pointer', transition: 'background-color 0.2s' }}
               >
                 <div style={{ width: '20px', height: '20px', backgroundColor: '#FFFFFF', borderRadius: '50%', position: 'absolute', top: '2px', left: filters.openNow ? '22px' : '2px', transition: 'left 0.2s', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }} />
               </div>
@@ -568,182 +623,227 @@ export default function MapPage() {
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', padding: '16px', backgroundColor: '#F8FAFC', boxSizing: 'border-box' }}>
+      {/* Main Map Container */}
+      <div style={{ position: 'relative', height: '100%', width: '100%', backgroundColor: bgColors.secondary, overflow: 'hidden' }}>
         
-        <div style={{ flexGrow: 1, borderRadius: '20px', overflow: 'hidden', position: 'relative', border: '4px solid #FFFFFF', boxShadow: '0 10px 30px rgba(0,0,0,0.06)' }}>
+        <div ref={mapContainer} style={{ position: 'absolute', inset: 0 }} />
+        
+        <div style={{ position: 'absolute', bottom: '30px', right: '30px', zIndex: 900000, pointerEvents: 'auto' }}>
+          <button 
+            onClick={handleLocateUser} 
+            style={{ width: '48px', height: '48px', backgroundColor: bgColors.primary, border: `1px solid ${bgColors.border}`, borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: '0 8px 25px rgba(0,0,0,0.15)', cursor: 'pointer', transition: 'transform 0.1s' }}
+            onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.95)'}
+            onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
+          >
+            {isLocating ? (
+              <div style={{ width: '20px', height: '20px', border: `3px solid ${bgColors.border}`, borderTopColor: '#2563EB', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+            ) : (
+              <MdOutlineNearMe size={24} color="#2563EB" style={{ transform: 'translate(-1px, 1px)' }} />
+            )}
+          </button>
+        </div>
+
+        {/* Floating Top UI */}
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, pointerEvents: 'none', zIndex: 900000 }}>
           
-          <div ref={mapContainer} style={{ position: 'absolute', inset: 0 }} />
-          
-          <div style={{ position: 'absolute', bottom: '24px', right: '24px', zIndex: 900000, pointerEvents: 'auto' }}>
-            <button 
-              onClick={handleLocateUser} 
-              style={{ width: '44px', height: '44px', backgroundColor: '#FFFFFF', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', border: 'none', boxShadow: '0 4px 15px rgba(0,0,0,0.15)', cursor: 'pointer', transition: 'transform 0.1s' }}
-              onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.95)'}
-              onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
-            >
-              {isLocating ? (
-                <div style={{ width: '20px', height: '20px', border: '3px solid #E2E8F0', borderTopColor: '#2563EB', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-              ) : (
-                <MdOutlineNearMe size={24} color="#2563EB" style={{ transform: 'translate(-1px, 1px)' }} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '20px 24px 10px 36px', width: '100%', boxSizing: 'border-box' }}>
+            
+            {/* Search Bar */}
+            <div style={{ position: 'relative', flexGrow: 1, pointerEvents: 'auto' }}>
+              <div style={{ display: 'flex', alignItems: 'center', backgroundColor: bgColors.primary, border: isSearchFocused ? '2px solid #2563EB' : `1px solid ${bgColors.border}`, borderRadius: '12px', padding: '0 16px', height: '42px', boxSizing: 'border-box', boxShadow: isSearchFocused ? '0 0 0 4px rgba(37,99,235,0.1)' : '0 4px 15px rgba(0,0,0,0.08)', transition: 'all 0.2s' }}>
+                <MdSearch size={20} color={isSearchFocused ? '#2563EB' : bgColors.textMuted} />
+                <input type="text" placeholder="Search places, products or services..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} onFocus={() => setIsSearchFocused(true)} style={{ border: 'none', backgroundColor: 'transparent', flexGrow: 1, outline: 'none', fontSize: '13.5px', color: bgColors.textMain, marginLeft: '10px', fontWeight: '500', height: '100%' }} />
+                {isSearching && <span style={{ fontSize: '11px', color: bgColors.textMuted, fontWeight: 'bold' }}>Searching...</span>}
+              </div>
+
+              {isSearchFocused && searchTerm.trim().length > 0 && (
+                <>
+                  <div onClick={() => setIsSearchFocused(false)} style={{ position: 'fixed', inset: 0, zIndex: 999997 }} />
+                  <div className="custom-scrollbar" style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '6px', backgroundColor: bgColors.primary, border: `1px solid ${bgColors.border}`, borderRadius: '12px', boxShadow: '0 15px 35px rgba(0,0,0,0.1)', zIndex: 999998, overflowY: 'auto', maxHeight: '300px', padding: '8px 0' }}>
+                    {searchResults.stores.length === 0 && searchResults.items.length === 0 && !isSearching ? (
+                      <div style={{ padding: '16px', textAlign: 'center', color: bgColors.textMuted, fontSize: '13px' }}>No results found for "{searchTerm}"</div>
+                    ) : (
+                      <>
+                        {searchResults.stores.length > 0 && (
+                          <div style={{ paddingBottom: searchResults.items.length > 0 ? '10px' : '0' }}>
+                            <div style={{ padding: '6px 14px', fontSize: '10px', fontWeight: '900', color: bgColors.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Stores</div>
+                            {searchResults.stores.map(store => (
+                              <div key={store.id} onClick={() => handleSearchResultClick(store)} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', cursor: 'pointer', transition: 'background-color 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = bgColors.hover} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
+                                <div style={{ backgroundColor: isDarkMode ? '#1E3A8A' : '#EFF6FF', padding: '8px', borderRadius: '8px' }}><MdStorefront size={18} color="#2563EB" /></div>
+                                <div>
+                                  <div style={{ fontSize: '14px', fontWeight: '800', color: bgColors.textMain }}>{store.store_name}</div>
+                                  <div style={{ fontSize: '12px', color: bgColors.textMuted, fontWeight: '500' }}>{store.industry || store.store_category}</div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {searchResults.items.length > 0 && (
+                          <div style={{ borderTop: searchResults.stores.length > 0 ? `1px solid ${bgColors.border}` : 'none', paddingTop: searchResults.stores.length > 0 ? '10px' : '0' }}>
+                            <div style={{ padding: '6px 14px', fontSize: '10px', fontWeight: '900', color: bgColors.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Menu Items & Products</div>
+                            {searchResults.items.map(item => (
+                              <div key={item.id} onClick={() => handleSearchResultClick(item)} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 14px', cursor: 'pointer', transition: 'background-color 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = bgColors.hover} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
+                                <div style={{ backgroundColor: isDarkMode ? 'rgba(22, 163, 74, 0.2)' : '#F0FDF4', padding: '6px', borderRadius: '8px' }}><MdFastfood size={16} color="#16A34A" /></div>
+                                <div>
+                                  <div style={{ fontSize: '13px', fontWeight: '700', color: bgColors.textMain }}>{item.item_name} <span style={{ color: '#16A34A', fontWeight: '800' }}>₱{item.price}</span></div>
+                                  <div style={{ fontSize: '11px', color: bgColors.textMuted }}>Available at <span style={{ fontWeight: '600' }}>{item.stores?.store_name}</span></div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </>
               )}
+            </div>
+            
+            {/* Location Selector */}
+            <div style={{ position: 'relative', pointerEvents: 'auto', minWidth: '180px' }}>
+              <div onClick={() => setIsLocationDropdownOpen(!isLocationDropdownOpen)} style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: bgColors.primary, border: `1px solid ${bgColors.border}`, borderRadius: '12px', padding: '0 16px', height: '42px', boxSizing: 'border-box', cursor: 'pointer', boxShadow: '0 4px 15px rgba(0,0,0,0.08)', userSelect: 'none' }}>
+                <MdLocationOn size={18} color="#2563EB" />
+                <span style={{ fontSize: '13.5px', fontWeight: '700', color: bgColors.textMain, flexGrow: 1 }}>{activeLocation.name}</span>
+                <MdExpandMore size={20} color={bgColors.textMuted} style={{ transform: isLocationDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }} />
+              </div>
+              
+              {isLocationDropdownOpen && (
+                <>
+                  <div onClick={() => setIsLocationDropdownOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 999997 }} />
+                  <div style={{ position: 'absolute', top: '100%', right: 0, left: 0, marginTop: '8px', backgroundColor: bgColors.primary, border: `1px solid ${bgColors.border}`, borderRadius: '12px', boxShadow: '0 15px 35px rgba(0,0,0,0.15)', zIndex: 999998, overflow: 'hidden' }}>
+                    <div style={{ padding: '10px 16px', fontSize: '10px', fontWeight: '900', color: bgColors.textMuted, textTransform: 'uppercase', letterSpacing: '0.5px', borderBottom: `1px solid ${bgColors.border}`, backgroundColor: bgColors.secondary }}>
+                      Tablas Island
+                    </div>
+                    <div className="custom-scrollbar" style={{ maxHeight: '280px', overflowY: 'auto' }}>
+                      {TABLAS_MUNICIPALITIES.map(loc => (
+                        <div 
+                          key={loc.name} onClick={() => handleLocationSelect(loc)} 
+                          style={{ padding: '12px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', borderBottom: `1px solid ${bgColors.secondary}`, color: activeLocation.name === loc.name ? '#2563EB' : bgColors.textMuted, backgroundColor: activeLocation.name === loc.name ? (isDarkMode ? '#1E3A8A' : '#EFF6FF') : 'transparent' }}
+                          onMouseEnter={(e) => { if(activeLocation.name !== loc.name) e.target.style.backgroundColor = bgColors.hover }}
+                          onMouseLeave={(e) => { if(activeLocation.name !== loc.name) e.target.style.backgroundColor = 'transparent' }}
+                        >
+                          {loc.name}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Dark Mode Toggle Button */}
+            <div style={{ pointerEvents: 'auto' }}>
+              <div 
+                onClick={toggleDarkMode}
+                style={{ 
+                  width: '76px', 
+                  height: '42px', 
+                  backgroundColor: bgColors.primary, 
+                  border: `1px solid ${bgColors.border}`, 
+                  borderRadius: '24px', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  position: 'relative',
+                  cursor: 'pointer', 
+                  boxShadow: '0 4px 15px rgba(0,0,0,0.08)', 
+                  padding: '4px',
+                  boxSizing: 'border-box',
+                  flexShrink: 0
+                }}
+                title="Toggle Dark Mode"
+              >
+                {/* Sliding Blue Circle */}
+                <div style={{
+                  position: 'absolute',
+                  width: '32px',
+                  height: '32px',
+                  backgroundColor: '#2563EB',
+                  borderRadius: '50%',
+                  left: isDarkMode ? '40px' : '4px',
+                  transition: 'left 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                  zIndex: 1
+                }} />
+
+                {/* Icons Container */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', position: 'relative', zIndex: 2, padding: '0 6px', boxSizing: 'border-box' }}>
+                  <MdLightMode size={20} color={!isDarkMode ? '#FFFFFF' : bgColors.textMuted} style={{ transition: 'color 0.3s' }} />
+                  <MdDarkMode size={20} color={isDarkMode ? '#FFFFFF' : bgColors.textMuted} style={{ transition: 'color 0.3s' }} />
+                </div>
+              </div>
+            </div>
+            
+            {/* Notification Bell */}
+            <div style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center' }}>
+              <NotificationBell session={session} isSidebarMode={false} />
+            </div>
+            
+            {/* Profile / Login */}
+            <div style={{ pointerEvents: 'auto' }}>
+              {session ? (
+                <div onClick={() => navigate('/profile')} style={{ width: '42px', height: '42px', borderRadius: '50%', backgroundImage: `url('${profile?.avatar_url || `https://ui-avatars.com/api/?name=${profile?.display_name || 'User'}&background=EFF6FF&color=2563EB`}')`, backgroundSize: 'cover', backgroundPosition: 'center', cursor: 'pointer', border: `2px solid ${bgColors.primary}`, boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }} />
+              ) : (
+                <button onClick={() => navigate('/login')} style={{ padding: '0 20px', height: '42px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '700', fontSize: '13.5px', cursor: 'pointer', whiteSpace: 'nowrap', boxShadow: '0 4px 15px rgba(37,99,235,0.3)', display: 'flex', alignItems: 'center' }}>Sign In</button>
+              )}
+            </div>
+
+          </div>
+
+          {/* Bottom Row: Category Pills & Filters */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 24px 0 36px', width: '100%', boxSizing: 'border-box' }}>
+            
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', maxWidth: 'calc(100% - 130px)', pointerEvents: 'auto' }}>
+              
+              {showLeftScroll && (
+                <button 
+                  onClick={() => categoryScrollRef.current.scrollBy({ left: -200, behavior: 'smooth' })} 
+                  style={{ position: 'absolute', left: '-18px', zIndex: 5, background: bgColors.primary, border: `1px solid ${bgColors.border}`, width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}
+                >
+                  <MdChevronLeft size={22} color={bgColors.textMain} />
+                </button>
+              )}
+
+              <div 
+                ref={categoryScrollRef}
+                onScroll={checkScrollArrows}
+                onMouseDown={handleMouseDown}
+                onMouseLeave={handleMouseUp}
+                onMouseUp={handleMouseUp}
+                onMouseMove={handleMouseMove}
+                style={{ display: 'flex', gap: '8px', overflowX: 'auto', scrollbarWidth: 'none', padding: '4px 0', WebkitOverflowScrolling: 'touch', cursor: 'grab', width: '100%' }}
+              >
+                {categories.map(cat => (
+                  <button key={cat} onClick={() => setActiveCategory(cat)} style={{ flexShrink: 0, padding: '8px 18px', borderRadius: '24px', border: activeCategory === cat ? '1px solid transparent' : `1px solid ${bgColors.border}`, backgroundColor: activeCategory === cat ? '#2563EB' : bgColors.primary, color: activeCategory === cat ? 'white' : bgColors.textMuted, fontWeight: '700', fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.2s', boxShadow: 'none' }}>
+                    {cat}
+                  </button>
+                ))}
+              </div>
+
+              {showRightScroll && (
+                <button 
+                  onClick={() => categoryScrollRef.current.scrollBy({ left: 200, behavior: 'smooth' })} 
+                  style={{ position: 'absolute', right: '-16px', zIndex: 5, background: bgColors.primary, border: `1px solid ${bgColors.border}`, width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}
+                >
+                  <MdChevronRight size={22} color={bgColors.textMain} />
+                </button>
+              )}
+            </div>
+
+            <button onClick={() => setIsFilterOpen(true)} style={{ pointerEvents: 'auto', padding: '8px 18px', borderRadius: '24px', border: `1px solid ${bgColors.border}`, backgroundColor: bgColors.primary, color: bgColors.textMuted, fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 6px rgba(0,0,0,0.05)', flexShrink: 0 }}>
+              <MdTune size={18} /> Filters
             </button>
           </div>
 
-          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, pointerEvents: 'none', zIndex: 900000 }}>
-            
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px', width: '100%', boxSizing: 'border-box' }}>
-              
-              <div style={{ position: 'relative', flexGrow: 1, pointerEvents: 'auto' }}>
-                <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#FFFFFF', border: isSearchFocused ? '2px solid #2563EB' : '1px solid #E2E8F0', borderRadius: '12px', padding: '9px 14px', boxShadow: isSearchFocused ? '0 0 0 4px rgba(37,99,235,0.1)' : '0 2px 4px rgba(0,0,0,0.02)', transition: 'all 0.2s' }}>
-                  <MdSearch size={20} color={isSearchFocused ? '#2563EB' : '#94A3B8'} />
-                  <input type="text" placeholder="Search places or industries..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} onFocus={() => setIsSearchFocused(true)} style={{ border: 'none', backgroundColor: 'transparent', flexGrow: 1, outline: 'none', fontSize: '13.5px', color: '#0F172A', marginLeft: '10px', fontWeight: '500' }} />
-                  {isSearching && <span style={{ fontSize: '11px', color: '#94A3B8', fontWeight: 'bold' }}>Searching...</span>}
-                </div>
-
-                {isSearchFocused && searchTerm.trim().length > 0 && (
-                  <>
-                    <div onClick={() => setIsSearchFocused(false)} style={{ position: 'fixed', inset: 0, zIndex: 999997 }} />
-                    <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '6px', backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px', boxShadow: '0 15px 35px rgba(0,0,0,0.1)', zIndex: 999998, overflow: 'hidden', padding: '8px 0' }}>
-                      {searchResults.stores.length === 0 && searchResults.items.length === 0 && !isSearching ? (
-                        <div style={{ padding: '16px', textAlign: 'center', color: '#64748B', fontSize: '13px' }}>No results found for "{searchTerm}"</div>
-                      ) : (
-                        <>
-                          {searchResults.stores.length > 0 && (
-                            <div style={{ paddingBottom: searchResults.items.length > 0 ? '10px' : '0' }}>
-                              <div style={{ padding: '6px 14px', fontSize: '10px', fontWeight: '900', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Stores</div>
-                              {searchResults.stores.map(store => (
-                                <div key={store.id} onClick={() => handleSearchResultClick(store)} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', cursor: 'pointer', transition: 'background-color 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F8FAFC'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
-                                  <div style={{ backgroundColor: '#EFF6FF', padding: '8px', borderRadius: '8px' }}><MdStorefront size={18} color="#2563EB" /></div>
-                                  <div>
-                                    <div style={{ fontSize: '14px', fontWeight: '800', color: '#0F172A' }}>{store.store_name}</div>
-                                    <div style={{ fontSize: '12px', color: '#64748B', fontWeight: '500' }}>{store.industry || store.store_category}</div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-
-                          {searchResults.items.length > 0 && (
-                            <div style={{ borderTop: searchResults.stores.length > 0 ? '1px solid #F1F5F9' : 'none', paddingTop: searchResults.stores.length > 0 ? '10px' : '0' }}>
-                              <div style={{ padding: '6px 14px', fontSize: '10px', fontWeight: '900', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Menu Items & Products</div>
-                              {searchResults.items.map(item => (
-                                <div key={item.id} onClick={() => handleSearchResultClick(item)} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 14px', cursor: 'pointer', transition: 'background-color 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F8FAFC'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
-                                  <div style={{ backgroundColor: '#F0FDF4', padding: '6px', borderRadius: '8px' }}><MdFastfood size={16} color="#16A34A" /></div>
-                                  <div>
-                                    <div style={{ fontSize: '13px', fontWeight: '700', color: '#0F172A' }}>{item.item_name} <span style={{ color: '#16A34A', fontWeight: '800' }}>₱{item.price}</span></div>
-                                    <div style={{ fontSize: '11px', color: '#64748B' }}>Available at <span style={{ fontWeight: '600' }}>{item.stores?.store_name}</span></div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-              
-              <div style={{ position: 'relative', pointerEvents: 'auto' }}>
-                <div onClick={() => setIsLocationDropdownOpen(!isLocationDropdownOpen)} style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px', padding: '9px 14px', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.02)', userSelect: 'none' }}>
-                  <MdLocationOn size={18} color="#2563EB" />
-                  <span style={{ fontSize: '13.5px', fontWeight: '700', color: '#0F172A', minWidth: '75px' }}>{activeLocation.name}</span>
-                  <MdExpandMore size={18} color="#64748B" style={{ transform: isLocationDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }} />
-                </div>
-                
-                {isLocationDropdownOpen && (
-                  <>
-                    <div onClick={() => setIsLocationDropdownOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 999997 }} />
-                    <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '6px', width: '200px', backgroundColor: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', zIndex: 999998, overflow: 'hidden' }}>
-                      <div style={{ padding: '10px 14px', fontSize: '10px', fontWeight: '900', color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px', borderBottom: '1px solid #F1F5F9', backgroundColor: '#F8FAFC' }}>
-                        Tablas Island
-                      </div>
-                      <div style={{ maxHeight: '260px', overflowY: 'auto' }}>
-                        {TABLAS_MUNICIPALITIES.map(loc => (
-                          <div 
-                            key={loc.name} onClick={() => handleLocationSelect(loc)} 
-                            style={{ padding: '10px 14px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', borderBottom: '1px solid #F8FAFC', color: activeLocation.name === loc.name ? '#2563EB' : '#475569', backgroundColor: activeLocation.name === loc.name ? '#EFF6FF' : 'transparent' }}
-                            onMouseEnter={(e) => { if(activeLocation.name !== loc.name) e.target.style.backgroundColor = '#F1F5F9' }}
-                            onMouseLeave={(e) => { if(activeLocation.name !== loc.name) e.target.style.backgroundColor = 'transparent' }}
-                          >
-                            {loc.name}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-              
-              <div style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center' }}>
-                <NotificationBell session={session} isSidebarMode={false} />
-              </div>
-              
-              <div style={{ pointerEvents: 'auto' }}>
-                {session ? (
-                  <div onClick={() => navigate('/profile')} style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundImage: `url('${profile?.avatar_url || `https://ui-avatars.com/api/?name=${profile?.display_name || 'User'}&background=EFF6FF&color=2563EB`}')`, backgroundSize: 'cover', backgroundPosition: 'center', cursor: 'pointer', border: '2px solid #FFFFFF', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }} />
-                ) : (
-                  <button onClick={() => navigate('/login')} style={{ padding: '8px 16px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '10px', fontWeight: '700', fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap' }}>Sign In</button>
-                )}
-              </div>
-
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 16px', width: '100%', boxSizing: 'border-box' }}>
-              
-              <div style={{ position: 'relative', display: 'flex', alignItems: 'center', maxWidth: 'calc(100% - 110px)', pointerEvents: 'auto' }}>
-                
-                {showLeftScroll && (
-                  <button 
-                    onClick={() => categoryScrollRef.current.scrollBy({ left: -200, behavior: 'smooth' })} 
-                    style={{ position: 'absolute', left: '-12px', zIndex: 5, background: '#FFFFFF', border: '1px solid #E2E8F0', width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 10px rgba(0,0,0,0.15)' }}
-                  >
-                    <MdChevronLeft size={22} color="#0F172A" />
-                  </button>
-                )}
-
-                <div 
-                  ref={categoryScrollRef}
-                  onScroll={checkScrollArrows}
-                  onMouseDown={handleMouseDown}
-                  onMouseLeave={handleMouseUp}
-                  onMouseUp={handleMouseUp}
-                  onMouseMove={handleMouseMove}
-                  style={{ display: 'flex', gap: '8px', overflowX: 'auto', scrollbarWidth: 'none', paddingBottom: '4px', WebkitOverflowScrolling: 'touch', cursor: 'grab', width: '100%' }}
-                >
-                  {categories.map(cat => (
-                    <button key={cat} onClick={() => setActiveCategory(cat)} style={{ flexShrink: 0, padding: '6px 16px', borderRadius: '20px', border: activeCategory === cat ? '1px solid transparent' : '1px solid #E2E8F0', backgroundColor: activeCategory === cat ? '#2563EB' : '#FFFFFF', color: activeCategory === cat ? 'white' : '#475569', fontWeight: '700', fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.2s', boxShadow: activeCategory === cat ? '0 4px 12px rgba(37,99,235,0.2)' : '0 4px 6px rgba(0,0,0,0.05)' }}>
-                      {cat}
-                    </button>
-                  ))}
-                </div>
-
-                {showRightScroll && (
-                  <button 
-                    onClick={() => categoryScrollRef.current.scrollBy({ left: 200, behavior: 'smooth' })} 
-                    style={{ position: 'absolute', right: '-12px', zIndex: 5, background: '#FFFFFF', border: '1px solid #E2E8F0', width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 10px rgba(0,0,0,0.15)' }}
-                  >
-                    <MdChevronRight size={22} color="#0F172A" />
-                  </button>
-                )}
-              </div>
-
-              <button onClick={() => setIsFilterOpen(true)} style={{ pointerEvents: 'auto', padding: '6px 14px', borderRadius: '20px', border: '1px solid #E2E8F0', backgroundColor: '#FFFFFF', color: '#475569', fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', flexShrink: 0 }}>
-                <MdTune size={16} /> Filters
-              </button>
-            </div>
-
-          </div>
-
-          {(!isMapLoaded || !isDataLoaded) && (
-            <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(255, 255, 255, 0.4)', backdropFilter: 'blur(8px)', zIndex: 20, display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column', transition: 'opacity 0.5s ease' }}>
-              <div style={{ width: '40px', height: '40px', border: '4px solid #E2E8F0', borderTopColor: '#2563EB', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-              <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
-              <strong style={{ marginTop: '12px', color: '#0F172A', fontSize: '14px' }}>Loading Map...</strong>
-            </div>
-          )}
-
         </div>
+
+        {(!isMapLoaded || !isDataLoaded) && (
+          <div style={{ position: 'absolute', inset: 0, backgroundColor: isDarkMode ? 'rgba(15, 23, 42, 0.7)' : 'rgba(255, 255, 255, 0.5)', backdropFilter: 'blur(10px)', zIndex: 20, display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column', transition: 'opacity 0.5s ease' }}>
+            <div style={{ width: '48px', height: '48px', border: `4px solid ${bgColors.border}`, borderTopColor: '#2563EB', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+            <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+            <strong style={{ marginTop: '16px', color: bgColors.textMain, fontSize: '15px' }}>Loading Map...</strong>
+          </div>
+        )}
+
       </div>
     </>
   );
