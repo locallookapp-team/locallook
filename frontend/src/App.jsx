@@ -50,7 +50,7 @@ function App() {
         <Route path="/user/:id" element={<AppLayout><PublicUserProfilePage /></AppLayout>} />
         
         {/* 🚀 CONSUMER PROTECTED ROUTES (Requires Login, any role) */}
-        <Route path="/profile" element={<ProtectedRoute><AppLayout><ProfilePage /></AppLayout></ProtectedRoute>} />
+        <Route path="/profile" element={<AppLayout><ProfilePage /></AppLayout>} />
         
         {/* 🚀 IDENTITY VERIFICATION ROUTE */}
         <Route path="/identity-verification" element={<ProtectedRoute><AppLayout><IdentityVerificationPage /></AppLayout></ProtectedRoute>} />

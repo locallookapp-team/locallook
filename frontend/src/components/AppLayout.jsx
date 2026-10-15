@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
 import NotificationBell from './NotificationBell'; 
+import BottomNav from './BottomNav'; // 🚀 Added Bottom Navigation
 import { 
   MdExplore, MdStarBorder, MdMap, 
   MdAddBusiness, MdSpaceDashboard, MdOutlineSettings, MdOutlineHelpOutline, 
-  MdLocationOn, MdLogin, MdMenu, MdClose, MdPersonOutline, MdLogout, MdPayment
+  MdLocationOn, MdLogin, MdClose, MdPersonOutline, MdPayment
 } from "react-icons/md";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://locallook-api.onrender.com';
@@ -19,7 +20,6 @@ export default function AppLayout({ children }) {
   const [displayName, setDisplayName] = useState('');
   
   const [isAuthLoading, setIsAuthLoading] = useState(true);
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const checkMerchantStatus = async (userId) => {
     try {
@@ -78,13 +78,11 @@ export default function AppLayout({ children }) {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    setIsMobileMenuOpen(false);
     navigate('/');
   };
 
   const handleNavigation = (path) => {
     navigate(path);
-    setIsMobileMenuOpen(false);
   };
 
   const navItems = [
@@ -100,7 +98,9 @@ export default function AppLayout({ children }) {
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         
         * { font-family: 'Plus Jakarta Sans', sans-serif; }
-        .app-wrapper { display: flex; height: 100vh; width: 100vw; overflow: hidden; background-color: var(--bg-color); }
+        
+        /* 🚀 Changed to 100dvh for native mobile browser support */
+        .app-wrapper { display: flex; height: 100dvh; width: 100vw; overflow: hidden; background-color: var(--bg-color); }
         
         .desktop-sidebar { 
             width: 240px; 
@@ -126,10 +126,8 @@ export default function AppLayout({ children }) {
         }
         .sidebar-inner::-webkit-scrollbar { display: none; }
         
-        .main-container { flex-grow: 1; display: flex; flex-direction: column; height: 100vh; overflow: hidden; position: relative; }
-        .main-content { flex-grow: 1; overflow-y: hidden; position: relative; }
-        .mobile-header { display: none; }
-        .mobile-overlay { display: none; }
+        .main-container { flex-grow: 1; display: flex; flex-direction: column; height: 100dvh; overflow: hidden; position: relative; }
+        .main-content { flex-grow: 1; overflow-y: auto; overflow-x: hidden; position: relative; }
         
         .nav-item { 
             display: flex; 
@@ -155,19 +153,22 @@ export default function AppLayout({ children }) {
 
         @keyframes skeletonPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
         
+        /* 🚀 NATIVE MOBILE OVERRIDES */
         @media (max-width: 768px) {
-          .desktop-sidebar { width: 260px; position: fixed; height: 100%; transform: translateX(-100%); box-shadow: 4px 0 24px rgba(0,0,0,0.1); transition: transform 0.3s ease; }
-          .desktop-sidebar.open { transform: translateX(0); }
-          .mobile-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background-color: var(--surface-color); border-bottom: 1px solid var(--border-color); z-index: 900; }
-          .main-content { height: calc(100vh - 55px); }
-          .mobile-overlay.open { display: block; position: fixed; inset: 0; background: rgba(15, 17, 36, 0.4); z-index: 950; backdrop-filter: blur(2px); transition: opacity 0.3s; }
+          .desktop-sidebar { 
+            display: none; /* Completely hide desktop sidebar */
+          }
+          
+          .main-content {
+            /* Add bottom padding so content scrolls behind the BottomNav */
+            /* 65px bar height + safe area for iPhone home indicator */
+            padding-bottom: calc(65px + env(safe-area-inset-bottom)); 
+          }
         }
       `}</style>
 
       <div className="app-wrapper">
-        <div className={`mobile-overlay ${isMobileMenuOpen ? 'open' : ''}`} onClick={() => setIsMobileMenuOpen(false)} />
-
-        <aside className={`desktop-sidebar ${isMobileMenuOpen ? 'open' : ''}`}>
+        <aside className="desktop-sidebar">
           <div className="sidebar-inner">
             
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '30px', width: '100%', boxSizing: 'border-box' }}>
@@ -175,11 +176,6 @@ export default function AppLayout({ children }) {
                 <div style={{ color: 'var(--brand-primary)', display: 'flex', flexShrink: 0 }}><MdLocationOn size={28} /></div>
                 <h2 style={{ margin: 0, fontSize: '20px', color: 'var(--text-main)', fontWeight: '900', letterSpacing: '-0.5px' }}>LocalLook</h2>
               </div>
-              {isMobileMenuOpen && (
-                <button onClick={() => setIsMobileMenuOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex' }}>
-                  <MdClose size={24} />
-                </button>
-              )}
             </div>
             
             <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
@@ -280,19 +276,12 @@ export default function AppLayout({ children }) {
         </aside>
 
         <div className="main-container">
-          <div className="mobile-header">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{ color: 'var(--brand-primary)', display: 'flex' }}><MdLocationOn size={22} /></div>
-              <h2 style={{ margin: 0, fontSize: '18px', color: 'var(--text-main)', fontWeight: '900', letterSpacing: '-0.5px' }}>LocalLook</h2>
-            </div>
-            <button onClick={() => setIsMobileMenuOpen(true)} style={{ background: 'none', border: 'none', color: 'var(--text-main)', cursor: 'pointer', display: 'flex', padding: '4px' }}>
-              <MdMenu size={28} />
-            </button>
-          </div>
-
           <main className="main-content">
             {children}
           </main>
+          
+          {/* 🚀 Render the new BottomNav on Mobile! */}
+          <BottomNav userRole={isMerchant ? 'merchant' : 'consumer'} />
         </div>
       </div>
     </>
