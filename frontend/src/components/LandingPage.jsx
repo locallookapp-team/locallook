@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react'; // 🚀 FIXED: Added useState and useEffect here
 import { useNavigate } from 'react-router-dom';
+import { supabase } from '../supabaseClient';
 import { 
   MdMap, 
   MdStorefront, 
@@ -12,6 +13,37 @@ import {
 
 export default function LandingPage() {
   const navigate = useNavigate();
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  
+  // 1. Smart Redirect: If logged in, go straight to the Map!
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) navigate('/map');
+      else setIsCheckingAuth(false);
+    };
+    checkUser();
+  }, [navigate]);
+
+  // 2. Capture the PWA Install Prompt
+  useEffect(() => {
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    });
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') setDeferredPrompt(null);
+    }
+  };
+
+  if (isCheckingAuth) return null; // Prevents the page from flashing before redirecting
+
 
   return (
     <div style={{ height: '100vh', overflowY: 'auto', backgroundColor: '#F8FAFC' }}>
@@ -36,6 +68,14 @@ export default function LandingPage() {
           <div style={{ maxWidth: '1200px', width: '100%', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '50px' }}>
             
             <div style={{ flex: '1 1 500px', color: 'white' }}>
+              
+              {/* 🚀 MOVED INSTALL BUTTON HERE SO IT LOOKS NATURAL IN THE HERO */}
+              {deferredPrompt && (
+                <button onClick={handleInstallClick} style={{ padding: '10px 20px', backgroundColor: '#10B981', color: 'white', border: 'none', borderRadius: '8px', fontWeight: '800', cursor: 'pointer', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📱 Install LocalLook App
+                </button>
+              )}
+
               <h1 style={{ fontSize: '56px', fontWeight: '900', margin: '0 0 20px 0', lineHeight: '1.1', letterSpacing: '-1px' }}>
                 Know what's open.<br/>
                 Know what's available.<br/>
@@ -49,7 +89,7 @@ export default function LandingPage() {
               </button>
             </div>
 
-            {/* 🚀 UPGRADED: Hero Visual Map Mockup */}
+            {/* Hero Visual Map Mockup */}
             <div style={{ flex: '1 1 400px', display: 'flex', justifyContent: 'center', position: 'relative' }}>
               <div style={{ width: '100%', maxWidth: '500px', height: '350px', backgroundColor: '#1E293B', borderRadius: '24px', border: '1px solid #334155', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)', position: 'relative', overflow: 'hidden', backgroundImage: 'radial-gradient(#334155 1px, transparent 1px)', backgroundSize: '20px 20px' }}>
                 
@@ -98,7 +138,6 @@ export default function LandingPage() {
         {/* --- 02. THE PROBLEM --- */}
         <section style={{ padding: '80px 20px', backgroundColor: '#F8FAFC', display: 'flex', justifyContent: 'center', textAlign: 'center', flexShrink: 0 }}>
           <div style={{ maxWidth: '800px', width: '100%' }}>
-            {/* 🚀 UPGRADED: Narrative Problem Statement */}
             <h2 style={{ fontSize: '36px', fontWeight: '900', color: '#0F172A', marginBottom: '15px' }}>You shouldn't have to guess before you go.</h2>
             <div style={{ fontSize: '18px', color: '#64748B', marginBottom: '10px', fontWeight: '500', lineHeight: '1.6' }}>
               You found the store.<br/>
@@ -141,7 +180,6 @@ export default function LandingPage() {
                 <h3 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>🟢 See who's open</h3>
                 <p style={{ color: '#64748B', lineHeight: '1.5', marginBottom: '25px', fontSize: '15px' }}>Find businesses that are actually open and taking customers right now.</p>
                 
-                {/* 🚀 UPGRADED: Scaled UI Component Mockup */}
                 <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '16px', border: '1px solid #E2E8F0', boxShadow: '0 8px 20px rgba(0,0,0,0.04)' }}>
                   <div style={{ fontWeight: '900', color: '#0F172A', marginBottom: '12px', fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}>
                     ☕ Café Example
@@ -163,7 +201,6 @@ export default function LandingPage() {
                 <h3 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>🍜 See what's available</h3>
                 <p style={{ color: '#64748B', lineHeight: '1.5', marginBottom: '25px', fontSize: '15px' }}>Browse digital menus, products, and current availability before you go.</p>
                 
-                {/* 🚀 UPGRADED: Scaled UI Component Mockup */}
                 <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '16px', border: '1px solid #E2E8F0', boxShadow: '0 8px 20px rgba(0,0,0,0.04)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', borderBottom: '1px solid #F1F5F9', paddingBottom: '15px' }}>
                     <span style={{ fontSize: '16px', fontWeight: '800', color: '#0F172A' }}>Iced Latte</span>
@@ -180,7 +217,6 @@ export default function LandingPage() {
                 <h3 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>📍 Go with confidence</h3>
                 <p style={{ color: '#64748B', lineHeight: '1.5', marginBottom: '25px', fontSize: '15px' }}>Know exactly where you're going and what you'll find when you get there.</p>
                 
-                {/* 🚀 UPGRADED: Scaled UI Component Mockup */}
                 <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '16px', border: '1px solid #E2E8F0', boxShadow: '0 8px 20px rgba(0,0,0,0.04)', display: 'flex', alignItems: 'center', gap: '15px' }}>
                   <div style={{ width: '48px', height: '48px', backgroundColor: '#EFF6FF', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center' }}><MdLocationOn color="#2563EB" size={24} /></div>
                   <div>
@@ -197,7 +233,6 @@ export default function LandingPage() {
         {/* --- 04. THE DIFFERENTIATOR --- */}
         <section style={{ padding: '80px 20px', backgroundColor: '#0F172A', color: 'white', display: 'flex', justifyContent: 'center', flexShrink: 0 }}>
           <div style={{ maxWidth: '800px', width: '100%', textAlign: 'center' }}>
-            {/* 🚀 UPGRADED: Refined Differentiator Copy */}
             <h2 style={{ fontSize: '36px', fontWeight: '900', marginBottom: '15px', lineHeight: '1.2' }}>Maps tell you <span style={{ color: '#94A3B8' }}>where.</span><br/>LocalLook tells you <span style={{ color: '#3B82F6' }}>what's happening.</span></h2>
             <p style={{ fontSize: '16px', color: '#94A3B8', marginBottom: '50px' }}>We don't just list businesses. We connect you to their pulse.</p>
             
@@ -257,7 +292,6 @@ export default function LandingPage() {
                   <div style={{ position: 'absolute', top: '15px', right: '15px', padding: '6px 12px', backgroundColor: '#10B981', color: 'white', borderRadius: '20px', fontSize: '10px', fontWeight: '900', boxShadow: '0 4px 10px rgba(16, 185, 129, 0.4)' }}>OPEN NOW</div>
                   <div>
                     <h3 style={{ margin: 0, fontSize: '24px', fontWeight: '900', color: '#0F172A', marginBottom: '4px' }}>Café Example</h3>
-                    {/* 🚀 UPGRADED: Added Location to Merchant Mockup */}
                     <div style={{ fontSize: '12px', color: '#475569', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <MdLocationOn size={14} /> Odiongan • 120m away
                     </div>

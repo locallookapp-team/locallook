@@ -227,7 +227,7 @@ function VerificationPanel({ store, userId, onStoreUpdate }) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '20px' }}>
         
         {existingDti ? (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: 'rgba(16, 185, 129, 0.1)', border: '1px solid #10B981', borderRadius: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: 'rgba(16, 185, 129, 0.1)', border: '1px solid #10B981', borderRadius: '8px', flexWrap: 'wrap', gap: '10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <MdCheckCircle size={24} color="#10B981" />
               <div>
@@ -238,7 +238,7 @@ function VerificationPanel({ store, userId, onStoreUpdate }) {
             <button onClick={() => handleDeleteExisting('dti')} disabled={loading} style={{ background: 'var(--surface-color)', border: '1px solid #EF4444', color: '#EF4444', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}><MdDelete size={16} /> Delete</button>
           </div>
         ) : dtiFile ? (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: 'var(--surface-hover)', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: 'var(--surface-hover)', border: '1px solid var(--border-color)', borderRadius: '8px', flexWrap: 'wrap', gap: '10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <MdInsertDriveFile size={24} color="var(--brand-primary)" />
               <div>
@@ -259,7 +259,7 @@ function VerificationPanel({ store, userId, onStoreUpdate }) {
         )}
 
         {existingBir ? (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: 'rgba(16, 185, 129, 0.1)', border: '1px solid #10B981', borderRadius: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: 'rgba(16, 185, 129, 0.1)', border: '1px solid #10B981', borderRadius: '8px', flexWrap: 'wrap', gap: '10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <MdCheckCircle size={24} color="#10B981" />
               <div>
@@ -270,7 +270,7 @@ function VerificationPanel({ store, userId, onStoreUpdate }) {
             <button onClick={() => handleDeleteExisting('bir')} disabled={loading} style={{ background: 'var(--surface-color)', border: '1px solid #EF4444', color: '#EF4444', padding: '6px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: loading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}><MdDelete size={16} /> Delete</button>
           </div>
         ) : birFile ? (
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: 'var(--surface-hover)', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: 'var(--surface-hover)', border: '1px solid var(--border-color)', borderRadius: '8px', flexWrap: 'wrap', gap: '10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <MdInsertDriveFile size={24} color="var(--brand-primary)" />
               <div>
@@ -952,7 +952,23 @@ export default function DashboardPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', backgroundColor: 'var(--bg-color)', fontFamily: 'var(--font-main)', overflowY: 'auto', position: 'relative' }}>
       
-      <style>{`.mapboxgl-ctrl-bottom-left, .mapboxgl-ctrl-bottom-right, .mapboxgl-ctrl-logo, .mapboxgl-ctrl-attrib { display: none !important; }`}</style>
+      <style>{`
+        .mapboxgl-ctrl-bottom-left, .mapboxgl-ctrl-bottom-right, .mapboxgl-ctrl-logo, .mapboxgl-ctrl-attrib { display: none !important; }
+        .custom-scrollbar::-webkit-scrollbar { display: none; }
+        
+        /* 🚀 STRICT CSS ISOLATION FOR RESPONSIVE DASHBOARD */
+        .desktop-ui { display: block; }
+        .mobile-ui-block { display: none; }
+        .mobile-ui-flex { display: none; }
+        .dashboard-wrapper { padding: 30px; }
+
+        @media (max-width: 768px) {
+          .desktop-ui { display: none !important; }
+          .mobile-ui-block { display: block !important; }
+          .mobile-ui-flex { display: flex !important; }
+          .dashboard-wrapper { padding: 16px; }
+        }
+      `}</style>
 
       {/* 🚀 UNIVERSAL CROPPER MODAL */}
       {imageToCrop && (
@@ -1020,7 +1036,7 @@ export default function DashboardPage() {
             <p style={{ color: 'var(--text-muted)', marginBottom: '25px', fontSize: '14px', lineHeight: '1.5' }}>Get full access to edit your menu, customize your store branding, and accept online orders.</p>
             
             <div style={{ marginBottom: '15px', textAlign: 'left' }}>
-              <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '8px' }}>Have a percentage or fixed discount code?</label>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '8px' }}>Have a promo code?</label>
               <input 
                 type="text" 
                 placeholder="e.g. SUMMER20" 
@@ -1028,10 +1044,6 @@ export default function DashboardPage() {
                 onChange={e => setCheckoutPromoCode(e.target.value.toUpperCase())} 
                 style={{ width: '100%', padding: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '10px', boxSizing: 'border-box', textTransform: 'uppercase' }} 
               />
-            </div>
-
-            <div style={{ marginBottom: '15px', fontSize: '11px', color: 'var(--text-muted)', lineHeight: '1.4', textAlign: 'center', padding: '0 10px' }}>
-              By proceeding with this payment, you acknowledge that you have read and agree to our strictly non-refundable payment policy as outlined in our <a href="/terms" target="_blank" style={{ color: 'var(--brand-primary)', textDecoration: 'underline' }}>Terms of Service</a>.
             </div>
 
             <button onClick={handleProceedToPayment} disabled={isProcessingPayment} style={{ width: '100%', padding: '14px', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '12px', fontWeight: 'bold', cursor: isProcessingPayment ? 'not-allowed' : 'pointer', fontSize: '15px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
@@ -1078,15 +1090,15 @@ export default function DashboardPage() {
                 <input type="text" placeholder="Store Name" required value={editStoreData.store_name} onChange={(e) => setEditStoreData({...editStoreData, store_name: e.target.value})} style={{ padding: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '10px', width: '100%', boxSizing: 'border-box' }} />
               </div>
               
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <div style={{ flex: '1 1 200px' }}>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '5px' }}>Category</label>
                   <select required value={editStoreData.store_category} onChange={(e) => setEditStoreData({...editStoreData, store_category: e.target.value, industry: ''})} style={{ width: '100%', padding: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '10px', boxSizing: 'border-box' }}>
                     <option value="" disabled>Select Category</option>
                     {Object.keys(BUSINESS_TAXONOMY).map(cat => <option key={cat} value={cat}>{cat}</option>)}
                   </select>
                 </div>
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: '1 1 200px' }}>
                   <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '5px' }}>Industry</label>
                   <select required value={editStoreData.industry} onChange={(e) => setEditStoreData({...editStoreData, industry: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '10px', boxSizing: 'border-box' }} disabled={!editStoreData.store_category}>
                     <option value="" disabled>Select Industry</option>
@@ -1100,6 +1112,7 @@ export default function DashboardPage() {
                 <textarea placeholder="Store Description (Optional)" value={editStoreData.description} onChange={(e) => setEditStoreData({...editStoreData, description: e.target.value})} style={{ padding: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '10px', width: '100%', boxSizing: 'border-box', minHeight: '80px', fontFamily: 'inherit' }} />
               </div>
               
+              {/* ... Rest of Edit Form remains the same ... */}
               <div style={{ padding: '15px', backgroundColor: 'var(--surface-hover)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
                 <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: 'var(--text-main)' }}>Contact Details</h4>
                 
@@ -1229,12 +1242,12 @@ export default function DashboardPage() {
       )}
 
       {/* --- HEADER BAR --- */}
-      <div style={{ height: '70px', flexShrink: 0, boxSizing: 'border-box', zIndex: 40, backgroundColor: 'var(--surface-color)', padding: '0 30px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
+      <div style={{ height: '70px', flexShrink: 0, boxSizing: 'border-box', zIndex: 40, backgroundColor: 'var(--surface-color)', padding: '0 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border-color)', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '15px', overflow: 'hidden', flexGrow: 1, marginRight: '20px' }}>
-          <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '900', color: 'var(--text-main)', paddingRight: '15px', borderRight: '1px solid var(--border-color)', flexShrink: 0 }}>Merchant's Hub</h2>
+          <h2 className="desktop-ui" style={{ margin: 0, fontSize: '18px', fontWeight: '900', color: 'var(--text-main)', paddingRight: '15px', borderRight: '1px solid var(--border-color)', flexShrink: 0 }}>Merchant's Hub</h2>
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center', overflow: 'hidden', flexGrow: 1 }}>
             {showStoreLeft && <button onClick={() => storeScrollRef.current.scrollBy({ left: -200, behavior: 'smooth' })} style={{ position: 'absolute', left: 0, zIndex: 5, background: 'linear-gradient(to right, var(--surface-color) 70%, transparent)', border: 'none', height: '100%', padding: '0 10px 0 0', cursor: 'pointer', display: 'flex', alignItems: 'center' }}><MdChevronLeft size={24} color="var(--text-main)" /></button>}
-            <div ref={storeScrollRef} onScroll={checkHeaderScroll} onMouseDown={handleHeaderMouseDown} onMouseLeave={handleHeaderMouseLeave} onMouseUp={handleHeaderMouseUp} onMouseMove={handleHeaderMouseMove} style={{ display: 'flex', gap: '8px', overflowX: 'auto', scrollbarWidth: 'none', padding: '5px 0', width: '100%', cursor: 'grab', userSelect: 'none' }}>
+            <div ref={storeScrollRef} className="custom-scrollbar" onScroll={checkHeaderScroll} onMouseDown={handleHeaderMouseDown} onMouseLeave={handleHeaderMouseLeave} onMouseUp={handleHeaderMouseUp} onMouseMove={handleHeaderMouseMove} style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '5px 0', width: '100%', cursor: 'grab', userSelect: 'none' }}>
               {stores.map(s => <button key={s.id} onClick={() => setActiveStore(s)} style={{ flexShrink: 0, padding: '8px 16px', borderRadius: '20px', backgroundColor: activeStore?.id === s.id ? 'var(--brand-primary)' : 'transparent', color: activeStore?.id === s.id ? 'white' : 'var(--text-muted)', border: activeStore?.id === s.id ? '1px solid transparent' : '1px solid var(--border-color)', fontWeight: '700', fontSize: '13px', cursor: 'pointer', transition: 'all 0.2s', whiteSpace: 'nowrap', boxShadow: activeStore?.id === s.id ? '0 4px 10px rgba(37,99,235,0.2)' : 'none' }}>{s.store_name}</button>)}
               <button onClick={() => navigate('/create-business')} style={{ flexShrink: 0, padding: '8px 16px', borderRadius: '20px', backgroundColor: 'var(--surface-hover)', color: 'var(--brand-primary)', border: '1px dashed var(--brand-primary)', fontWeight: '700', fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '4px' }}><MdAdd size={16} /> Add Store</button>
             </div>
@@ -1244,7 +1257,7 @@ export default function DashboardPage() {
         <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#EF4444', fontWeight: '700', cursor: 'pointer', fontSize: '14px', flexShrink: 0 }}>Sign Out</button>
       </div>
 
-      <div ref={scrollContainerRef} onScroll={handleScroll} style={{ flexGrow: 1, padding: '30px', paddingBottom: '90px', position: 'relative', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+      <div ref={scrollContainerRef} className="dashboard-wrapper" onScroll={handleScroll} style={{ flexGrow: 1, paddingBottom: '90px', position: 'relative', overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
         
         <MerchantOnboarding activeStoreId={activeStore?.id} onAction={handleOnboardingAction} />
         
@@ -1259,7 +1272,8 @@ export default function DashboardPage() {
         {activeStore && (
           <div style={{ width: '100%', maxWidth: '1000px', margin: '0 auto' }}>
             
-            <div style={{ position: 'relative', marginBottom: '60px' }}>
+            {/* 💻 DESKTOP STORE HEADER */}
+            <div className="desktop-ui" style={{ position: 'relative', marginBottom: '60px' }}>
               <div style={{ width: '100%', height: '320px', borderRadius: '24px', overflow: 'hidden', backgroundImage: `url(${getStoreCoverImage(activeStore)})`, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative', boxShadow: '0 10px 30px rgba(0,0,0,0.08)' }}>
                 <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0) 100%)', pointerEvents: 'none' }} />
                 
@@ -1281,7 +1295,6 @@ export default function DashboardPage() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '20px', color: '#F8FAFC', fontSize: '14px', fontWeight: '500' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><MdLocationOn size={18} /> {activeStore.theme_settings?.addressText || 'Location not set'}</div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><MdStar size={18} /> {reviewCount > 0 ? `${avgRating} (${reviewCount} reviews)` : 'No reviews yet'}</div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><MdVisibility size={18} /> 1.2K views</div>
                     </div>
                   </div>
                 </div>
@@ -1296,14 +1309,45 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', overflowX: 'auto', scrollbarWidth: 'none', marginBottom: '20px', padding: '0 10px' }}>
+            {/* 📱 MOBILE STORE HEADER */}
+            <div className="mobile-ui-block" style={{ position: 'relative', marginBottom: '30px' }}>
+              <div style={{ width: '100%', height: '200px', borderRadius: '20px', backgroundImage: `url(${getStoreCoverImage(activeStore)})`, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative' }}>
+                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 100%)', borderRadius: '20px' }} />
+                <div style={{ position: 'absolute', top: '15px', right: '15px', zIndex: 20 }}>
+                   <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 12px', backgroundColor: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(4px)', color: '#0F172A', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold', cursor: isUploadingCover ? 'not-allowed' : 'pointer', border: 'none', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
+                      {isUploadingCover ? 'Uploading...' : <><MdCameraAlt size={16} color="var(--brand-primary)" /> Cover</>}
+                      <input type="file" accept="image/*" onChange={onCoverFileSelect} disabled={isUploadingCover} style={{ display: 'none' }} />
+                   </label>
+                </div>
+              </div>
+              <div style={{ position: 'absolute', top: '150px', left: '20px', width: '90px', height: '90px', borderRadius: '50%', border: '4px solid var(--surface-color)', backgroundColor: 'var(--surface-color)', zIndex: 30, backgroundImage: activeStore.logo_url ? `url(${activeStore.logo_url})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                {!activeStore.logo_url && <MdStorefront size={40} color="var(--icon-color)" />}
+                <label style={{ position: 'absolute', bottom: '0px', right: '-5px', backgroundColor: 'var(--brand-primary)', color: 'white', width: '30px', height: '30px', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: isUploadingLogo ? 'not-allowed' : 'pointer', border: '2px solid var(--surface-color)', boxShadow: '0 4px 10px rgba(0,0,0,0.15)' }}>
+                  {isUploadingLogo ? <div style={{ width: '12px', height: '12px', border: '2px solid white', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /> : <MdCameraAlt size={14} />}
+                  <input type="file" accept="image/*" onChange={onLogoFileSelect} disabled={isUploadingLogo} style={{ display: 'none' }} />
+                </label>
+              </div>
+              <div style={{ paddingTop: '50px', paddingLeft: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h1 style={{ margin: 0, fontSize: '24px', fontWeight: '900', color: 'var(--text-main)', lineHeight: '1.2' }}>{activeStore.store_name}</h1>
+                  {activeStore.role === 'operator' && <span style={{ padding: '2px 6px', backgroundColor: 'rgba(16, 185, 129, 0.2)', color: '#34d399', fontSize: '10px', fontWeight: 'bold', borderRadius: '4px' }}>STAFF</span>}
+                </div>
+                <p style={{ margin: '4px 0 10px 0', color: 'var(--text-muted)', fontSize: '14px', fontWeight: '600' }}>{activeStore.industry || activeStore.store_category}</p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '15px', color: 'var(--text-muted)', fontSize: '13px', fontWeight: '500' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><MdLocationOn size={16} /> {activeStore.theme_settings?.addressText || 'Location not set'}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><MdStar size={16} /> {reviewCount > 0 ? `${avgRating}` : 'New'}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="custom-scrollbar" style={{ display: 'flex', alignItems: 'center', gap: '10px', overflowX: 'auto', marginBottom: '20px', padding: '0 10px 10px 10px' }}>
               {['menu', 'staff', 'verification', 'reviews', 'preview'].map(tab => {
                 const labels = { 
-                  menu: <><MdDashboard size={18} /> Dashboard & Menu</>, 
-                  staff: <><MdPeople size={18} /> Staff Access</>, 
+                  menu: <><MdDashboard size={18} /> Menu</>, 
+                  staff: <><MdPeople size={18} /> Staff</>, 
                   verification: <><MdVerifiedUser size={18} /> Verification</>,
                   reviews: <><MdStar size={18} /> Reviews</>,
-                  preview: <><MdSmartphone size={18} /> Live Preview</> 
+                  preview: <><MdSmartphone size={18} /> Preview</> 
                 };
                 const isActive = activeTab === tab;
                 return (
@@ -1340,7 +1384,7 @@ export default function DashboardPage() {
                 <div style={{ backgroundColor: 'var(--surface-color)', padding: '18px 24px', borderRadius: '16px', border: '1px solid var(--border-color)', boxShadow: '0 4px 10px rgba(0,0,0,0.02)', marginBottom: '30px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Store Status</span>
+                      <span className="desktop-ui" style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Store Status</span>
                       <button 
                         onClick={toggleStoreStatus} 
                         style={{ display: 'flex', alignItems: 'center', gap: '12px', backgroundColor: activeStore.is_open ? 'rgba(16, 185, 129, 0.1)' : 'var(--bg-color)', padding: '8px 16px', borderRadius: '50px', border: activeStore.is_open ? '1px solid #10B981' : '1px solid var(--border-color)', cursor: 'pointer', transition: 'all 0.3s' }}
@@ -1353,10 +1397,10 @@ export default function DashboardPage() {
                       </button>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                      <button onClick={() => setIsQrModalOpen(true)} style={{ padding: '10px 16px', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><MdQrCode size={18} /> QR Code</button>
-                      <button onClick={() => setIsScheduleModalOpen(true)} style={{ padding: '10px 16px', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><MdSchedule size={18} /> Operating Hours</button>
-                      <button onClick={handleOpenEditModal} style={{ padding: '10px 16px', backgroundColor: 'var(--surface-hover)', color: 'var(--brand-primary)', border: '1px dashed var(--brand-primary)', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}><MdEdit size={18} /> Edit Info</button>
+                    <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', width: 'auto' }} className="full-width-mobile">
+                      <button onClick={() => setIsQrModalOpen(true)} style={{ flex: '1 1 auto', padding: '10px 16px', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}><MdQrCode size={18} /> QR Code</button>
+                      <button onClick={() => setIsScheduleModalOpen(true)} style={{ flex: '1 1 auto', padding: '10px 16px', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}><MdSchedule size={18} /> Hours</button>
+                      <button onClick={handleOpenEditModal} style={{ flex: '1 1 auto', padding: '10px 16px', backgroundColor: 'var(--surface-hover)', color: 'var(--brand-primary)', border: '1px dashed var(--brand-primary)', borderRadius: '10px', fontWeight: 'bold', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}><MdEdit size={18} /> Edit Info</button>
                     </div>
                   </div>
 
@@ -1365,7 +1409,7 @@ export default function DashboardPage() {
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <MdPalette size={18} color="var(--brand-primary)" />
                         <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-main)' }}>Brand Theme Color:</span>
-                        <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Choose an accent color for your storefront</span>
+                        <span className="desktop-ui" style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Choose an accent color for your storefront</span>
                       </div>
 
                       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
@@ -1377,31 +1421,12 @@ export default function DashboardPage() {
                               key={color}
                               type="button"
                               onClick={() => handleSelectColor(color)}
-                              style={{
-                                width: '28px',
-                                height: '28px',
-                                borderRadius: '50%',
-                                backgroundColor: color,
-                                border: 'none',
-                                boxShadow: storeTheme.primaryColor === color ? `0 0 0 2px var(--surface-color), 0 0 0 4px ${color}` : '0 2px 5px rgba(0,0,0,0.15)',
-                                cursor: 'pointer',
-                                outline: 'none',
-                                transform: storeTheme.primaryColor === color ? 'scale(1.1)' : 'scale(1)',
-                                transition: 'all 0.15s ease'
-                              }}
-                              title={`Select ${color}`}
+                              style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: color, border: 'none', boxShadow: storeTheme.primaryColor === color ? `0 0 0 2px var(--surface-color), 0 0 0 4px ${color}` : '0 2px 5px rgba(0,0,0,0.15)', cursor: 'pointer', outline: 'none', transform: storeTheme.primaryColor === color ? 'scale(1.1)' : 'scale(1)', transition: 'all 0.15s ease' }}
                             />
                           ))}
-
                           <div style={{ width: '1px', height: '20px', backgroundColor: 'var(--border-color)', margin: '0 4px' }} />
-
                           <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)' }}>
-                            <input 
-                              type="color" 
-                              value={storeTheme.primaryColor} 
-                              onChange={(e) => handleSelectColor(e.target.value)} 
-                              style={{ width: '28px', height: '28px', padding: 0, border: 'none', borderRadius: '50%', cursor: 'pointer', background: 'none' }} 
-                            />
+                            <input type="color" value={storeTheme.primaryColor} onChange={(e) => handleSelectColor(e.target.value)} style={{ width: '28px', height: '28px', padding: 0, border: 'none', borderRadius: '50%', cursor: 'pointer', background: 'none' }} />
                             Custom
                           </label>
                         </div>
@@ -1413,7 +1438,7 @@ export default function DashboardPage() {
                 <div style={{ position: 'relative' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <h2 style={{ margin: '0 0 0 0', fontSize: '20px', color: 'var(--text-main)', fontWeight: '800' }}>Manage Menu & Products</h2>
+                      <h2 style={{ margin: '0 0 0 0', fontSize: '20px', color: 'var(--text-main)', fontWeight: '800' }}>Manage Menu</h2>
                       {isMenuLocked && (
                         <span style={{ padding: '4px 10px', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#EF4444', borderRadius: '20px', fontSize: '11px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
                           <MdLock size={12}/> LOCKED
@@ -1423,29 +1448,16 @@ export default function DashboardPage() {
                     
                     <button 
                       onClick={isMenuLocked ? () => setIsUpgradeModalOpen(true) : openAddModal} 
-                      style={{ 
-                        padding: '10px 20px', 
-                        backgroundColor: isMenuLocked ? '#F59E0B' : 'var(--brand-primary)', 
-                        color: 'white', 
-                        border: 'none', 
-                        borderRadius: '12px', 
-                        fontWeight: 'bold', 
-                        cursor: 'pointer', 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '8px',
-                        boxShadow: isMenuLocked ? '0 4px 10px rgba(245, 158, 11, 0.3)' : 'none',
-                        transition: 'all 0.2s'
-                      }}
+                      style={{ padding: '10px 20px', backgroundColor: isMenuLocked ? '#F59E0B' : 'var(--brand-primary)', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: isMenuLocked ? '0 4px 10px rgba(245, 158, 11, 0.3)' : 'none', transition: 'all 0.2s' }}
                     >
-                      {isMenuLocked ? <><MdLock size={18} /> Unlock Premium</> : <><MdAdd size={18} /> Add Item</>}
+                      {isMenuLocked ? <><MdLock size={18} /> Unlock</> : <><MdAdd size={18} /> Add Item</>}
                     </button>
                   </div>
 
                   {categoryOrder.length > 0 && (
-                    <div style={{ position: 'sticky', top: '70px', zIndex: 30, backgroundColor: 'var(--bg-color)', padding: '10px 0', margin: '0 -10px', paddingLeft: '10px', paddingRight: '10px' }}>
+                    <div style={{ position: 'sticky', top: '0px', zIndex: 30, backgroundColor: 'var(--bg-color)', padding: '10px 0', margin: '0 -10px', paddingLeft: '10px', paddingRight: '10px' }}>
                       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={[restrictToHorizontalAxis]}>
-                        <div style={{ display: 'flex', gap: '10px', padding: '10px', overflowX: 'auto', backgroundColor: 'var(--surface-color)', borderRadius: '16px', border: '1px solid var(--border-color)', boxShadow: '0 4px 10px rgba(0,0,0,0.05)', scrollbarWidth: 'none' }}>
+                        <div className="custom-scrollbar" style={{ display: 'flex', gap: '10px', padding: '10px', overflowX: 'auto', backgroundColor: 'var(--surface-color)', borderRadius: '16px', border: '1px solid var(--border-color)', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
                           <SortableContext items={categoryOrder} strategy={horizontalListSortingStrategy}>
                             {categoryOrder.map(cat => <SortableCategory key={cat} id={cat} activeCategory={activeCategory} brandColor={storeTheme.primaryColor} onClick={scrollToCategory} />)}
                           </SortableContext>
@@ -1464,31 +1476,48 @@ export default function DashboardPage() {
                           return (
                             <div key={category} ref={(el) => (sectionRefs.current[category] = el)}>
                               <div style={{ padding: '12px 30px', backgroundColor: 'var(--bg-color)', borderBottom: '1px solid var(--border-color)', borderTop: '1px solid var(--border-color)' }}><h3 style={{ margin: '0', fontSize: '13px', color: 'var(--text-muted)', fontWeight: '800', textTransform: 'uppercase' }}>{category}</h3></div>
-                              {groupedItems[category].map(item => (
-                                <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 30px', borderBottom: '1px solid var(--border-color)' }}>
-                                  <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
-                                    {item.image_url ? <img src={item.image_url} alt={item.item_name} style={{ width: '80px', height: '60px', objectFit: 'cover', borderRadius: '10px' }} /> : <div style={{ width: '80px', height: '60px', backgroundColor: 'var(--surface-hover)', borderRadius: '10px', display: 'flex', justifyContent: 'center', alignItems: 'center', color: 'var(--icon-color)' }}><MdRestaurantMenu size={24} /></div>}
-                                    <div><h4 style={{ margin: '0 0 4px 0', fontSize: '16px', color: 'var(--text-main)', fontWeight: '800' }}>{item.item_name}</h4><p style={{ margin: '0', color: 'var(--text-muted)', fontSize: '13px', fontWeight: '500' }}>{item.description}</p></div>
-                                  </div>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                                    <div style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-main)' }}>₱{parseFloat(item.price).toFixed(2)}</div>
-                                    <div style={{ display: 'flex', gap: '5px', marginLeft: '10px' }}>
-                                      <button 
-                                        onClick={isMenuLocked ? () => setIsUpgradeModalOpen(true) : () => startEditItem(item)} 
-                                        style={{ background: 'var(--surface-hover)', color: 'var(--brand-primary)', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' }}
-                                      >
-                                        {isMenuLocked ? <MdLock size={16} /> : <MdEdit size={16} />}
-                                      </button>
-                                      <button 
-                                        onClick={isMenuLocked ? () => setIsUpgradeModalOpen(true) : () => handleDeleteItem(item.id, item.item_name)} 
-                                        style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#EF4444', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' }}
-                                      >
-                                        {isMenuLocked ? <MdLock size={16} /> : <MdDelete size={16} />}
-                                      </button>
+                              
+                              {/* 💻 DESKTOP ITEM ROW */}
+                              <div className="desktop-ui">
+                                {groupedItems[category].map(item => (
+                                  <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 30px', borderBottom: '1px solid var(--border-color)' }}>
+                                    <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+                                      {item.image_url ? <img src={item.image_url} alt={item.item_name} style={{ width: '80px', height: '60px', objectFit: 'cover', borderRadius: '10px' }} /> : <div style={{ width: '80px', height: '60px', backgroundColor: 'var(--surface-hover)', borderRadius: '10px', display: 'flex', justifyContent: 'center', alignItems: 'center', color: 'var(--icon-color)' }}><MdRestaurantMenu size={24} /></div>}
+                                      <div><h4 style={{ margin: '0 0 4px 0', fontSize: '16px', color: 'var(--text-main)', fontWeight: '800' }}>{item.item_name}</h4><p style={{ margin: '0', color: 'var(--text-muted)', fontSize: '13px', fontWeight: '500' }}>{item.description}</p></div>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                                      <div style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-main)' }}>₱{parseFloat(item.price).toFixed(2)}</div>
+                                      <div style={{ display: 'flex', gap: '5px', marginLeft: '10px' }}>
+                                        <button onClick={isMenuLocked ? () => setIsUpgradeModalOpen(true) : () => startEditItem(item)} style={{ background: 'var(--surface-hover)', color: 'var(--brand-primary)', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' }}>{isMenuLocked ? <MdLock size={16} /> : <MdEdit size={16} />}</button>
+                                        <button onClick={isMenuLocked ? () => setIsUpgradeModalOpen(true) : () => handleDeleteItem(item.id, item.item_name)} style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#EF4444', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer' }}>{isMenuLocked ? <MdLock size={16} /> : <MdDelete size={16} />}</button>
+                                      </div>
                                     </div>
                                   </div>
-                                </div>
-                              ))}
+                                ))}
+                              </div>
+
+                              {/* 📱 MOBILE ITEM ROW */}
+                              <div className="mobile-ui-block">
+                                {groupedItems[category].map((item, index) => (
+                                  <div key={item.id} style={{ display: 'flex', padding: '16px', borderBottom: index === groupedItems[category].length - 1 ? 'none' : '1px solid var(--border-color)', gap: '12px', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    {item.image_url ? (
+                                      <img src={item.image_url} alt={item.item_name} style={{ width: '70px', height: '70px', objectFit: 'cover', borderRadius: '10px', flexShrink: 0 }} />
+                                    ) : (
+                                      <div style={{ width: '70px', height: '70px', backgroundColor: 'var(--surface-hover)', borderRadius: '10px', display: 'flex', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}><MdRestaurantMenu size={24} color="var(--icon-color)" /></div>
+                                    )}
+                                    <div style={{ flexGrow: 1, minWidth: 0 }}>
+                                      <h4 style={{ margin: '0 0 4px 0', fontSize: '15px', color: 'var(--text-main)', fontWeight: '800', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.item_name}</h4>
+                                      <div style={{ fontSize: '14px', fontWeight: '900', color: 'var(--text-main)', marginBottom: '4px' }}>₱{parseFloat(item.price).toFixed(2)}</div>
+                                      {item.description && <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '12px', display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.description}</p>}
+                                    </div>
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flexShrink: 0 }}>
+                                      <button onClick={isMenuLocked ? () => setIsUpgradeModalOpen(true) : () => startEditItem(item)} style={{ background: 'var(--surface-hover)', color: 'var(--brand-primary)', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>{isMenuLocked ? <MdLock size={14} /> : <MdEdit size={14} />}</button>
+                                      <button onClick={isMenuLocked ? () => setIsUpgradeModalOpen(true) : () => handleDeleteItem(item.id, item.item_name)} style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#EF4444', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>{isMenuLocked ? <MdLock size={14} /> : <MdDelete size={14} />}</button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+
                             </div>
                           )
                         })
@@ -1504,9 +1533,9 @@ export default function DashboardPage() {
               <div style={{ backgroundColor: 'var(--surface-color)', padding: '30px', borderRadius: '20px', border: '1px solid var(--border-color)' }}>
                 <h3 style={{ margin: '0 0 10px 0', color: 'var(--text-main)', fontSize: '18px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}><MdSecurity color="var(--brand-primary)" /> Operator Access</h3>
                 <p style={{ margin: '0 0 20px 0', color: 'var(--text-muted)', fontSize: '14px' }}>Invite trusted staff to manage inventory and open/close the store.</p>
-                <form onSubmit={handleInviteOperator} style={{ display: 'flex', gap: '10px', marginBottom: '30px', maxWidth: '400px' }}>
+                <form onSubmit={handleInviteOperator} style={{ display: 'flex', gap: '10px', marginBottom: '30px', maxWidth: '400px', flexWrap: 'wrap' }}>
                   <input type="email" placeholder="Staff Email Address" required value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} style={{ padding: '12px 15px', borderRadius: '10px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', flexGrow: 1, outline: 'none' }} />
-                  <button type="submit" disabled={isInviting} style={{ padding: '12px 20px', backgroundColor: 'var(--brand-primary)', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: isInviting ? 'not-allowed' : 'pointer' }}>{isInviting ? 'Sending...' : 'Invite'}</button>
+                  <button type="submit" disabled={isInviting} style={{ padding: '12px 20px', backgroundColor: 'var(--brand-primary)', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', cursor: isInviting ? 'not-allowed' : 'pointer', minWidth: '100px' }}>{isInviting ? 'Sending...' : 'Invite'}</button>
                 </form>
                 {inviteMessage && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', fontWeight: 'bold', padding: '12px', borderRadius: '10px', marginBottom: '20px', backgroundColor: inviteMessage.type === 'success' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)', color: inviteMessage.type === 'success' ? '#10B981' : '#EF4444' }}>
@@ -1514,42 +1543,44 @@ export default function DashboardPage() {
                   </div>
                 )}
                 
-                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '2px solid var(--border-color)', color: 'var(--text-muted)', fontSize: '13px' }}>
-                      <th style={{ padding: '12px 0' }}>User Email</th>
-                      <th style={{ padding: '12px 0' }}>Status</th>
-                      <th style={{ padding: '12px 0', textAlign: 'right' }}>Action</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {activeStore.merchant_id === user?.id && (
-                      <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
-                        <td style={{ padding: '16px 0', fontWeight: '600', color: 'var(--text-main)' }}>{user?.email}</td>
-                        <td style={{ padding: '16px 0' }}>
-                          <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '12px', backgroundColor: 'var(--surface-hover)', color: 'var(--brand-primary)', fontWeight: 'bold' }}>STORE OWNER</span>
-                        </td>
-                        <td style={{ padding: '16px 0', textAlign: 'right' }}></td>
+                <div className="custom-scrollbar" style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '400px' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '2px solid var(--border-color)', color: 'var(--text-muted)', fontSize: '13px' }}>
+                        <th style={{ padding: '12px 0' }}>User Email</th>
+                        <th style={{ padding: '12px 0' }}>Status</th>
+                        <th style={{ padding: '12px 0', textAlign: 'right' }}>Action</th>
                       </tr>
-                    )}
-                    {storeOperators.filter(op => op.user_id !== activeStore.merchant_id).map((op, idx) => (
-                      <tr key={op.id || idx} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                        <td style={{ padding: '16px 0', fontWeight: '600', color: 'var(--text-main)' }}>{op.email}</td>
-                        <td style={{ padding: '16px 0' }}>
-                          <span style={{ fontSize: '11px', padding: '4px 10px', borderRadius: '12px', backgroundColor: op.status === 'pending' ? 'rgba(245, 158, 11, 0.1)' : 'rgba(16, 185, 129, 0.1)', color: op.status === 'pending' ? '#D97706' : '#10B981', fontWeight: 'bold' }}>{op.status === 'pending' ? 'PENDING' : 'ACTIVE STAFF'}</span>
-                        </td>
-                        <td style={{ padding: '16px 0', textAlign: 'right' }}>
-                          {activeStore.merchant_id === user?.id && op.status !== 'pending' && (
-                             <button onClick={() => handleRemoveStaff(op.user_id, op.email)} style={{ padding: '6px 12px', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#EF4444', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' }}>Remove</button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                    {storeOperators.filter(op => op.user_id !== activeStore.merchant_id).length === 0 && activeStore.merchant_id === user?.id && (
-                      <tr><td colSpan="3" style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-muted)' }}>No staff members added yet.</td></tr>
-                    )}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {activeStore.merchant_id === user?.id && (
+                        <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                          <td style={{ padding: '16px 0', fontWeight: '600', color: 'var(--text-main)', fontSize: '14px' }}>{user?.email}</td>
+                          <td style={{ padding: '16px 0' }}>
+                            <span style={{ fontSize: '10px', padding: '4px 10px', borderRadius: '12px', backgroundColor: 'var(--surface-hover)', color: 'var(--brand-primary)', fontWeight: 'bold' }}>STORE OWNER</span>
+                          </td>
+                          <td style={{ padding: '16px 0', textAlign: 'right' }}></td>
+                        </tr>
+                      )}
+                      {storeOperators.filter(op => op.user_id !== activeStore.merchant_id).map((op, idx) => (
+                        <tr key={op.id || idx} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                          <td style={{ padding: '16px 0', fontWeight: '600', color: 'var(--text-main)', fontSize: '14px' }}>{op.email}</td>
+                          <td style={{ padding: '16px 0' }}>
+                            <span style={{ fontSize: '10px', padding: '4px 10px', borderRadius: '12px', backgroundColor: op.status === 'pending' ? 'rgba(245, 158, 11, 0.1)' : 'rgba(16, 185, 129, 0.1)', color: op.status === 'pending' ? '#D97706' : '#10B981', fontWeight: 'bold' }}>{op.status === 'pending' ? 'PENDING' : 'ACTIVE STAFF'}</span>
+                          </td>
+                          <td style={{ padding: '16px 0', textAlign: 'right' }}>
+                            {activeStore.merchant_id === user?.id && op.status !== 'pending' && (
+                               <button onClick={() => handleRemoveStaff(op.user_id, op.email)} style={{ padding: '6px 12px', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#EF4444', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '12px' }}>Remove</button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                      {storeOperators.filter(op => op.user_id !== activeStore.merchant_id).length === 0 && activeStore.merchant_id === user?.id && (
+                        <tr><td colSpan="3" style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-muted)' }}>No staff members added yet.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
 
@@ -1592,7 +1623,7 @@ export default function DashboardPage() {
                            {review.comment || <span style={{ fontStyle: 'italic', color: 'var(--text-muted)' }}>No written comment.</span>}
                          </p>
                          {review.photo_urls && review.photo_urls.length > 0 && (
-                            <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', marginBottom: '15px' }}>
+                            <div className="custom-scrollbar" style={{ display: 'flex', gap: '8px', overflowX: 'auto', marginBottom: '15px' }}>
                               {review.photo_urls.map((url, i) => <img key={i} src={url} alt="Review" style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '8px', border: '1px solid var(--border-color)' }} />)}
                             </div>
                          )}
@@ -1618,8 +1649,8 @@ export default function DashboardPage() {
                            replyingToId === review.id ? (
                              <div style={{ marginTop: '10px' }}>
                                <textarea autoFocus maxLength={500} value={replyText} onChange={(e) => setReplyText(e.target.value)} placeholder="Write your response to the customer..." style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--border-color)', backgroundColor: 'var(--surface-color)', color: 'var(--text-main)', minHeight: '80px', fontSize: '13px', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit', wordBreak: 'break-word' }} />
-                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
-                                 <div style={{ fontSize: '12px', color: replyText.length >= 500 ? '#EF4444' : 'var(--text-muted)', fontWeight: 'bold' }}>{replyText.length} / 500 characters</div>
+                               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                                 <div style={{ fontSize: '12px', color: replyText.length >= 500 ? '#EF4444' : 'var(--text-muted)', fontWeight: 'bold' }}>{replyText.length} / 500</div>
                                  <div style={{ display: 'flex', gap: '10px' }}>
                                    <button onClick={() => { setReplyingToId(null); setReplyText(''); }} style={{ padding: '8px 16px', background: 'none', border: 'none', color: 'var(--text-muted)', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px' }}>Cancel</button>
                                    <button onClick={() => submitReply(review.id)} disabled={isSubmittingReply || !replyText.trim()} style={{ padding: '8px 16px', backgroundColor: storeTheme.primaryColor, color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: isSubmittingReply || !replyText.trim() ? 'not-allowed' : 'pointer', fontSize: '13px', opacity: isSubmittingReply || !replyText.trim() ? 0.7 : 1 }}>{isSubmittingReply ? 'Posting...' : 'Post Reply'}</button>
@@ -1627,7 +1658,7 @@ export default function DashboardPage() {
                                </div>
                              </div>
                            ) : (
-                             <button onClick={() => { setReplyingToId(review.id); setReplyText(''); }} style={{ padding: '8px 16px', backgroundColor: 'var(--surface-color)', color: storeTheme.primaryColor, border: `1px solid ${storeTheme.primaryColor}`, borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}><MdReply size={16} /> Reply to Review</button>
+                             <button onClick={() => { setReplyingToId(review.id); setReplyText(''); }} style={{ padding: '8px 16px', backgroundColor: 'var(--surface-color)', color: storeTheme.primaryColor, border: `1px solid ${storeTheme.primaryColor}`, borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px' }}><MdReply size={16} /> Reply</button>
                            )
                          )}
                        </div>

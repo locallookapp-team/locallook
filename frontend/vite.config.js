@@ -14,6 +14,7 @@ export default defineConfig({
         description: 'Discover and review places in Tablas Island.',
         theme_color: '#2563EB',
         background_color: '#F8FAFC',
+        start_url: '/map',
         display: 'standalone', 
         orientation: 'portrait',
         icons: [

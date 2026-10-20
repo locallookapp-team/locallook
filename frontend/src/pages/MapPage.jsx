@@ -89,7 +89,7 @@ export default function MapPage() {
 
   const [isLocationDropdownOpen, setIsLocationDropdownOpen] = useState(false);
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false); 
-  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false); // 🚀 State for Mobile Category Dropdown
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false); 
 
   const [searchTerm, setSearchTerm] = useState('');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -172,6 +172,7 @@ export default function MapPage() {
     }
   };
 
+  // 🚀 FIXED LOCATE ME LOGIC: Checks if source exists to prevent crashes after Dark Mode toggles
   const handleLocateUser = () => {
     if (!navigator.geolocation || !map.current) return;
     
@@ -181,11 +182,14 @@ export default function MapPage() {
         const { longitude, latitude, heading } = pos.coords;
         setActualUserLocation({ lat: latitude, lng: longitude });
 
-        map.current.getSource('user-location').setData({
-          type: 'Feature', 
-          geometry: { type: 'Point', coordinates: [longitude, latitude] }, 
-          properties: { heading: heading || 0 }
-        });
+        const source = map.current.getSource('user-location');
+        if (source) {
+          source.setData({
+            type: 'Feature', 
+            geometry: { type: 'Point', coordinates: [longitude, latitude] }, 
+            properties: { heading: heading || 0 }
+          });
+        }
         
         map.current.flyTo({ center: [longitude, latitude], zoom: 18.5, speed: 1.5 });
         setIsLocating(false);
@@ -359,6 +363,7 @@ export default function MapPage() {
     const lng = target.lng || target.stores?.lng;
     
     if (map.current && lat && lng) {
+      // 🚀 Offset [0, 160] pushes the map down so popups sit perfectly in the center!
       map.current.flyTo({ center: [lng, lat], zoom: 18.5, duration: 1200, offset: [0, 160] });
       setSelectedStore(target.stores ? target.stores : target);
     }
@@ -559,7 +564,7 @@ export default function MapPage() {
                 </button>
                 
                 {isCategoryDropdownOpen && (
-                  <div className="custom-scrollbar" style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '8px', backgroundColor: bgColors.primary, border: `1px solid ${bgColors.border}`, borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', zIndex: 10, maxHeight: '250px', overflowY: 'auto' }}>
+                  <div className="custom-scrollbar" style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '8px', backgroundColor: bgColors.primary, border: `1px solid ${bgColors.border}`, borderRadius: '12px', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', zIndex: 10, maxHeight: '200px', overflowY: 'auto' }}>
                     {categories.map(cat => (
                       <div 
                         key={cat}
@@ -636,7 +641,7 @@ export default function MapPage() {
         <div ref={mapContainer} style={{ position: 'absolute', inset: 0 }} />
 
         {/* ========================================================= */}
-        {/* 💻 ORIGINAL DESKTOP UI (Restored & Fully Isolated) */}
+        {/* 💻 DESKTOP UI: TOP BAR & FILTERS                          */}
         {/* ========================================================= */}
         <div className="desktop-ui" style={{ position: 'absolute', top: 0, left: 0, right: 0, pointerEvents: 'none', zIndex: 900000 }}>
           
@@ -731,7 +736,6 @@ export default function MapPage() {
             <div style={{ position: 'relative', display: 'flex', alignItems: 'center', maxWidth: 'calc(100% - 130px)', pointerEvents: 'auto' }}>
               {showLeftScroll && <button onClick={() => categoryScrollRef.current.scrollBy({ left: -200, behavior: 'smooth' })} style={{ position: 'absolute', left: '-18px', zIndex: 5, background: bgColors.primary, border: `1px solid ${bgColors.border}`, width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}><MdChevronLeft size={22} color={bgColors.textMain} /></button>}
               
-              {/* 🚀 DESKTOP CATEGORY PILLS (Fully Restored) */}
               <div ref={categoryScrollRef} onScroll={checkScrollArrows} onMouseDown={handleMouseDown} onMouseLeave={handleMouseUp} onMouseUp={handleMouseUp} onMouseMove={handleMouseMove} style={{ display: 'flex', gap: '8px', overflowX: 'auto', scrollbarWidth: 'none', padding: '4px 0', WebkitOverflowScrolling: 'touch', cursor: 'grab', width: '100%' }}>
                 {categories.map(cat => (
                   <button key={cat} onClick={() => setActiveCategory(cat)} style={{ flexShrink: 0, padding: '8px 18px', borderRadius: '24px', border: activeCategory === cat ? '1px solid transparent' : `1px solid ${bgColors.border}`, backgroundColor: activeCategory === cat ? '#2563EB' : bgColors.primary, color: activeCategory === cat ? 'white' : bgColors.textMuted, fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -747,19 +751,21 @@ export default function MapPage() {
               <MdTune size={18} /> Filters
             </button>
           </div>
-          
-          <div style={{ position: 'absolute', bottom: '30px', right: '30px', zIndex: 900000, pointerEvents: 'auto' }}>
-            <button onClick={handleLocateUser} style={{ width: '48px', height: '48px', backgroundColor: bgColors.primary, border: `1px solid ${bgColors.border}`, borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: '0 8px 25px rgba(0,0,0,0.15)', cursor: 'pointer' }}>
-              {isLocating ? <div style={{ width: '20px', height: '20px', border: `3px solid ${bgColors.border}`, borderTopColor: '#2563EB', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /> : <MdOutlineNearMe size={24} color="#2563EB" style={{ transform: 'translate(-1px, 1px)' }} />}
-            </button>
-          </div>
         </div>
 
+        {/* ========================================================= */}
+        {/* 💻 DESKTOP UI: LOCATE ME BUTTON (FIXED PLACEMENT)         */}
+        {/* ========================================================= */}
+        <div className="desktop-ui" style={{ position: 'absolute', bottom: '30px', right: '30px', zIndex: 900000, pointerEvents: 'auto' }}>
+          <button onClick={handleLocateUser} style={{ width: '48px', height: '48px', backgroundColor: bgColors.primary, border: `1px solid ${bgColors.border}`, borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: '0 8px 25px rgba(0,0,0,0.15)', cursor: 'pointer' }}>
+            {isLocating ? <div style={{ width: '20px', height: '20px', border: `3px solid ${bgColors.border}`, borderTopColor: '#2563EB', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /> : <MdOutlineNearMe size={24} color="#2563EB" style={{ transform: 'translate(-1px, 1px)' }} />}
+          </button>
+        </div>
 
         {/* ========================================================= */}
-        {/* 📱 MOBILE UI (Strictly hidden on Desktop) */}
+        {/* 📱 MOBILE UI (Strictly hidden on Desktop)                 */}
         {/* ========================================================= */}
-        <div className="mobile-ui-flex" style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 900000, pointerEvents: 'none', flexDirection: 'column' }}>
+        <div className="mobile-ui-block" style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 900000, pointerEvents: 'none' }}>
           
           {/* 1. Solid Top Header */}
           <div style={{ pointerEvents: 'auto', backgroundColor: bgColors.primary, display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: `1px solid ${bgColors.border}` }}>
@@ -813,7 +819,7 @@ export default function MapPage() {
         </div>
 
         {/* 📱 Mobile Floating Action Buttons (Stacked Bottom Right) */}
-        <div className="mobile-ui-flex" style={{ position: 'absolute', bottom: '24px', right: '16px', zIndex: 900000, pointerEvents: 'none', flexDirection: 'column', gap: '16px' }}>
+        <div className="mobile-ui-flex" style={{ position: 'absolute', bottom: '24px', right: '16px', zIndex: 900000, pointerEvents: 'none', flexDirection: 'column', gap: '8px' }}>
            
            <button onClick={handleLocateUser} style={{ pointerEvents: 'auto', width: '48px', height: '48px', backgroundColor: bgColors.primary, border: `1px solid ${bgColors.border}`, borderRadius: '50%', boxShadow: '0 4px 15px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {isLocating ? <div style={{ width: '20px', height: '20px', border: `3px solid ${bgColors.border}`, borderTopColor: '#2563EB', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /> : <MdOutlineNearMe size={24} color="#2563EB" style={{ transform: 'translate(-1px, 1px)' }} />}

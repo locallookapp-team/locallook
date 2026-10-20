@@ -5,7 +5,7 @@ import {
   MdArrowBack, MdLocationOn, MdPhone, MdEmail, MdLanguage, 
   MdStar, MdStarBorder, MdAccessTime, MdSend, MdImage, 
   MdClose, MdMoreVert, MdChevronLeft, MdChevronRight, MdExpandMore,
-  MdFlag, MdStorefront, MdRestaurantMenu, MdVisibility
+  MdFlag, MdStorefront, MdRestaurantMenu, MdVisibility, MdShare
 } from 'react-icons/md';
 import { VscThumbsup, VscThumbsupFilled } from 'react-icons/vsc';
 
@@ -253,7 +253,18 @@ export default function StoreProfilePage() {
 
   const scrollToSection = (elementId) => {
     const el = document.getElementById(elementId);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (el) {
+      const offset = 80;
+      const bodyRect = document.body.getBoundingClientRect().top;
+      const elementRect = el.getBoundingClientRect().top;
+      const elementPosition = elementRect - bodyRect;
+      const offsetPosition = elementPosition - offset;
+
+      document.querySelector('.scroll-container').scrollTo({
+        top: offsetPosition,
+        behavior: 'smooth'
+      });
+    }
   };
 
   const openLightbox = (images, index) => setLightbox({ isOpen: true, images, currentIndex: index });
@@ -262,7 +273,7 @@ export default function StoreProfilePage() {
   const prevImage = (e) => { e.stopPropagation(); setLightbox(prev => ({ ...prev, currentIndex: (prev.currentIndex - 1 + prev.images.length) % prev.images.length })); };
 
   const theme = store?.theme_settings || {};
-  const brandColor = theme.primaryColor || 'var(--brand-primary)';
+  const brandColor = theme.primaryColor || '#2563EB';
 
   const groupedItems = items.reduce((groups, item) => {
     const category = item.item_category || 'Uncategorized';
@@ -280,7 +291,7 @@ export default function StoreProfilePage() {
     if (activeCategories.length > 0 && !activeCategory) setActiveCategory(activeCategories[0]);
   }, [activeCategories.join(','), activeCategory]); 
 
-  const handleScroll = () => {
+  const handleScroll = (e) => {
     let currentActive = activeCategories.length > 0 ? activeCategories[0] : '';
     let minDistance = Infinity;
 
@@ -312,8 +323,26 @@ export default function StoreProfilePage() {
   const displayedReviews = filteredReviews.slice(0, visibleCount);
 
   return (
-    <div onScroll={handleScroll} style={{ height: '100%', overflowY: 'auto', width: '100%', backgroundColor: 'var(--bg-color)', fontFamily: 'var(--font-main)' }}>
+    <div className="scroll-container" onScroll={handleScroll} style={{ height: '100%', overflowY: 'auto', width: '100%', backgroundColor: 'var(--bg-color)', fontFamily: 'var(--font-main)' }}>
       
+      <style>{`
+        /* 🚀 STRICT CSS ISOLATION BETWEEN DESKTOP AND MOBILE */
+        .desktop-ui { display: block; }
+        .mobile-ui-block { display: none; }
+        .mobile-ui-flex { display: none; }
+        .shared-container { padding: 40px 20px; }
+
+        @media (max-width: 768px) {
+          .desktop-ui { display: none !important; }
+          .mobile-ui-block { display: block !important; }
+          .mobile-ui-flex { display: flex !important; }
+          .shared-container { padding: 24px 16px; }
+        }
+
+        .custom-scrollbar::-webkit-scrollbar { display: none; }
+      `}</style>
+
+      {/* --- MODALS (Shared) --- */}
       {reportModal.isOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 999999, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(2px)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
           <div style={{ backgroundColor: 'var(--surface-color)', padding: '30px', borderRadius: '24px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}>
@@ -346,8 +375,11 @@ export default function StoreProfilePage() {
         </div>
       )}
 
-      {/* Cinematic Max-Width Header with Rounded Corners */}
-      <div style={{ maxWidth: '1000px', margin: '0 auto', paddingTop: '20px', paddingBottom: '30px', paddingLeft: '20px', paddingRight: '20px', position: 'relative' }}>
+
+      {/* ========================================================= */}
+      {/* 💻 DESKTOP UI: HEADER                                     */}
+      {/* ========================================================= */}
+      <div className="desktop-ui" style={{ maxWidth: '1000px', margin: '0 auto', paddingTop: '20px', paddingBottom: '30px', paddingLeft: '20px', paddingRight: '20px', position: 'relative' }}>
         <div style={{ height: '320px', width: '100%', borderRadius: '24px', overflow: 'hidden', backgroundImage: `url(${getStoreCoverImage(store)})`, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative' }}>
           
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(15,23,42,0.95) 0%, rgba(15,23,42,0.3) 60%, transparent 100%)' }} />
@@ -367,8 +399,6 @@ export default function StoreProfilePage() {
                 <button onClick={() => scrollToSection('reviews-section')} style={{ background: 'none', border: 'none', color: 'white', padding: 0, margin: 0, fontSize: '13px', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', outline: 'none' }}>
                   <MdStar size={16} color="#F59E0B" /> {totalReviews > 0 ? `${averageRating} (${totalReviews} Reviews)` : 'No reviews yet'}
                 </button>
-
-                <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><MdVisibility size={16} /> 1.2K views</span>
               </div>
             </div>
           </div>
@@ -383,7 +413,7 @@ export default function StoreProfilePage() {
         </div>
       </div>
 
-      <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '10px 20px 40px 20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
+      <div className="desktop-ui" style={{ maxWidth: '1000px', margin: '0 auto', padding: '10px 20px 40px 20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', paddingLeft: '180px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', backgroundColor: store.is_open ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)', color: store.is_open ? '#10B981' : '#EF4444', borderRadius: '20px', fontSize: '13px', fontWeight: '800' }}>
             <MdAccessTime size={16} /> {store.is_open ? 'Open now' : 'Closed'}
@@ -398,8 +428,70 @@ export default function StoreProfilePage() {
         )}
       </div>
 
+
+      {/* ========================================================= */}
+      {/* 📱 MOBILE UI: NATIVE APP HEADER                           */}
+      {/* ========================================================= */}
+      <div className="mobile-ui-block">
+        {/* Massive Cover Image */}
+        <div style={{ position: 'relative', width: '100%', height: '260px', backgroundImage: `url(${getStoreCoverImage(store)})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, var(--bg-color) 0%, transparent 40%)' }} />
+          
+          <button onClick={() => navigate(-1)} style={{ position: 'absolute', top: '16px', left: '16px', width: '40px', height: '40px', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.9)', display: 'flex', justifyContent: 'center', alignItems: 'center', border: 'none', boxShadow: '0 4px 10px rgba(0,0,0,0.15)', cursor: 'pointer', zIndex: 10 }}>
+            <MdArrowBack size={24} color="#0F172A" />
+          </button>
+        </div>
+
+        {/* Store Title Block */}
+        <div style={{ padding: '0 16px 24px 16px', position: 'relative', marginTop: '-30px', zIndex: 5 }}>
+          <div style={{ position: 'absolute', top: '-50px', right: '20px', width: '80px', height: '80px', borderRadius: '50%', border: '4px solid var(--bg-color)', backgroundColor: 'var(--surface-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}>
+            {store.logo_url ? (
+              <img src={store.logo_url} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : (
+              <MdStorefront size={40} color="var(--icon-color)" />
+            )}
+          </div>
+          
+          <h1 style={{ margin: '0 0 4px 0', fontSize: '26px', fontWeight: '900', color: 'var(--text-main)', lineHeight: '1.2', width: 'calc(100% - 90px)' }}>
+            {store.store_name}
+          </h1>
+          <p style={{ margin: '0 0 12px 0', fontSize: '14px', color: 'var(--text-muted)', fontWeight: '600' }}>
+            {store.store_category} {theme.showAddress && `• ${theme.addressText || 'Odiongan'}`}
+          </p>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+            <span style={{ padding: '6px 12px', backgroundColor: store.is_open ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)', color: store.is_open ? '#10B981' : '#EF4444', borderRadius: '12px', fontSize: '12px', fontWeight: '800' }}>
+              {store.is_open ? 'Open Now' : 'Closed'}
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px', fontWeight: '800', color: 'var(--text-main)' }}>
+              <MdStar color="#F59E0B" size={18} /> {averageRating} <span style={{ color: 'var(--text-muted)', fontWeight: '600', fontSize: '13px' }}>({totalReviews})</span>
+            </span>
+          </div>
+
+          {store.description && (
+            <p style={{ margin: '0 0 20px 0', color: 'var(--text-main)', fontSize: '14px', lineHeight: '1.6' }}>
+              {store.description}
+            </p>
+          )}
+
+          {/* Quick Action Buttons */}
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button style={{ flex: 1, padding: '12px', backgroundColor: brandColor, color: 'white', border: 'none', borderRadius: '12px', fontWeight: '800', fontSize: '14px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
+              <MdLocationOn size={18} /> Directions
+            </button>
+            <button onClick={() => scrollToSection('reviews-section')} style={{ flex: 1, padding: '12px', backgroundColor: 'var(--surface-hover)', color: 'var(--text-main)', border: 'none', borderRadius: '12px', fontWeight: '800', fontSize: '14px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}>
+              <MdStar size={18} color="#F59E0B" /> Review
+            </button>
+          </div>
+        </div>
+      </div>
+
+
+      {/* ========================================================= */}
+      {/* 🚀 SHARED NAV BAR (Categories & Reviews Link)             */}
+      {/* ========================================================= */}
       {(items.length > 0 || totalReviews > 0) && (
-        <div style={{ position: 'sticky', top: 0, backgroundColor: 'var(--bg-color)', zIndex: 50, borderTop: '1px solid var(--border-color)', borderBottom: '1px solid var(--border-color)', padding: '12px 20px', display: 'flex', gap: '10px', overflowX: 'auto', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
+        <div style={{ position: 'sticky', top: 0, backgroundColor: 'var(--bg-color)', zIndex: 50, borderTop: '1px solid var(--border-color)', borderBottom: '1px solid var(--border-color)', padding: '12px 16px', display: 'flex', gap: '10px', overflowX: 'auto', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
           <div style={{ maxWidth: '1000px', margin: '0 auto', display: 'flex', gap: '10px', width: '100%' }}>
             
             {activeCategories.map(category => (
@@ -439,7 +531,11 @@ export default function StoreProfilePage() {
         </div>
       )}
 
-      <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '40px 20px' }}>
+
+      {/* ========================================================= */}
+      {/* 🚀 ITEMS / MENU SECTION                                   */}
+      {/* ========================================================= */}
+      <div className="shared-container" style={{ maxWidth: '1000px', margin: '0 auto' }}>
         {items.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '60px' }}>
             {activeCategories.map(category => (
@@ -450,54 +546,79 @@ export default function StoreProfilePage() {
                   {category}
                 </h3>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
-                  {groupedItems[category].map(item => (
-                    <div key={item.id} style={{ backgroundColor: 'var(--surface-color)', borderRadius: '16px', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', transition: 'box-shadow 0.2s, transform 0.2s', cursor: 'pointer' }} onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 10px 25px rgba(0,0,0,0.1)'; }} onMouseOut={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}>
-                      {item.image_url ? (
-                        <div style={{ height: '200px', backgroundImage: `url(${item.image_url})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundColor: 'var(--surface-hover)', borderBottom: '1px solid var(--border-color)' }} />
-                      ) : (
-                        <div style={{ height: '200px', backgroundColor: 'var(--surface-hover)', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '40px', borderBottom: '1px solid var(--border-color)' }}><MdRestaurantMenu size={48} color="var(--icon-color)" /></div>
-                      )}
-                      <div style={{ padding: '20px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', marginBottom: '8px' }}>
-                          <h4 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: 'var(--text-main)', lineHeight: '1.3' }}>{item.item_name}</h4>
-                          <span style={{ fontSize: '16px', fontWeight: '900', color: 'var(--text-main)', whiteSpace: 'nowrap' }}>₱{parseFloat(item.price).toFixed(2)}</span>
+                {/* 💻 DESKTOP GRID LAYOUT */}
+                <div className="desktop-ui">
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
+                    {groupedItems[category].map(item => (
+                      <div key={item.id} style={{ backgroundColor: 'var(--surface-color)', borderRadius: '16px', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', transition: 'box-shadow 0.2s, transform 0.2s', cursor: 'pointer' }} onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 10px 25px rgba(0,0,0,0.1)'; }} onMouseOut={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}>
+                        {item.image_url ? (
+                          <div style={{ height: '200px', backgroundImage: `url(${item.image_url})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundColor: 'var(--surface-hover)', borderBottom: '1px solid var(--border-color)' }} />
+                        ) : (
+                          <div style={{ height: '200px', backgroundColor: 'var(--surface-hover)', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '40px', borderBottom: '1px solid var(--border-color)' }}><MdRestaurantMenu size={48} color="var(--icon-color)" /></div>
+                        )}
+                        <div style={{ padding: '20px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', marginBottom: '8px' }}>
+                            <h4 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: 'var(--text-main)', lineHeight: '1.3' }}>{item.item_name}</h4>
+                            <span style={{ fontSize: '16px', fontWeight: '900', color: 'var(--text-main)', whiteSpace: 'nowrap' }}>₱{parseFloat(item.price).toFixed(2)}</span>
+                          </div>
+                          {item.description && <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)', lineHeight: '1.5', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.description}</p>}
                         </div>
-                        {item.description && <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)', lineHeight: '1.5', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.description}</p>}
                       </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 📱 MOBILE LIST LAYOUT (UberEats Style) */}
+                <div className="mobile-ui-block" style={{ backgroundColor: 'var(--surface-color)', borderRadius: '16px', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
+                  {groupedItems[category].map((item, index) => (
+                    <div key={item.id} style={{ display: 'flex', padding: '16px', borderBottom: index === groupedItems[category].length - 1 ? 'none' : '1px solid var(--border-color)', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
+                      <div style={{ flex: 1 }}>
+                        <h4 style={{ margin: '0 0 6px 0', fontSize: '15px', fontWeight: '800', color: 'var(--text-main)' }}>{item.item_name}</h4>
+                        <span style={{ fontSize: '14px', fontWeight: '800', color: 'var(--text-main)' }}>₱{parseFloat(item.price).toFixed(2)}</span>
+                        {item.description && <p style={{ margin: '6px 0 0 0', fontSize: '13px', color: 'var(--text-muted)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: '1.4' }}>{item.description}</p>}
+                      </div>
+                      {item.image_url ? (
+                        <div style={{ width: '90px', height: '90px', borderRadius: '12px', backgroundImage: `url(${item.image_url})`, backgroundSize: 'cover', backgroundPosition: 'center', flexShrink: 0, backgroundColor: 'var(--surface-hover)', border: '1px solid var(--border-color)' }} />
+                      ) : (
+                        <div style={{ width: '90px', height: '90px', borderRadius: '12px', backgroundColor: 'var(--surface-hover)', flexShrink: 0, border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}><MdRestaurantMenu size={32} color="var(--icon-color)" /></div>
+                      )}
                     </div>
                   ))}
                 </div>
+
               </div>
             ))}
           </div>
         )}
       </div>
 
-      <div style={{ height: '1px', backgroundColor: 'var(--border-color)', width: '100%', margin: '20px 0' }} />
+      <div style={{ height: '8px', backgroundColor: 'var(--surface-hover)', width: '100%', margin: '0' }} />
 
-      <div id="reviews-section" style={{ maxWidth: '1000px', margin: '0 auto', padding: '40px 20px 100px 20px', scrollMarginTop: '80px' }}>
+      {/* ========================================================= */}
+      {/* 🚀 REVIEWS SECTION (Shared)                               */}
+      {/* ========================================================= */}
+      <div id="reviews-section" className="shared-container" style={{ maxWidth: '1000px', margin: '0 auto', scrollMarginTop: '80px', paddingBottom: '100px' }}>
         <h2 style={{ margin: '0 0 30px 0', fontSize: '24px', fontWeight: '900', color: 'var(--text-main)' }}>Reviews</h2>
 
         {totalReviews > 0 && (
-          <div style={{ display: 'flex', gap: '40px', alignItems: 'center', marginBottom: '50px', flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '120px' }}>
-              <div style={{ fontSize: '56px', fontWeight: '900', color: 'var(--text-main)', lineHeight: '1' }}>{averageRating}</div>
-              <div style={{ display: 'flex', margin: '10px 0' }}>
-                {[1, 2, 3, 4, 5].map(star => <MdStar key={star} size={22} color={star <= Math.round(averageRating) ? '#F59E0B' : 'var(--border-color)'} />)}
+          <div style={{ display: 'flex', gap: '30px', alignItems: 'center', marginBottom: '40px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: '100px' }}>
+              <div style={{ fontSize: '48px', fontWeight: '900', color: 'var(--text-main)', lineHeight: '1' }}>{averageRating}</div>
+              <div style={{ display: 'flex', margin: '8px 0' }}>
+                {[1, 2, 3, 4, 5].map(star => <MdStar key={star} size={20} color={star <= Math.round(averageRating) ? '#F59E0B' : 'var(--border-color)'} />)}
               </div>
               <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '600' }}>{totalReviews} ratings</div>
             </div>
 
-            <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '400px' }}>
+            <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '400px', minWidth: '200px' }}>
               {[5, 4, 3, 2, 1].map(star => {
                 const count = distribution[star];
                 const percentage = totalReviews > 0 ? (count / totalReviews) * 100 : 0;
                 return (
                   <div key={star} style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                    <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-muted)', minWidth: '20px' }}>{star}</span>
-                    <div style={{ flexGrow: 1, height: '8px', backgroundColor: 'var(--surface-hover)', borderRadius: '4px', overflow: 'hidden' }}>
-                      <div style={{ width: `${percentage}%`, height: '100%', backgroundColor: '#F59E0B', borderRadius: '4px' }} />
+                    <span style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-muted)', minWidth: '16px' }}>{star}</span>
+                    <div style={{ flexGrow: 1, height: '6px', backgroundColor: 'var(--surface-hover)', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div style={{ width: `${percentage}%`, height: '100%', backgroundColor: '#F59E0B', borderRadius: '3px' }} />
                     </div>
                   </div>
                 );
@@ -507,7 +628,7 @@ export default function StoreProfilePage() {
         )}
 
         {totalReviews > 0 && (
-          <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '10px', marginBottom: '40px', scrollbarWidth: 'none' }}>
+          <div className="custom-scrollbar" style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '10px', marginBottom: '30px' }}>
             {['All', 5, 4, 3, 2, 1].map(val => (
               <button
                 key={val}
@@ -526,7 +647,7 @@ export default function StoreProfilePage() {
           </div>
         )}
 
-        <div ref={reviewFormRef} style={{ backgroundColor: 'var(--surface-color)', padding: '30px', borderRadius: '20px', border: '1px solid var(--border-color)', marginBottom: '40px' }}>
+        <div ref={reviewFormRef} style={{ backgroundColor: 'var(--surface-color)', padding: '24px', borderRadius: '20px', border: '1px solid var(--border-color)', marginBottom: '40px', boxShadow: '0 4px 15px rgba(0,0,0,0.02)' }}>
           {!session ? (
             <div style={{ textAlign: 'center', padding: '10px 0' }}>
               <h4 style={{ margin: '0 0 10px 0', fontSize: '18px', color: 'var(--text-main)', fontWeight: '800' }}>Want to leave a review?</h4>
@@ -581,8 +702,8 @@ export default function StoreProfilePage() {
               )}
 
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-main)', fontWeight: '800', fontSize: '13px', cursor: reviewPhotos.length >= 4 ? 'not-allowed' : 'pointer', padding: '10px 16px', backgroundColor: 'var(--surface-color)', border: '1px solid var(--border-color)', borderRadius: '12px', opacity: reviewPhotos.length >= 4 ? 0.6 : 1, transition: 'all 0.2s' }}>
-                  <MdImage size={20} color={brandColor} /> {reviewPhotos.length >= 4 ? 'Max 4 Photos' : 'Attach Photos'}
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-main)', fontWeight: '800', fontSize: '13px', cursor: reviewPhotos.length >= 4 ? 'not-allowed' : 'pointer', padding: '10px 16px', backgroundColor: 'var(--bg-color)', border: '1px solid var(--border-color)', borderRadius: '12px', opacity: reviewPhotos.length >= 4 ? 0.6 : 1, transition: 'all 0.2s' }}>
+                  <MdImage size={20} color={brandColor} /> <span className="desktop-ui">{reviewPhotos.length >= 4 ? 'Max 4 Photos' : 'Attach Photos'}</span>
                   <input type="file" multiple accept="image/*" onChange={handlePhotoSelect} style={{ display: 'none' }} disabled={isSubmittingReview || reviewPhotos.length >= 4} />
                 </label>
 
@@ -594,7 +715,7 @@ export default function StoreProfilePage() {
           )}
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {displayedReviews.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)', fontSize: '15px', fontWeight: '500' }}>
               {filterRating === 'All' ? 'No reviews yet. Be the first to review this place!' : `No ${filterRating}-star reviews yet.`}
@@ -606,28 +727,30 @@ export default function StoreProfilePage() {
               const isAnimating = animatingLikeId === review.id;
 
               return (
-                <div key={review.id} style={{ paddingBottom: '30px', borderBottom: '1px solid var(--border-color)', position: 'relative' }}>
+                <div key={review.id} style={{ paddingBottom: '24px', borderBottom: '1px solid var(--border-color)', position: 'relative' }}>
                   
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
                     <div 
                       onClick={() => navigate(`/user/${review.user_id}`)} 
                       style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}
                     >
-                      <Avatar src={review.reviewer_avatar} name={review.reviewer_name} size="48px" color={brandColor} />
+                      <div style={{ width: '40px', height: '40px', borderRadius: '50%', overflow: 'hidden' }}>
+                        <Avatar src={review.reviewer_avatar} name={review.reviewer_name} size="40px" color={brandColor} />
+                      </div>
                       <div>
-                        <div style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-main)' }}>{review.reviewer_name || 'LocalLook User'}</div>
-                        <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '600' }}>{timeAgo(review.created_at)}</div>
+                        <div style={{ fontSize: '15px', fontWeight: '800', color: 'var(--text-main)' }}>{review.reviewer_name || 'LocalLook User'}</div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '600' }}>{timeAgo(review.created_at)}</div>
                       </div>
                     </div>
                     
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <span style={{ fontSize: '15px', fontWeight: '800', color: 'var(--text-main)' }}>{review.rating.toFixed(1)}</span>
-                        <div style={{ display: 'flex' }}>{[...Array(5)].map((_, i) => <MdStar key={i} size={18} color={i < review.rating ? '#F59E0B' : 'var(--border-color)'} />)}</div>
+                        <span style={{ fontSize: '14px', fontWeight: '800', color: 'var(--text-main)' }}>{review.rating.toFixed(1)}</span>
+                        <div style={{ display: 'flex' }}>{[...Array(5)].map((_, i) => <MdStar key={i} size={16} color={i < review.rating ? '#F59E0B' : 'var(--border-color)'} />)}</div>
                       </div>
                       
                       <div style={{ position: 'relative' }}>
-                        <button onClick={() => setActiveMenuId(activeMenuId === review.id ? null : review.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: 'var(--text-muted)' }}><MdMoreVert size={22} /></button>
+                        <button onClick={() => setActiveMenuId(activeMenuId === review.id ? null : review.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: 'var(--text-muted)' }}><MdMoreVert size={20} /></button>
                         {activeMenuId === review.id && (
                           <>
                             <div onClick={() => setActiveMenuId(null)} style={{ position: 'fixed', inset: 0, zIndex: 90 }} />
@@ -645,8 +768,8 @@ export default function StoreProfilePage() {
                   
                   {review.comment && (
                     <p style={{ 
-                      margin: '0 0 20px 0', 
-                      fontSize: '15px', 
+                      margin: '0 0 16px 0', 
+                      fontSize: '14px', 
                       color: 'var(--text-main)', 
                       lineHeight: '1.6',
                       whiteSpace: 'pre-wrap', 
@@ -657,9 +780,9 @@ export default function StoreProfilePage() {
                   )}
                   
                 {review.photo_urls && review.photo_urls.length > 0 && (
-                  <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '4px', marginBottom: '15px' }}>
+                  <div className="custom-scrollbar" style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px', marginBottom: '16px' }}>
                     {review.photo_urls.map((url, idx) => (
-                      <div key={idx} onClick={() => openLightbox(review.photo_urls, idx)} style={{ width: '100px', height: '100px', borderRadius: '12px', backgroundImage: `url(${url})`, backgroundSize: 'cover', backgroundPosition: 'center', cursor: 'pointer', flexShrink: 0, border: '1px solid var(--border-color)' }} />
+                      <div key={idx} onClick={() => openLightbox(review.photo_urls, idx)} style={{ width: '90px', height: '90px', borderRadius: '12px', backgroundImage: `url(${url})`, backgroundSize: 'cover', backgroundPosition: 'center', cursor: 'pointer', flexShrink: 0, border: '1px solid var(--border-color)' }} />
                     ))}
                   </div>
                 )}
@@ -670,7 +793,7 @@ export default function StoreProfilePage() {
                     style={{ 
                       display: 'flex', 
                       alignItems: 'center', 
-                      gap: '8px', 
+                      gap: '6px', 
                       background: 'none', 
                       border: 'none', 
                       padding: 0, 
@@ -686,38 +809,36 @@ export default function StoreProfilePage() {
                       transform: isAnimating ? 'scale(1.4)' : 'scale(1)',
                       transition: 'transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
                     }}>
-                      {isLikedByMe ? <VscThumbsupFilled size={22} /> : <VscThumbsup size={22} />}
+                      {isLikedByMe ? <VscThumbsupFilled size={20} /> : <VscThumbsup size={20} />}
                     </div>
-                    <span style={{ fontSize: '14px', fontWeight: '700' }}>
+                    <span style={{ fontSize: '13px', fontWeight: '700' }}>
                       {likesCount > 0 ? likesCount : 'Helpful'}
                     </span>
                   </button>
                 </div>
 
                 {review.owner_reply && (
-                  <>
-                    <div style={{ padding: '0' }}>
-                      <div style={{ 
-                        backgroundColor: 'var(--surface-color)', 
-                        padding: '20px', 
-                        borderRadius: '16px', 
-                        border: '1px solid var(--border-color)', 
-                        position: 'relative', 
-                        zIndex: 2
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
-                          <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: 'var(--bg-color)', border: `1px solid ${brandColor}`, display: 'flex', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
-                            <MdStorefront size={18} color={brandColor} />
-                          </div>
-                          <span style={{ fontSize: '14px', fontWeight: '800', color: 'var(--text-main)' }}>Response from {store?.store_name || 'Owner'}</span>
-                          <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: '500' }}>· {timeAgo(review.owner_reply_created_at)}</span>
+                  <div style={{ padding: '0' }}>
+                    <div style={{ 
+                      backgroundColor: 'var(--surface-color)', 
+                      padding: '16px', 
+                      borderRadius: '12px', 
+                      border: '1px solid var(--border-color)', 
+                      position: 'relative', 
+                      zIndex: 2
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                        <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: 'var(--bg-color)', border: `1px solid ${brandColor}`, display: 'flex', justifyContent: 'center', alignItems: 'center', flexShrink: 0 }}>
+                          <MdStorefront size={14} color={brandColor} />
                         </div>
-                        <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-main)', lineHeight: '1.6', whiteSpace: 'pre-wrap', wordBreak: 'break-word', paddingLeft: '40px' }}>
-                          {review.owner_reply}
-                        </p>
+                        <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-main)' }}>Response from {store?.store_name || 'Owner'}</span>
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '500' }}>· {timeAgo(review.owner_reply_created_at)}</span>
                       </div>
+                      <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-main)', lineHeight: '1.6', whiteSpace: 'pre-wrap', wordBreak: 'break-word', paddingLeft: '36px' }}>
+                        {review.owner_reply}
+                      </p>
                     </div>
-                  </>
+                  </div>
                 )}
 
                 </div>
@@ -730,9 +851,9 @@ export default function StoreProfilePage() {
           <div style={{ paddingTop: '20px', display: 'flex', justifyContent: 'flex-start' }}>
             <button 
               onClick={() => setVisibleCount(prev => prev + 5)}
-              style={{ background: 'none', border: 'none', padding: 0, color: brandColor, fontWeight: '800', fontSize: '15px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
+              style={{ background: 'none', border: 'none', padding: 0, color: brandColor, fontWeight: '800', fontSize: '14px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
             >
-              Read more reviews <MdExpandMore size={22} />
+              Read more reviews <MdExpandMore size={20} />
             </button>
           </div>
         )}
