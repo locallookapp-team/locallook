@@ -767,67 +767,76 @@ export default function MapPage() {
         {/* ========================================================= */}
         <div className="mobile-ui-block" style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 900000, pointerEvents: 'none' }}>
           
-          {/* 1. Solid Top Header */}
-          <div style={{ pointerEvents: 'auto', backgroundColor: bgColors.primary, display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', borderBottom: `1px solid ${bgColors.border}` }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <MdLocationOn size={24} color="#2563EB" />
-              <span style={{ fontSize: '18px', fontWeight: '900', color: bgColors.textMain, letterSpacing: '-0.5px' }}>LocalLook</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-              <NotificationBell session={session} isSidebarMode={false} />
-              <div onClick={() => session ? navigate('/profile') : navigate('/login')} style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: bgColors.secondary, border: `1px solid ${bgColors.border}`, display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', flexShrink: 0, backgroundImage: session ? `url('${profile?.avatar_url || `https://ui-avatars.com/api/?name=${profile?.display_name || 'User'}&background=EFF6FF&color=2563EB`}')` : 'none', backgroundSize: 'cover' }}>
-                {!session && <MdPersonOutline size={20} color="#2563EB" />}
+          {/* 🚀 SOLID BLUE HEADER EXACTLY LIKE REFERENCE */}
+          <div style={{ background: '#2563EB', padding: '16px 16px 16px 16px', pointerEvents: 'auto', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
+            
+            {/* Row 1: Logo, Notification Bell, Profile */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <MdLocationOn size={22} color="#FFFFFF" />
+                <span style={{ fontSize: '18px', fontWeight: '900', color: '#FFFFFF', letterSpacing: '-0.5px' }}>LocalLook</span>
+              </div>
+              
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <div style={{ color: '#FFFFFF' }}>
+                  <NotificationBell session={session} isSidebarMode={false} />
+                </div>
+                
+                <div onClick={() => session ? navigate('/profile') : navigate('/login')} style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#FFFFFF', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', flexShrink: 0, backgroundImage: session ? `url('${profile?.avatar_url || `https://ui-avatars.com/api/?name=${profile?.display_name || 'User'}&background=EFF6FF&color=2563EB`}')` : 'none', backgroundSize: 'cover' }}>
+                  {!session && <MdPersonOutline size={20} color="#2563EB" />}
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* 2. Floating Search Bar */}
-          <div style={{ padding: '16px 16px 0 16px', pointerEvents: 'auto' }}>
-            <div style={{ display: 'flex', alignItems: 'center', backgroundColor: bgColors.primary, borderRadius: '24px', padding: '0 16px', height: '48px', boxShadow: '0 4px 15px rgba(0,0,0,0.08)', border: `1px solid ${bgColors.border}` }}>
-              <MdSearch size={22} color={bgColors.textMuted} />
-              <input type="text" placeholder="Search places or products..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} onFocus={() => setIsSearchFocused(true)} style={{ border: 'none', background: 'transparent', flexGrow: 1, outline: 'none', color: bgColors.textMain, fontSize: '14px', marginLeft: '10px', fontWeight: '500', height: '100%', width: '100%' }} />
+            {/* Row 2: Search Bar & Filter Button */}
+            <div style={{ display: 'flex', gap: '12px', position: 'relative' }}>
+              <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: '24px', padding: '0 16px', height: '44px', flexGrow: 1, boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+                <MdSearch size={22} color="#64748B" />
+                <input type="text" placeholder="Search places, stores..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} onFocus={() => setIsSearchFocused(true)} style={{ border: 'none', background: 'transparent', flexGrow: 1, outline: 'none', color: '#0F172A', fontSize: '14px', marginLeft: '10px', fontWeight: '500', height: '100%', width: '100%' }} />
+              </div>
+              
+              <button onClick={() => setIsFilterOpen(true)} style={{ width: '44px', height: '44px', backgroundColor: '#FFFFFF', borderRadius: '14px', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', color: '#2563EB', flexShrink: 0, position: 'relative' }}>
+                <MdTune size={22} />
+                {(activeCategory !== 'All' || filters.openNow || filters.distance < 10) && (
+                  <span style={{ position: 'absolute', top: '8px', right: '8px', width: '10px', height: '10px', backgroundColor: '#EF4444', borderRadius: '50%', border: '2px solid #FFFFFF' }} />
+                )}
+              </button>
+
+              {/* Mobile Search Results Dropdown */}
+              {isSearchFocused && searchTerm.trim().length > 0 && (
+                 <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 999998, marginTop: '12px' }}>
+                    <div onClick={() => setIsSearchFocused(false)} style={{ position: 'fixed', inset: 0, zIndex: -1 }} />
+                    <div className="custom-scrollbar" style={{ backgroundColor: bgColors.primary, border: `1px solid ${bgColors.border}`, borderRadius: '16px', boxShadow: '0 15px 35px rgba(0,0,0,0.15)', overflowY: 'auto', maxHeight: '50vh', padding: '8px 0' }}>
+                      {searchResults.stores.map(store => (
+                        <div key={store.id} onClick={() => handleSearchResultClick(store)} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', borderBottom: `1px solid ${bgColors.secondary}` }}>
+                          <MdStorefront size={20} color="#2563EB" />
+                          <div style={{ fontSize: '14px', fontWeight: '800', color: bgColors.textMain }}>{store.store_name}</div>
+                        </div>
+                      ))}
+                      {searchResults.items.map(item => (
+                        <div key={item.id} onClick={() => handleSearchResultClick(item)} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', borderBottom: `1px solid ${bgColors.secondary}` }}>
+                          <MdFastfood size={18} color="#16A34A" />
+                          <div><div style={{ fontSize: '13px', fontWeight: '700', color: bgColors.textMain }}>{item.item_name} <span style={{ color: '#16A34A' }}>₱{item.price}</span></div></div>
+                        </div>
+                      ))}
+                    </div>
+                 </div>
+              )}
             </div>
-
-            {/* Mobile Search Results */}
-            {isSearchFocused && searchTerm.trim().length > 0 && (
-               <div style={{ position: 'relative', zIndex: 999998 }}>
-                  <div onClick={() => setIsSearchFocused(false)} style={{ position: 'fixed', inset: 0, zIndex: -1 }} />
-                  <div className="custom-scrollbar" style={{ position: 'absolute', top: '8px', left: 0, right: 0, backgroundColor: bgColors.primary, border: `1px solid ${bgColors.border}`, borderRadius: '16px', boxShadow: '0 15px 35px rgba(0,0,0,0.15)', overflowY: 'auto', maxHeight: '50vh', padding: '8px 0' }}>
-                    {searchResults.stores.map(store => (
-                      <div key={store.id} onClick={() => handleSearchResultClick(store)} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', borderBottom: `1px solid ${bgColors.secondary}` }}>
-                        <MdStorefront size={20} color="#2563EB" />
-                        <div style={{ fontSize: '14px', fontWeight: '800', color: bgColors.textMain }}>{store.store_name}</div>
-                      </div>
-                    ))}
-                    {searchResults.items.map(item => (
-                      <div key={item.id} onClick={() => handleSearchResultClick(item)} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', borderBottom: `1px solid ${bgColors.secondary}` }}>
-                        <MdFastfood size={18} color="#16A34A" />
-                        <div><div style={{ fontSize: '13px', fontWeight: '700', color: bgColors.textMain }}>{item.item_name} <span style={{ color: '#16A34A' }}>₱{item.price}</span></div></div>
-                      </div>
-                    ))}
-                  </div>
-               </div>
-            )}
           </div>
 
-          {/* 3. Location Picker (Floating on Right Side, below Search) */}
-          <div style={{ padding: '8px 16px 0 0', display: 'flex', justifyContent: 'flex-end', pointerEvents: 'none' }}>
-             <button onClick={() => setIsLocationModalOpen(true)} style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: '4px', height: '36px', padding: '0 14px', borderRadius: '18px', backgroundColor: bgColors.primary, border: `1px solid ${bgColors.border}`, fontSize: '13px', fontWeight: '700', color: '#2563EB', boxShadow: '0 4px 10px rgba(0,0,0,0.08)' }}>
-               <MdLocationOn size={16} /> {activeLocation.name} <MdExpandMore size={18} color={bgColors.textMuted} style={{marginLeft: '2px'}}/>
-             </button>
+          {/* 🚀 FLOATING LOCATION PICKER (Below the Header) */}
+          <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'flex-end', pointerEvents: 'none' }}>
+            <button onClick={() => setIsLocationModalOpen(true)} style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: '6px', background: '#FFFFFF', border: '1px solid var(--border-color)', padding: '8px 14px', borderRadius: '24px', color: '#0F172A', fontSize: '13px', fontWeight: '800', cursor: 'pointer', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}>
+              <MdLocationOn size={18} color="#2563EB" /> {activeLocation.name} <MdExpandMore size={18} color="#64748B" />
+            </button>
           </div>
         </div>
 
-        {/* 📱 Mobile Floating Action Buttons (Stacked Bottom Right) */}
+        {/* 📱 Mobile Floating Action Buttons (Locate Me Only) */}
         <div className="mobile-ui-flex" style={{ position: 'absolute', bottom: '24px', right: '16px', zIndex: 900000, pointerEvents: 'none', flexDirection: 'column', gap: '8px' }}>
-           
            <button onClick={handleLocateUser} style={{ pointerEvents: 'auto', width: '48px', height: '48px', backgroundColor: bgColors.primary, border: `1px solid ${bgColors.border}`, borderRadius: '50%', boxShadow: '0 4px 15px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {isLocating ? <div style={{ width: '20px', height: '20px', border: `3px solid ${bgColors.border}`, borderTopColor: '#2563EB', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /> : <MdOutlineNearMe size={24} color="#2563EB" style={{ transform: 'translate(-1px, 1px)' }} />}
-           </button>
-           
-           <button onClick={() => setIsFilterOpen(true)} style={{ pointerEvents: 'auto', width: '48px', height: '48px', backgroundColor: bgColors.primary, border: `1px solid ${bgColors.border}`, borderRadius: '50%', boxShadow: '0 4px 15px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-              <MdTune size={22} color={bgColors.textMain} />
-              {activeCategory !== 'All' && <span style={{ position: 'absolute', top: '0', right: '0', backgroundColor: '#EF4444', border: `2px solid ${bgColors.primary}`, width: '12px', height: '12px', borderRadius: '50%' }} />}
            </button>
         </div>
 
