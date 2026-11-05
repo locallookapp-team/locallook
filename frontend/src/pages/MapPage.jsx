@@ -216,12 +216,9 @@ export default function MapPage() {
     }
   };
 
-  // 🚀 FIXED: Smart error routing to instantly catch OS-level and Browser-level blocks
+  // 🚀 FIXED: Restored the low-accuracy fallback so desktop PCs can find a signal
   const handleLocateUser = () => {
-    if (!navigator.geolocation || !map.current) {
-      console.warn("Geolocation is not supported by your browser.");
-      return;
-    }
+    if (!navigator.geolocation || !map.current) return;
 
     setIsLocating(true);
     requestOrientationPermission();
@@ -231,6 +228,7 @@ export default function MapPage() {
       setActualUserLocation({ lat: latitude, lng: longitude });
       actualUserLocationRef.current = { lat: latitude, lng: longitude };
 
+      // 🚀 This turns the pulse and flashlight VISIBLE
       updateUserMapSource(longitude, latitude, headingRef.current, true);
       
       map.current.once('moveend', () => setIsLocating(false));
@@ -238,37 +236,38 @@ export default function MapPage() {
     };
 
     const handleError = (err) => {
-      // 🚀 Error Code 1 means Permission Denied (either by the Browser OR the Windows/OS settings)
-      if (err.code === 1) {
-        setIsLocating(false);
-        setShowPermissionModal(true);
-        return;
-      }
+      console.warn("High accuracy failed, falling back to basic location...", err.message);
 
-      console.warn("High accuracy failed, trying basic location...", err.message);
-      
-      // If it was a Timeout (Code 3) or Signal Unavailable (Code 2), try the lightweight fallback
+      // 🚀 Attempt 2: Try basic location (Crucial for desktop PCs and ethernet connections)
       navigator.geolocation.getCurrentPosition(
         handleSuccess,
         (fallbackErr) => {
           setIsLocating(false);
-          if (fallbackErr.code === 1) {
-            setShowPermissionModal(true);
+          console.warn("Basic location also failed:", fallbackErr.message);
+
+          if (navigator.permissions) {
+            navigator.permissions.query({ name: 'geolocation' }).then((result) => {
+              if (result.state === 'denied') {
+                setShowPermissionModal(true); // Only show modal if explicitly blocked
+              }
+              // If granted but hardware fails, we fail silently without alerts!
+            });
           } else {
-            alert("We couldn't get a GPS signal. Please make sure your device's location services are turned on.");
+            if (fallbackErr.code === 1) setShowPermissionModal(true);
           }
         },
         { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
       );
     };
 
+    // Attempt 1: Try high accuracy first
     navigator.geolocation.getCurrentPosition(
       handleSuccess,
       handleError,
       { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
     );
   };
-  
+
   useEffect(() => {
     const fetchUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
