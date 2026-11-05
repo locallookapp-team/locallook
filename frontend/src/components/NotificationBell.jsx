@@ -212,19 +212,20 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
       {isSidebarMode ? (
         <div onClick={handleToggleMenu} className={`nav-item ${isOpen ? 'active' : ''}`} style={{ display: 'flex', justifyContent: 'space-between', cursor: 'pointer' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <span style={{ color: isOpen ? '#2563EB' : theme.textMuted }}>
+            <span style={{ color: isOpen ? 'var(--primary)' : theme.textMuted }}>
                {totalUnread > 0 ? <MdNotificationsActive size={20} /> : <MdNotificationsNone size={20} />}
             </span> Notifications
           </div>
           {totalUnread > 0 && (
-            <span style={{ backgroundColor: '#EF4444', color: 'white', fontSize: '10px', fontWeight: '900', padding: '2px 6px', borderRadius: '10px' }}>{totalUnread}</span>
+            <span style={{ backgroundColor: 'var(--danger)', color: 'white', fontSize: '10px', fontWeight: '900', padding: '2px 6px', borderRadius: '10px' }}>{totalUnread}</span>
           )}
         </div>
       ) : (
-        <div onClick={handleToggleMenu} style={{ width: '40px', height: '40px', display: 'flex', justifyContent: 'center', alignItems: 'center', border: `1px solid ${theme.border}`, borderRadius: '50%', cursor: 'pointer', backgroundColor: theme.bgPrimary, position: 'relative', transition: 'all 0.2s', boxShadow: isDarkMode ? '0 4px 15px rgba(0,0,0,0.2)' : '0 4px 15px rgba(0,0,0,0.08)' }}>
-          {totalUnread > 0 ? <MdNotificationsActive size={20} color="#2563EB" /> : <MdNotificationsNone size={20} color={theme.textMuted} />}
+        // 🚀 UPDATED MOBILE BELL: No background, white icon.
+        <div onClick={handleToggleMenu} style={{ width: '36px', height: '36px', display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: '50%', cursor: 'pointer', backgroundColor: 'transparent', position: 'relative' }}>
+          {totalUnread > 0 ? <MdNotificationsActive size={24} color="#FFFFFF" /> : <MdNotificationsNone size={24} color="#FFFFFF" />}
           {totalUnread > 0 && (
-            <div style={{ position: 'absolute', top: '-2px', right: '-2px', backgroundColor: '#EF4444', color: 'white', fontSize: '10px', fontWeight: '900', padding: '2px 6px', borderRadius: '10px' }}>{totalUnread}</div>
+            <div style={{ position: 'absolute', top: '2px', right: '4px', backgroundColor: 'var(--danger)', color: 'white', fontSize: '9px', fontWeight: '900', padding: '2px 5px', borderRadius: '10px', border: '1px solid #1E40AF' }}>{totalUnread}</div>
           )}
         </div>
       )}
@@ -259,10 +260,10 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
                       You were invited to manage <strong style={{ color: theme.textMain }}>{invite.stores?.store_name}</strong>.
                     </p>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      <button onClick={() => handleAcceptInvite(invite.id)} style={{ flex: 1, padding: '8px', backgroundColor: '#10B981', color: 'white', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                      <button onClick={() => handleAcceptInvite(invite.id)} style={{ flex: 1, padding: '8px', backgroundColor: 'var(--success)', color: 'white', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                         <MdCheck size={16} /> Accept
                       </button>
-                      <button onClick={() => handleDeclineInvite(invite.id)} style={{ padding: '8px', backgroundColor: isDarkMode ? 'rgba(220, 38, 38, 0.2)' : '#FEE2E2', color: '#DC2626', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <button onClick={() => handleDeclineInvite(invite.id)} style={{ padding: '8px', backgroundColor: isDarkMode ? 'rgba(220, 38, 38, 0.2)' : '#FEE2E2', color: 'var(--danger)', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <MdClear size={16} />
                       </button>
                     </div>
@@ -307,7 +308,7 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
                       }}
                     >
                       <div style={{ fontWeight: '800', fontSize: '13px', color: theme.textMain, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        {!note.is_read && <div style={{ width: '6px', height: '6px', backgroundColor: '#10B981', borderRadius: '50%', flexShrink: 0 }}></div>}
+                        {!note.is_read && <div style={{ width: '6px', height: '6px', backgroundColor: 'var(--success)', borderRadius: '50%', flexShrink: 0 }}></div>}
                         {style.icon}
                         {note.title}
                       </div>

@@ -1,21 +1,18 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { MdMap, MdExplore, MdStar, MdPerson, MdStorefront } from 'react-icons/md';
+import { MdMap, MdExplore, MdStar, MdPerson } from 'react-icons/md';
 
-export default function BottomNav({ userRole }) {
+// Notice we removed userRole since we no longer inject the dashboard tab here
+export default function BottomNav() {
   const navigate = useNavigate();
   const location = useLocation();
 
   const navItems = [
-    { name: 'Map', path: '/map', icon: <MdMap size={24} /> },
-    { name: 'Explore', path: '/explore', icon: <MdExplore size={24} /> },
-    { name: 'Reviews', path: '/reviews', icon: <MdStar size={24} /> },
-    { name: 'Profile', path: '/profile', icon: <MdPerson size={24} /> },
+    { name: 'Map', path: '/map', icon: <MdMap size={28} /> },
+    { name: 'Explore', path: '/explore', icon: <MdExplore size={28} /> },
+    { name: 'Reviews', path: '/reviews', icon: <MdStar size={28} /> },
+    { name: 'Profile', path: '/profile', icon: <MdPerson size={28} /> },
   ];
-
-  if (userRole === 'merchant' || userRole === 'operator') {
-    navItems.push({ name: 'Dashboard', path: '/dashboard', icon: <MdStorefront size={24} /> });
-  }
 
   return (
     <>
@@ -31,19 +28,21 @@ export default function BottomNav({ userRole }) {
             bottom: 0;
             left: 0;
             right: 0;
-            height: 65px;
-            /* 🚀 FIXED: Swapped invalid rgba() for standard CSS variable */
+            height: 60px; /* Slimmed down slightly since there are no labels */
             background-color: var(--surface-color);
+            /* Frosted glass effect for native feel */
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
             border-top: 1px solid var(--border-color);
             justify-content: space-around;
             align-items: center;
             z-index: 9999;
             padding-bottom: env(safe-area-inset-bottom);
+            box-shadow: 0 -4px 15px rgba(0,0,0,0.03);
           }
 
           .nav-item {
             display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
             flex: 1;
@@ -52,7 +51,7 @@ export default function BottomNav({ userRole }) {
             border: none;
             cursor: pointer;
             color: var(--icon-color);
-            transition: color 0.2s, transform 0.2s;
+            transition: color 0.2s, transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
             outline: none;
             -webkit-tap-highlight-color: transparent;
           }
@@ -61,15 +60,15 @@ export default function BottomNav({ userRole }) {
             color: var(--brand-primary);
           }
 
-          .nav-label {
-            font-size: 10px;
-            font-weight: 700;
-            margin-top: 4px;
-            letter-spacing: 0.2px;
+          /* Remove hover state on mobile to avoid sticky ghost hovers */
+          @media (hover: none) {
+            .nav-item:hover { color: var(--icon-color); }
+            .nav-item.active:hover { color: var(--brand-primary); }
           }
           
+          /* Native springy click effect */
           .nav-item:active {
-            transform: scale(0.92);
+            transform: scale(0.85);
           }
         }
       `}</style>
@@ -84,9 +83,9 @@ export default function BottomNav({ userRole }) {
               key={item.name}
               className={`nav-item ${isActive ? 'active' : ''}`}
               onClick={() => navigate(item.path)}
+              aria-label={item.name}
             >
               {item.icon}
-              <span className="nav-label">{item.name}</span>
             </button>
           );
         })}

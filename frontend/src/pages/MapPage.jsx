@@ -11,7 +11,7 @@ import {
   MdSearch, MdTune, MdExpandMore, MdLocationOn, 
   MdStorefront, MdFastfood, MdClose, MdStar, MdChevronLeft, 
   MdChevronRight, MdOutlineNearMe, MdDarkMode, MdLightMode, MdPersonOutline,
-  MdSpa, MdLocalHospital, MdDirectionsCar, MdHotel, MdHomeRepairService, MdAttachMoney
+  MdSpa, MdLocalHospital, MdDirectionsCar, MdHotel, MdHomeRepairService, MdBusinessCenter, MdGridView
 } from "react-icons/md";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || '';
@@ -42,18 +42,19 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
   return R * c;
 };
 
-// 🚀 Helper to add icons to the Category Pills & Dropdown
+// 🚀 FIXED: Category Icons now exactly match the map markers, including the Grid View for 'All'
 const getCategoryIcon = (cat) => {
   switch(cat) {
-    case 'Food & Dining': return <MdFastfood size={16} />;
-    case 'Grocery & Retail': return <MdStorefront size={16} />;
-    case 'Beauty & Personal Care': return <MdSpa size={16} />;
-    case 'Health & Medical': return <MdLocalHospital size={16} />;
-    case 'Automotive': return <MdDirectionsCar size={16} />;
-    case 'Travel & Accommodation': return <MdHotel size={16} />;
-    case 'Home & Professional Services': return <MdHomeRepairService size={16} />;
-    case 'Financial & Business': return <MdAttachMoney size={16} />;
-    default: return null;
+    case 'All': return <MdGridView size={18} />;
+    case 'Food & Dining': return <MdFastfood size={18} />;
+    case 'Grocery & Retail': return <MdStorefront size={18} />;
+    case 'Beauty & Personal Care': return <MdSpa size={18} />;
+    case 'Health & Medical': return <MdLocalHospital size={18} />;
+    case 'Automotive': return <MdDirectionsCar size={18} />;
+    case 'Travel & Accommodation': return <MdHotel size={18} />;
+    case 'Home & Professional Services': return <MdHomeRepairService size={18} />;
+    case 'Financial & Business': return <MdBusinessCenter size={18} />;
+    default: return <MdGridView size={18} />;
   }
 };
 
@@ -84,7 +85,6 @@ export default function MapPage() {
   useEffect(() => { selectedStoreRef.current = selectedStore; }, [selectedStore]);
 
   const [activeLocation, setActiveLocation] = useState(TABLAS_MUNICIPALITIES[0]); 
-  
   const [actualUserLocation, setActualUserLocation] = useState(null);
 
   const [isLocationDropdownOpen, setIsLocationDropdownOpen] = useState(false);
@@ -172,11 +172,16 @@ export default function MapPage() {
     }
   };
 
-  // 🚀 FIXED LOCATE ME LOGIC: Checks if source exists to prevent crashes after Dark Mode toggles
+  // 🚀 FIXED: Spinner stays active while fetching GPS AND during map flight animation
   const handleLocateUser = () => {
-    if (!navigator.geolocation || !map.current) return;
-    
+    if (!navigator.geolocation || !map.current) {
+      alert("Geolocation is not supported by your browser.");
+      return;
+    }
+
+    // Start spinner INSTANTLY upon click
     setIsLocating(true);
+
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { longitude, latitude, heading } = pos.coords;
@@ -191,15 +196,28 @@ export default function MapPage() {
           });
         }
         
-        map.current.flyTo({ center: [longitude, latitude], zoom: 18.5, speed: 1.5 });
-        setIsLocating(false);
+        // Wait for the map to FINISH moving before stopping the spinner
+        map.current.once('moveend', () => {
+          setIsLocating(false);
+        });
+        
+        map.current.flyTo({ center: [longitude, latitude], zoom: 18.5, pitch: 60, speed: 1.5 });
       },
       (err) => {
-        console.error("Geolocation error:", err);
-        setIsLocating(false);
-        alert("Could not access your location. Please check browser permissions.");
+        console.warn("Geolocation error:", err.message);
+        setIsLocating(false); // Guarantee spinner stops immediately on failure
+        
+        if (err.code === 1) { // PERMISSION_DENIED
+          alert("Location access denied. Please click the lock icon in your address bar to allow location.");
+        } else if (err.code === 2) { // POSITION_UNAVAILABLE
+          alert("Location information is currently unavailable. Please check your device's GPS or network connection.");
+        } else if (err.code === 3) { // TIMEOUT
+          alert("The location request timed out. Please try again.");
+        } else {
+          alert("Could not determine your location. Please try again.");
+        }
       },
-      { enableHighAccuracy: true }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 } 
     );
   };
 
@@ -282,16 +300,29 @@ export default function MapPage() {
         data: { type: 'Feature', geometry: { type: 'Point', coordinates: [0,0] }, properties: { heading: 0 } }
       });
 
+      // 🚀 FIXED: Added a robust 2D dot fallback in case the 3D model fails on mobile WebGL
+      map.current.addLayer({
+        id: 'user-core',
+        type: 'circle',
+        source: 'user-location',
+        paint: {
+          'circle-radius': 8,
+          'circle-color': '#1877F2', // Hardcoded hex for mapbox (matches var(--brand-primary))
+          'circle-stroke-width': 3,
+          'circle-stroke-color': '#FFFFFF'
+        }
+      });
+
       map.current.addLayer({
         id: 'user-pulse',
         type: 'circle',
         source: 'user-location',
         paint: {
-          'circle-radius': 30,
-          'circle-color': '#2563EB',
-          'circle-opacity': 0.2,
+          'circle-radius': 25,
+          'circle-color': '#1877F2',
+          'circle-opacity': 0.25,
           'circle-stroke-width': 2,
-          'circle-stroke-color': '#2563EB',
+          'circle-stroke-color': '#1877F2',
           'circle-pitch-alignment': 'map'
         }
       });
@@ -363,7 +394,6 @@ export default function MapPage() {
     const lng = target.lng || target.stores?.lng;
     
     if (map.current && lat && lng) {
-      // 🚀 Offset [0, 160] pushes the map down so popups sit perfectly in the center!
       map.current.flyTo({ center: [lng, lat], zoom: 18.5, duration: 1200, offset: [0, 160] });
       setSelectedStore(target.stores ? target.stores : target);
     }
@@ -492,7 +522,7 @@ export default function MapPage() {
               </div>
             </div>
             
-            <button id="view-store-btn" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; background: #2563EB; color: white; border: none; outline: none; -webkit-tap-highlight-color: transparent; padding: 8px; border-radius: 8px; font-weight: 800; font-size: 12px; cursor: pointer; transition: background-color 0.2s;">
+            <button id="view-store-btn" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; background: #1877F2; color: white; border: none; outline: none; -webkit-tap-highlight-color: transparent; padding: 8px; border-radius: 8px; font-weight: 800; font-size: 12px; cursor: pointer; transition: background-color 0.2s;">
               View Full Details
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
             </button>
@@ -558,7 +588,7 @@ export default function MapPage() {
                   style={{ width: '100%', padding: '12px 16px', borderRadius: '12px', border: `1px solid ${bgColors.border}`, backgroundColor: bgColors.primary, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', fontSize: '14px', fontWeight: '700', color: bgColors.textMain }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ color: '#2563EB' }}>{getCategoryIcon(activeCategory)}</span> {activeCategory}
+                    <span style={{ color: 'var(--brand-primary)' }}>{getCategoryIcon(activeCategory)}</span> {activeCategory}
                   </div>
                   <MdExpandMore size={20} color={bgColors.textMuted} style={{ transform: isCategoryDropdownOpen ? 'rotate(180deg)' : 'none', transition: '0.2s' }} />
                 </button>
@@ -569,9 +599,9 @@ export default function MapPage() {
                       <div 
                         key={cat}
                         onClick={() => { setActiveCategory(cat); setIsCategoryDropdownOpen(false); }}
-                        style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', borderBottom: `1px solid ${bgColors.secondary}`, backgroundColor: activeCategory === cat ? (isDarkMode ? '#1E3A8A' : '#EFF6FF') : 'transparent', color: activeCategory === cat ? '#2563EB' : bgColors.textMain, fontWeight: '600', fontSize: '13px' }}
+                        style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', borderBottom: `1px solid ${bgColors.secondary}`, backgroundColor: activeCategory === cat ? (isDarkMode ? '#1E3A8A' : '#EFF6FF') : 'transparent', color: activeCategory === cat ? 'var(--brand-primary)' : bgColors.textMain, fontWeight: '600', fontSize: '13px' }}
                       >
-                        <div style={{ color: activeCategory === cat ? '#2563EB' : bgColors.textMuted }}>{getCategoryIcon(cat)}</div>
+                        <div style={{ color: activeCategory === cat ? 'var(--brand-primary)' : bgColors.textMuted }}>{getCategoryIcon(cat)}</div>
                         {cat}
                       </div>
                     ))}
@@ -583,9 +613,9 @@ export default function MapPage() {
             <div style={{ marginBottom: '24px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                 <label style={{ fontSize: '13px', fontWeight: '700', color: bgColors.textMuted }}>Distance Radius</label>
-                <span style={{ fontSize: '13px', fontWeight: '800', color: '#2563EB' }}>{filters.distance} km</span>
+                <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--brand-primary)' }}>{filters.distance} km</span>
               </div>
-              <input type="range" min="1" max="50" value={filters.distance} onChange={(e) => setFilters({...filters, distance: Number(e.target.value)})} style={{ width: '100%', accentColor: '#2563EB' }} />
+              <input type="range" min="1" max="50" value={filters.distance} onChange={(e) => setFilters({...filters, distance: Number(e.target.value)})} style={{ width: '100%', accentColor: 'var(--brand-primary)' }} />
               <div style={{ fontSize: '11px', color: bgColors.textMuted, marginTop: '4px' }}>Searching from {activeLocation.name}</div>
             </div>
 
@@ -593,7 +623,7 @@ export default function MapPage() {
               <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: bgColors.textMuted, marginBottom: '8px' }}>Minimum Rating</label>
               <div style={{ display: 'flex', gap: '8px' }}>
                 {[0, 3, 4, 5].map(rating => (
-                  <button key={rating} onClick={() => setFilters({...filters, minRating: rating})} style={{ flex: 1, padding: '10px 0', borderRadius: '12px', border: filters.minRating === rating ? '2px solid #2563EB' : `1px solid ${bgColors.border}`, backgroundColor: filters.minRating === rating ? (isDarkMode ? '#1E3A8A' : '#EFF6FF') : bgColors.primary, color: filters.minRating === rating ? (isDarkMode ? '#60A5FA' : '#2563EB') : bgColors.textMuted, fontWeight: '800', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                  <button key={rating} onClick={() => setFilters({...filters, minRating: rating})} style={{ flex: 1, padding: '10px 0', borderRadius: '12px', border: filters.minRating === rating ? '2px solid var(--brand-primary)' : `1px solid ${bgColors.border}`, backgroundColor: filters.minRating === rating ? (isDarkMode ? '#1E3A8A' : '#EFF6FF') : bgColors.primary, color: filters.minRating === rating ? (isDarkMode ? '#60A5FA' : 'var(--brand-primary)') : bgColors.textMuted, fontWeight: '800', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                     {rating === 0 ? 'Any' : <>{rating}+ <MdStar size={16} /></>}
                   </button>
                 ))}
@@ -605,12 +635,12 @@ export default function MapPage() {
                 <label style={{ display: 'block', fontSize: '14px', fontWeight: '700', color: bgColors.textMain }}>Open Now</label>
                 <span style={{ fontSize: '12px', color: bgColors.textMuted }}>Hide closed businesses</span>
               </div>
-              <div onClick={() => setFilters({...filters, openNow: !filters.openNow})} style={{ width: '50px', height: '28px', backgroundColor: filters.openNow ? '#10B981' : bgColors.border, borderRadius: '14px', position: 'relative', cursor: 'pointer', transition: 'background-color 0.2s' }}>
+              <div onClick={() => setFilters({...filters, openNow: !filters.openNow})} style={{ width: '50px', height: '28px', backgroundColor: filters.openNow ? 'var(--success)' : bgColors.border, borderRadius: '14px', position: 'relative', cursor: 'pointer', transition: 'background-color 0.2s' }}>
                 <div style={{ width: '24px', height: '24px', backgroundColor: '#FFFFFF', borderRadius: '50%', position: 'absolute', top: '2px', left: filters.openNow ? '24px' : '2px', transition: 'left 0.2s', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }} />
               </div>
             </div>
 
-            <button onClick={() => setIsFilterOpen(false)} style={{ width: '100%', padding: '14px', backgroundColor: '#2563EB', color: '#FFFFFF', border: 'none', borderRadius: '12px', fontWeight: '800', fontSize: '15px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(37,99,235,0.2)' }}>
+            <button onClick={() => setIsFilterOpen(false)} style={{ width: '100%', padding: '14px', backgroundColor: 'var(--brand-primary)', color: '#FFFFFF', border: 'none', borderRadius: '12px', fontWeight: '800', fontSize: '15px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(24, 119, 242, 0.2)' }}>
               Show {mapStores.length} Results
             </button>
           </div>
@@ -627,8 +657,8 @@ export default function MapPage() {
             </div>
             <div className="custom-scrollbar" style={{ maxHeight: '60vh', overflowY: 'auto', margin: '0 -10px', padding: '0 10px' }}>
               {TABLAS_MUNICIPALITIES.map(loc => (
-                <div key={loc.name} onClick={() => handleLocationSelect(loc)} style={{ padding: '16px', fontSize: '15px', fontWeight: '700', cursor: 'pointer', borderBottom: `1px solid ${bgColors.secondary}`, color: activeLocation.name === loc.name ? '#2563EB' : bgColors.textMain, backgroundColor: activeLocation.name === loc.name ? (isDarkMode ? '#1E3A8A' : '#EFF6FF') : 'transparent', borderRadius: '12px', marginBottom: '4px', transition: 'background-color 0.2s' }}>
-                  <div style={{display: 'flex', alignItems: 'center', gap: '12px'}}><MdLocationOn size={22} color={activeLocation.name === loc.name ? '#2563EB' : bgColors.textMuted} />{loc.name}</div>
+                <div key={loc.name} onClick={() => handleLocationSelect(loc)} style={{ padding: '16px', fontSize: '15px', fontWeight: '700', cursor: 'pointer', borderBottom: `1px solid ${bgColors.secondary}`, color: activeLocation.name === loc.name ? 'var(--brand-primary)' : bgColors.textMain, backgroundColor: activeLocation.name === loc.name ? (isDarkMode ? '#1E3A8A' : '#EFF6FF') : 'transparent', borderRadius: '12px', marginBottom: '4px', transition: 'background-color 0.2s' }}>
+                  <div style={{display: 'flex', alignItems: 'center', gap: '12px'}}><MdLocationOn size={22} color={activeLocation.name === loc.name ? 'var(--brand-primary)' : bgColors.textMuted} />{loc.name}</div>
                 </div>
               ))}
             </div>
@@ -647,8 +677,8 @@ export default function MapPage() {
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '20px 24px 10px 36px', width: '100%', boxSizing: 'border-box' }}>
             <div style={{ position: 'relative', flexGrow: 1, pointerEvents: 'auto' }}>
-              <div style={{ display: 'flex', alignItems: 'center', backgroundColor: bgColors.primary, border: isSearchFocused ? '2px solid #2563EB' : `1px solid ${bgColors.border}`, borderRadius: '12px', padding: '0 16px', height: '42px', boxShadow: isSearchFocused ? '0 0 0 4px rgba(37,99,235,0.1)' : '0 4px 15px rgba(0,0,0,0.08)', transition: 'all 0.2s' }}>
-                <MdSearch size={20} color={isSearchFocused ? '#2563EB' : bgColors.textMuted} />
+              <div style={{ display: 'flex', alignItems: 'center', backgroundColor: bgColors.primary, border: isSearchFocused ? '2px solid var(--brand-primary)' : `1px solid ${bgColors.border}`, borderRadius: '12px', padding: '0 16px', height: '42px', boxShadow: isSearchFocused ? '0 0 0 4px rgba(24,119,242,0.1)' : '0 4px 15px rgba(0,0,0,0.08)', transition: 'all 0.2s' }}>
+                <MdSearch size={20} color={isSearchFocused ? 'var(--brand-primary)' : bgColors.textMuted} />
                 <input type="text" placeholder="Search places, products or services..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} onFocus={() => setIsSearchFocused(true)} style={{ border: 'none', backgroundColor: 'transparent', flexGrow: 1, outline: 'none', fontSize: '13.5px', color: bgColors.textMain, marginLeft: '10px', fontWeight: '500', height: '100%' }} />
               </div>
 
@@ -665,7 +695,7 @@ export default function MapPage() {
                             <div style={{ padding: '6px 14px', fontSize: '10px', fontWeight: '900', color: bgColors.textMuted, textTransform: 'uppercase' }}>Stores</div>
                             {searchResults.stores.map(store => (
                               <div key={store.id} onClick={() => handleSearchResultClick(store)} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 14px', cursor: 'pointer' }}>
-                                <div style={{ backgroundColor: isDarkMode ? '#1E3A8A' : '#EFF6FF', padding: '8px', borderRadius: '8px' }}><MdStorefront size={18} color="#2563EB" /></div>
+                                <div style={{ backgroundColor: isDarkMode ? '#1E3A8A' : '#EFF6FF', padding: '8px', borderRadius: '8px' }}><MdStorefront size={18} color="var(--brand-primary)" /></div>
                                 <div><div style={{ fontSize: '14px', fontWeight: '800', color: bgColors.textMain }}>{store.store_name}</div><div style={{ fontSize: '12px', color: bgColors.textMuted, fontWeight: '500' }}>{store.industry || store.store_category}</div></div>
                               </div>
                             ))}
@@ -676,8 +706,8 @@ export default function MapPage() {
                             <div style={{ padding: '6px 14px', fontSize: '10px', fontWeight: '900', color: bgColors.textMuted, textTransform: 'uppercase' }}>Menu Items & Products</div>
                             {searchResults.items.map(item => (
                               <div key={item.id} onClick={() => handleSearchResultClick(item)} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 14px', cursor: 'pointer' }}>
-                                <div style={{ backgroundColor: isDarkMode ? 'rgba(22, 163, 74, 0.2)' : '#F0FDF4', padding: '6px', borderRadius: '8px' }}><MdFastfood size={16} color="#16A34A" /></div>
-                                <div><div style={{ fontSize: '13px', fontWeight: '700', color: bgColors.textMain }}>{item.item_name} <span style={{ color: '#16A34A', fontWeight: '800' }}>₱{item.price}</span></div><div style={{ fontSize: '11px', color: bgColors.textMuted }}>Available at {item.stores?.store_name}</div></div>
+                                <div style={{ backgroundColor: isDarkMode ? 'rgba(22, 163, 74, 0.2)' : '#F0FDF4', padding: '6px', borderRadius: '8px' }}><MdFastfood size={16} color="var(--success)" /></div>
+                                <div><div style={{ fontSize: '13px', fontWeight: '700', color: bgColors.textMain }}>{item.item_name} <span style={{ color: 'var(--success)', fontWeight: '800' }}>₱{item.price}</span></div><div style={{ fontSize: '11px', color: bgColors.textMuted }}>Available at {item.stores?.store_name}</div></div>
                               </div>
                             ))}
                           </div>
@@ -691,7 +721,7 @@ export default function MapPage() {
             
             <div style={{ position: 'relative', pointerEvents: 'auto', minWidth: '180px' }}>
               <div onClick={() => setIsLocationDropdownOpen(!isLocationDropdownOpen)} style={{ display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: bgColors.primary, border: `1px solid ${bgColors.border}`, borderRadius: '12px', padding: '0 16px', height: '42px', cursor: 'pointer', boxShadow: '0 4px 15px rgba(0,0,0,0.08)', userSelect: 'none' }}>
-                <MdLocationOn size={18} color="#2563EB" />
+                <MdLocationOn size={18} color="var(--brand-primary)" />
                 <span style={{ fontSize: '13.5px', fontWeight: '700', color: bgColors.textMain, flexGrow: 1 }}>{activeLocation.name}</span>
                 <MdExpandMore size={20} color={bgColors.textMuted} style={{ transform: isLocationDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
               </div>
@@ -701,7 +731,7 @@ export default function MapPage() {
                   <div style={{ position: 'absolute', top: '100%', right: 0, left: 0, marginTop: '8px', backgroundColor: bgColors.primary, border: `1px solid ${bgColors.border}`, borderRadius: '12px', boxShadow: '0 15px 35px rgba(0,0,0,0.15)', zIndex: 999998, overflow: 'hidden' }}>
                     <div className="custom-scrollbar" style={{ maxHeight: '280px', overflowY: 'auto' }}>
                       {TABLAS_MUNICIPALITIES.map(loc => (
-                        <div key={loc.name} onClick={() => handleLocationSelect(loc)} style={{ padding: '12px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', borderBottom: `1px solid ${bgColors.secondary}`, color: activeLocation.name === loc.name ? '#2563EB' : bgColors.textMuted, backgroundColor: activeLocation.name === loc.name ? (isDarkMode ? '#1E3A8A' : '#EFF6FF') : 'transparent' }}>{loc.name}</div>
+                        <div key={loc.name} onClick={() => handleLocationSelect(loc)} style={{ padding: '12px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', borderBottom: `1px solid ${bgColors.secondary}`, color: activeLocation.name === loc.name ? 'var(--brand-primary)' : bgColors.textMuted, backgroundColor: activeLocation.name === loc.name ? (isDarkMode ? '#1E3A8A' : '#EFF6FF') : 'transparent' }}>{loc.name}</div>
                       ))}
                     </div>
                   </div>
@@ -711,7 +741,7 @@ export default function MapPage() {
 
             <div style={{ pointerEvents: 'auto' }}>
               <div onClick={toggleDarkMode} style={{ width: '76px', height: '42px', backgroundColor: bgColors.primary, border: `1px solid ${bgColors.border}`, borderRadius: '24px', display: 'flex', alignItems: 'center', position: 'relative', cursor: 'pointer', boxShadow: '0 4px 15px rgba(0,0,0,0.08)', padding: '4px', boxSizing: 'border-box' }}>
-                <div style={{ position: 'absolute', width: '32px', height: '32px', backgroundColor: '#2563EB', borderRadius: '50%', left: isDarkMode ? '40px' : '4px', transition: 'left 0.3s cubic-bezier(0.4, 0, 0.2, 1)', zIndex: 1 }} />
+                <div style={{ position: 'absolute', width: '32px', height: '32px', backgroundColor: 'var(--brand-primary)', borderRadius: '50%', left: isDarkMode ? '40px' : '4px', transition: 'left 0.3s cubic-bezier(0.4, 0, 0.2, 1)', zIndex: 1 }} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', position: 'relative', zIndex: 2, padding: '0 6px' }}>
                   <MdLightMode size={20} color={!isDarkMode ? '#FFFFFF' : bgColors.textMuted} />
                   <MdDarkMode size={20} color={isDarkMode ? '#FFFFFF' : bgColors.textMuted} />
@@ -725,9 +755,9 @@ export default function MapPage() {
             
             <div style={{ pointerEvents: 'auto' }}>
               {session ? (
-                <div onClick={() => navigate('/profile')} style={{ width: '42px', height: '42px', borderRadius: '50%', backgroundImage: `url('${profile?.avatar_url || `https://ui-avatars.com/api/?name=${profile?.display_name || 'User'}&background=EFF6FF&color=2563EB`}')`, backgroundSize: 'cover', backgroundPosition: 'center', cursor: 'pointer', border: `2px solid ${bgColors.primary}`, boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }} />
+                <div onClick={() => navigate('/profile')} style={{ width: '42px', height: '42px', borderRadius: '50%', backgroundImage: `url('${profile?.avatar_url || `https://ui-avatars.com/api/?name=${profile?.display_name || 'User'}&background=EFF6FF&color=1877F2`}')`, backgroundSize: 'cover', backgroundPosition: 'center', cursor: 'pointer', border: `2px solid ${bgColors.primary}`, boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }} />
               ) : (
-                <button onClick={() => navigate('/login')} style={{ padding: '0 20px', height: '42px', backgroundColor: '#2563EB', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '700', fontSize: '13.5px', cursor: 'pointer' }}>Sign In</button>
+                <button onClick={() => navigate('/login')} style={{ padding: '0 20px', height: '42px', backgroundColor: 'var(--brand-primary)', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '700', fontSize: '13.5px', cursor: 'pointer' }}>Sign In</button>
               )}
             </div>
           </div>
@@ -738,7 +768,7 @@ export default function MapPage() {
               
               <div ref={categoryScrollRef} onScroll={checkScrollArrows} onMouseDown={handleMouseDown} onMouseLeave={handleMouseUp} onMouseUp={handleMouseUp} onMouseMove={handleMouseMove} style={{ display: 'flex', gap: '8px', overflowX: 'auto', scrollbarWidth: 'none', padding: '4px 0', WebkitOverflowScrolling: 'touch', cursor: 'grab', width: '100%' }}>
                 {categories.map(cat => (
-                  <button key={cat} onClick={() => setActiveCategory(cat)} style={{ flexShrink: 0, padding: '8px 18px', borderRadius: '24px', border: activeCategory === cat ? '1px solid transparent' : `1px solid ${bgColors.border}`, backgroundColor: activeCategory === cat ? '#2563EB' : bgColors.primary, color: activeCategory === cat ? 'white' : bgColors.textMuted, fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <button key={cat} onClick={() => setActiveCategory(cat)} style={{ flexShrink: 0, padding: '8px 18px', borderRadius: '24px', border: activeCategory === cat ? '1px solid transparent' : `1px solid ${bgColors.border}`, backgroundColor: activeCategory === cat ? 'var(--brand-primary)' : bgColors.primary, color: activeCategory === cat ? 'white' : bgColors.textMuted, fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     {getCategoryIcon(cat)} {cat}
                   </button>
                 ))}
@@ -758,7 +788,7 @@ export default function MapPage() {
         {/* ========================================================= */}
         <div className="desktop-ui" style={{ position: 'absolute', bottom: '30px', right: '30px', zIndex: 900000, pointerEvents: 'auto' }}>
           <button onClick={handleLocateUser} style={{ width: '48px', height: '48px', backgroundColor: bgColors.primary, border: `1px solid ${bgColors.border}`, borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: '0 8px 25px rgba(0,0,0,0.15)', cursor: 'pointer' }}>
-            {isLocating ? <div style={{ width: '20px', height: '20px', border: `3px solid ${bgColors.border}`, borderTopColor: '#2563EB', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /> : <MdOutlineNearMe size={24} color="#2563EB" style={{ transform: 'translate(-1px, 1px)' }} />}
+            {isLocating ? <div style={{ width: '20px', height: '20px', border: `3px solid ${bgColors.border}`, borderTopColor: 'var(--brand-primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /> : <MdOutlineNearMe size={24} color="var(--brand-primary)" style={{ transform: 'translate(-1px, 1px)' }} />}
           </button>
         </div>
 
@@ -767,56 +797,53 @@ export default function MapPage() {
         {/* ========================================================= */}
         <div className="mobile-ui-block" style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 900000, pointerEvents: 'none' }}>
           
-          {/* 🚀 SOLID BLUE HEADER EXACTLY LIKE REFERENCE */}
-          <div style={{ background: '#2563EB', padding: '16px 16px 16px 16px', pointerEvents: 'auto', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
+          <div style={{ background: 'var(--brand-gradient)', padding: '16px 16px 20px 16px', pointerEvents: 'auto', boxShadow: '0 4px 15px rgba(0,0,0,0.15)' }}>
             
-            {/* Row 1: Logo, Notification Bell, Profile */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <MdLocationOn size={22} color="#FFFFFF" />
-                <span style={{ fontSize: '18px', fontWeight: '900', color: '#FFFFFF', letterSpacing: '-0.5px' }}>LocalLook</span>
+                <MdLocationOn size={24} color="#FFFFFF" />
+                <span style={{ fontSize: '20px', fontWeight: '900', color: '#FFFFFF', letterSpacing: '-0.5px' }}>LocalLook</span>
               </div>
               
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                <div style={{ color: '#FFFFFF' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                   <NotificationBell session={session} isSidebarMode={false} />
                 </div>
                 
-                <div onClick={() => session ? navigate('/profile') : navigate('/login')} style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#FFFFFF', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', flexShrink: 0, backgroundImage: session ? `url('${profile?.avatar_url || `https://ui-avatars.com/api/?name=${profile?.display_name || 'User'}&background=EFF6FF&color=2563EB`}')` : 'none', backgroundSize: 'cover' }}>
-                  {!session && <MdPersonOutline size={20} color="#2563EB" />}
+                <div onClick={() => session ? navigate('/profile') : navigate('/login')} style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#FFFFFF', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', flexShrink: 0, backgroundImage: session ? `url('${profile?.avatar_url || `https://ui-avatars.com/api/?name=${profile?.display_name || 'User'}&background=EFF6FF&color=1877F2`}')` : 'none', backgroundSize: 'cover', border: '2px solid #FFFFFF', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+                  {!session && <MdPersonOutline size={22} color="var(--primary)" />}
                 </div>
               </div>
             </div>
 
-            {/* Row 2: Search Bar & Filter Button */}
             <div style={{ display: 'flex', gap: '12px', position: 'relative' }}>
-              <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: '24px', padding: '0 16px', height: '44px', flexGrow: 1, boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
-                <MdSearch size={22} color="#64748B" />
-                <input type="text" placeholder="Search places, stores..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} onFocus={() => setIsSearchFocused(true)} style={{ border: 'none', background: 'transparent', flexGrow: 1, outline: 'none', color: '#0F172A', fontSize: '14px', marginLeft: '10px', fontWeight: '500', height: '100%', width: '100%' }} />
+              
+              <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: '24px', padding: '0 16px', height: '48px', flexGrow: 1, boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
+                <MdSearch size={24} color="#64748B" />
+                <input type="text" placeholder="Search places, stores..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} onFocus={() => setIsSearchFocused(true)} style={{ border: 'none', background: 'transparent', flexGrow: 1, outline: 'none', color: '#0F172A', fontSize: '15px', marginLeft: '10px', fontWeight: '500', height: '100%', width: '100%' }} />
               </div>
               
-              <button onClick={() => setIsFilterOpen(true)} style={{ width: '44px', height: '44px', backgroundColor: '#FFFFFF', borderRadius: '14px', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.1)', color: '#2563EB', flexShrink: 0, position: 'relative' }}>
-                <MdTune size={22} />
+              <button onClick={() => setIsFilterOpen(true)} style={{ width: '48px', height: '48px', backgroundColor: '#FFFFFF', borderRadius: '14px', border: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', color: 'var(--brand-primary)', flexShrink: 0, position: 'relative' }}>
+                <MdTune size={24} />
                 {(activeCategory !== 'All' || filters.openNow || filters.distance < 10) && (
-                  <span style={{ position: 'absolute', top: '8px', right: '8px', width: '10px', height: '10px', backgroundColor: '#EF4444', borderRadius: '50%', border: '2px solid #FFFFFF' }} />
+                  <span style={{ position: 'absolute', top: '10px', right: '10px', width: '10px', height: '10px', backgroundColor: 'var(--danger)', borderRadius: '50%', border: '2px solid #FFFFFF' }} />
                 )}
               </button>
 
-              {/* Mobile Search Results Dropdown */}
               {isSearchFocused && searchTerm.trim().length > 0 && (
                  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 999998, marginTop: '12px' }}>
                     <div onClick={() => setIsSearchFocused(false)} style={{ position: 'fixed', inset: 0, zIndex: -1 }} />
                     <div className="custom-scrollbar" style={{ backgroundColor: bgColors.primary, border: `1px solid ${bgColors.border}`, borderRadius: '16px', boxShadow: '0 15px 35px rgba(0,0,0,0.15)', overflowY: 'auto', maxHeight: '50vh', padding: '8px 0' }}>
                       {searchResults.stores.map(store => (
                         <div key={store.id} onClick={() => handleSearchResultClick(store)} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', borderBottom: `1px solid ${bgColors.secondary}` }}>
-                          <MdStorefront size={20} color="#2563EB" />
+                          <MdStorefront size={20} color="var(--brand-primary)" />
                           <div style={{ fontSize: '14px', fontWeight: '800', color: bgColors.textMain }}>{store.store_name}</div>
                         </div>
                       ))}
                       {searchResults.items.map(item => (
                         <div key={item.id} onClick={() => handleSearchResultClick(item)} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 16px', borderBottom: `1px solid ${bgColors.secondary}` }}>
-                          <MdFastfood size={18} color="#16A34A" />
-                          <div><div style={{ fontSize: '13px', fontWeight: '700', color: bgColors.textMain }}>{item.item_name} <span style={{ color: '#16A34A' }}>₱{item.price}</span></div></div>
+                          <MdFastfood size={18} color="var(--success)" />
+                          <div><div style={{ fontSize: '13px', fontWeight: '700', color: bgColors.textMain }}>{item.item_name} <span style={{ color: 'var(--success)' }}>₱{item.price}</span></div></div>
                         </div>
                       ))}
                     </div>
@@ -825,10 +852,9 @@ export default function MapPage() {
             </div>
           </div>
 
-          {/* 🚀 FLOATING LOCATION PICKER (Below the Header) */}
           <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'flex-end', pointerEvents: 'none' }}>
-            <button onClick={() => setIsLocationModalOpen(true)} style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: '6px', background: '#FFFFFF', border: '1px solid var(--border-color)', padding: '8px 14px', borderRadius: '24px', color: '#0F172A', fontSize: '13px', fontWeight: '800', cursor: 'pointer', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}>
-              <MdLocationOn size={18} color="#2563EB" /> {activeLocation.name} <MdExpandMore size={18} color="#64748B" />
+            <button onClick={() => setIsLocationModalOpen(true)} style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: '6px', background: '#FFFFFF', border: 'none', padding: '10px 16px', borderRadius: '24px', color: '#0F172A', fontSize: '14px', fontWeight: '800', cursor: 'pointer', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}>
+              <MdLocationOn size={18} color="var(--brand-primary)" /> {activeLocation.name} <MdExpandMore size={18} color="#64748B" />
             </button>
           </div>
         </div>
@@ -836,13 +862,13 @@ export default function MapPage() {
         {/* 📱 Mobile Floating Action Buttons (Locate Me Only) */}
         <div className="mobile-ui-flex" style={{ position: 'absolute', bottom: '24px', right: '16px', zIndex: 900000, pointerEvents: 'none', flexDirection: 'column', gap: '8px' }}>
            <button onClick={handleLocateUser} style={{ pointerEvents: 'auto', width: '48px', height: '48px', backgroundColor: bgColors.primary, border: `1px solid ${bgColors.border}`, borderRadius: '50%', boxShadow: '0 4px 15px rgba(0,0,0,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {isLocating ? <div style={{ width: '20px', height: '20px', border: `3px solid ${bgColors.border}`, borderTopColor: '#2563EB', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /> : <MdOutlineNearMe size={24} color="#2563EB" style={{ transform: 'translate(-1px, 1px)' }} />}
+              {isLocating ? <div style={{ width: '20px', height: '20px', border: `3px solid ${bgColors.border}`, borderTopColor: 'var(--brand-primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} /> : <MdOutlineNearMe size={24} color="var(--brand-primary)" style={{ transform: 'translate(-1px, 1px)' }} />}
            </button>
         </div>
 
         {(!isMapLoaded || !isDataLoaded) && (
           <div style={{ position: 'absolute', inset: 0, backgroundColor: isDarkMode ? 'rgba(15, 23, 42, 0.7)' : 'rgba(255, 255, 255, 0.5)', backdropFilter: 'blur(10px)', zIndex: 20, display: 'flex', justifyContent: 'center', alignItems: 'center', flexDirection: 'column', transition: 'opacity 0.5s ease' }}>
-            <div style={{ width: '48px', height: '48px', border: `4px solid ${bgColors.border}`, borderTopColor: '#2563EB', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+            <div style={{ width: '48px', height: '48px', border: `4px solid ${bgColors.border}`, borderTopColor: 'var(--brand-primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
             <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
             <strong style={{ marginTop: '16px', color: bgColors.textMain, fontSize: '15px' }}>Loading Map...</strong>
           </div>

@@ -280,8 +280,7 @@ export default function AppLayout({ children }) {
             {children}
           </main>
           
-          {/* 🚀 Render the new BottomNav on Mobile! */}
-          <BottomNav userRole={isMerchant ? 'merchant' : 'consumer'} />
+          <BottomNav />
         </div>
       </div>
     </>
