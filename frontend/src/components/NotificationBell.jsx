@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import { useTheme } from '../components/ThemeContext'; // 🚀 Added Theme Hook
+import { useTheme } from '../components/ThemeContext'; 
 import { 
   MdNotificationsNone, 
   MdNotificationsActive, 
@@ -20,7 +20,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://locallook-api.onre
 export default function NotificationBell({ session, isSidebarMode = false, onInviteAccepted }) {
   const navigate = useNavigate();
   const dropdownRef = useRef(null);
-  const { isDarkMode } = useTheme(); // 🚀 Pulling current theme state
+  const { isDarkMode } = useTheme(); 
 
   const [isOpen, setIsOpen] = useState(false);
   const [invitations, setInvitations] = useState([]);
@@ -29,7 +29,6 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
 
   const totalUnread = invitations.length + unreadNotesCount;
 
-  // 🚀 Dynamic Color Palette
   const theme = {
     bgPrimary: isDarkMode ? '#1E293B' : '#FFFFFF',
     bgSecondary: isDarkMode ? '#0F172A' : '#F8FAFC',
@@ -43,7 +42,6 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
     inviteText: isDarkMode ? '#60A5FA' : '#1E3A8A'
   };
 
-  // 🚀 Updated to handle dark mode background tints
   const getNotificationStyle = (type) => {
     switch (type) {
       case 'moderation':
@@ -209,6 +207,40 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
 
   return (
     <div ref={dropdownRef} style={{ position: 'relative', width: isSidebarMode ? '100%' : 'auto' }}>
+      
+      {/* 🚀 Dynamic Responsive Styles for the Notification Bell */}
+      <style>{`
+        .responsive-bell-btn {
+          width: 42px; 
+          height: 42px;
+          display: flex; 
+          justify-content: center; 
+          align-items: center;
+          border-radius: 50%; 
+          cursor: pointer; 
+          position: relative;
+          background-color: ${theme.bgPrimary};
+          border: 1px solid ${theme.border};
+          box-shadow: ${isDarkMode ? '0 4px 15px rgba(0,0,0,0.2)' : '0 4px 15px rgba(0,0,0,0.08)'};
+          transition: all 0.2s;
+        }
+        .responsive-bell-icon { color: ${theme.textMuted}; }
+        .responsive-bell-active { color: var(--brand-primary, #2563EB); }
+
+        /* Mobile override: Transparent background, white icon for blue header */
+        @media (max-width: 768px) {
+          .responsive-bell-btn {
+            background-color: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            width: 36px; height: 36px;
+          }
+          .responsive-bell-icon, .responsive-bell-active {
+            color: #FFFFFF !important;
+          }
+        }
+      `}</style>
+
       {isSidebarMode ? (
         <div onClick={handleToggleMenu} className={`nav-item ${isOpen ? 'active' : ''}`} style={{ display: 'flex', justifyContent: 'space-between', cursor: 'pointer' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -217,15 +249,14 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
             </span> Notifications
           </div>
           {totalUnread > 0 && (
-            <span style={{ backgroundColor: 'var(--danger)', color: 'white', fontSize: '10px', fontWeight: '900', padding: '2px 6px', borderRadius: '10px' }}>{totalUnread}</span>
+            <span style={{ backgroundColor: 'var(--danger, #EF4444)', color: 'white', fontSize: '10px', fontWeight: '900', padding: '2px 6px', borderRadius: '10px' }}>{totalUnread}</span>
           )}
         </div>
       ) : (
-        // 🚀 UPDATED MOBILE BELL: No background, white icon.
-        <div onClick={handleToggleMenu} style={{ width: '36px', height: '36px', display: 'flex', justifyContent: 'center', alignItems: 'center', borderRadius: '50%', cursor: 'pointer', backgroundColor: 'transparent', position: 'relative' }}>
-          {totalUnread > 0 ? <MdNotificationsActive size={24} color="#FFFFFF" /> : <MdNotificationsNone size={24} color="#FFFFFF" />}
+        <div onClick={handleToggleMenu} className="responsive-bell-btn">
+          {totalUnread > 0 ? <MdNotificationsActive size={24} className="responsive-bell-active" /> : <MdNotificationsNone size={24} className="responsive-bell-icon" />}
           {totalUnread > 0 && (
-            <div style={{ position: 'absolute', top: '2px', right: '4px', backgroundColor: 'var(--danger)', color: 'white', fontSize: '9px', fontWeight: '900', padding: '2px 5px', borderRadius: '10px', border: '1px solid #1E40AF' }}>{totalUnread}</div>
+            <div style={{ position: 'absolute', top: '-2px', right: '-2px', backgroundColor: 'var(--danger, #EF4444)', color: 'white', fontSize: '9px', fontWeight: '900', padding: '2px 5px', borderRadius: '10px', border: '1px solid #1E40AF' }}>{totalUnread}</div>
           )}
         </div>
       )}
@@ -260,10 +291,10 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
                       You were invited to manage <strong style={{ color: theme.textMain }}>{invite.stores?.store_name}</strong>.
                     </p>
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      <button onClick={() => handleAcceptInvite(invite.id)} style={{ flex: 1, padding: '8px', backgroundColor: 'var(--success)', color: 'white', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                      <button onClick={() => handleAcceptInvite(invite.id)} style={{ flex: 1, padding: '8px', backgroundColor: '#10B981', color: 'white', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                         <MdCheck size={16} /> Accept
                       </button>
-                      <button onClick={() => handleDeclineInvite(invite.id)} style={{ padding: '8px', backgroundColor: isDarkMode ? 'rgba(220, 38, 38, 0.2)' : '#FEE2E2', color: 'var(--danger)', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <button onClick={() => handleDeclineInvite(invite.id)} style={{ padding: '8px', backgroundColor: isDarkMode ? 'rgba(220, 38, 38, 0.2)' : '#FEE2E2', color: '#DC2626', border: 'none', borderRadius: '6px', fontSize: '12px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         <MdClear size={16} />
                       </button>
                     </div>
@@ -308,7 +339,7 @@ export default function NotificationBell({ session, isSidebarMode = false, onInv
                       }}
                     >
                       <div style={{ fontWeight: '800', fontSize: '13px', color: theme.textMain, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        {!note.is_read && <div style={{ width: '6px', height: '6px', backgroundColor: 'var(--success)', borderRadius: '50%', flexShrink: 0 }}></div>}
+                        {!note.is_read && <div style={{ width: '6px', height: '6px', backgroundColor: '#10B981', borderRadius: '50%', flexShrink: 0 }}></div>}
                         {style.icon}
                         {note.title}
                       </div>

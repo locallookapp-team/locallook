@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { supabase } from './supabaseClient'; 
 import { ThemeProvider } from './components/ThemeContext';
 import './App.css';
@@ -24,8 +24,11 @@ import BillingPage from './pages/BillingPage';
 import TermsOfService from './pages/TermsOfService';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 
-function App() {
-  
+// 🚀 Wrap the routing in a sub-component so we can access useLocation()
+const AppRoutes = () => {
+  const location = useLocation();
+  const path = location.pathname;
+
   useEffect(() => {
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'PASSWORD_RECOVERY') {
@@ -35,45 +38,89 @@ function App() {
     return () => { authListener.subscription.unsubscribe(); };
   }, []);
 
-  return (
-    <ThemeProvider>
-    <BrowserRouter>
+  // Isolate pages that don't need the sidebar (Logins, Landing, Policies)
+  const isFullScreenRoute = ['/', '/login', '/signup', '/forgot-password', '/update-password', '/terms', '/privacy'].includes(path);
+  
+  // Track which cached page is currently active
+  const isMapActive = path === '/map';
+  const isExploreActive = path === '/explore';
+  const isReviewsActive = path === '/reviews';
+  const isProfileActive = path === '/profile';
+  const isDashboardActive = path === '/dashboard';
+
+  const isCachedPageActive = isMapActive || isExploreActive || isReviewsActive|| isProfileActive || isDashboardActive;
+
+  if (isFullScreenRoute) {
+    return (
       <Routes>
-        {/* 🚀 NEW PUBLIC FRONT DOOR */}
         <Route path="/" element={<LandingPage />} />
-
-        {/* PUBLIC ROUTES */}
-        <Route path="/map" element={<AppLayout><MapPage /></AppLayout>} />
-        <Route path="/explore" element={<AppLayout><ExplorePage /></AppLayout>} />
-        <Route path="/store/:id" element={<AppLayout><StoreProfilePage /></AppLayout>} />
-        <Route path="/reviews" element={<AppLayout><ReviewsFeedPage /></AppLayout>} />
-        <Route path="/user/:id" element={<AppLayout><PublicUserProfilePage /></AppLayout>} />
-        
-        {/* 🚀 CONSUMER PROTECTED ROUTES (Requires Login, any role) */}
-        <Route path="/profile" element={<AppLayout><ProfilePage /></AppLayout>} />
-        
-        {/* 🚀 IDENTITY VERIFICATION ROUTE */}
-        <Route path="/identity-verification" element={<ProtectedRoute><AppLayout><IdentityVerificationPage /></AppLayout></ProtectedRoute>} />
-        
-        {/* The new upgrade path! */}
-        <Route path="/create-business" element={<ProtectedRoute><AppLayout><CreateBusinessPage /></AppLayout></ProtectedRoute>} />
-
-        {/* 🚀 MERCHANT PROTECTED ROUTE (Requires Login AND specific roles) */}
-        <Route path="/dashboard" element={<ProtectedRoute allowedRoles={['merchant', 'operator']}><AppLayout><DashboardPage /></AppLayout></ProtectedRoute>} />
-        <Route path="/billing" element={<ProtectedRoute allowedRoles={['merchant']}><AppLayout><BillingPage /></AppLayout></ProtectedRoute>} />
-
-        {/* FULL SCREEN AUTH & LEGAL ROUTES */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} /> 
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/update-password" element={<UpdatePasswordPage />} />
-        
-        {/* 🚀 YOUR NEW LEGAL ROUTES */}
         <Route path="/terms" element={<TermsOfService />} />
         <Route path="/privacy" element={<PrivacyPolicy />} />
-        
       </Routes>
-    </BrowserRouter>
+    );
+  }
+
+  return (
+    // 🚀 AppLayout wraps EVERYTHING. It never unmounts, fixing the auth flicker!
+    <AppLayout>
+      
+      {/* ========================================================= */}
+      {/* THE CACHE BLOCK: These 4 pages mount once and never die   */}
+      {/* ========================================================= */}
+      <div style={{ display: isMapActive ? 'block' : 'none', height: '100%', width: '100%' }}>
+        <MapPage />
+      </div>
+      
+      <div style={{ display: isExploreActive ? 'block' : 'none', height: '100%', width: '100%' }}>
+        <ExplorePage />
+      </div>
+      
+      <div style={{ display: isReviewsActive ? 'block' : 'none', height: '100%', width: '100%' }}>
+        <ReviewsFeedPage />
+      </div>
+
+
+      <div style={{ display: isProfileActive ? 'block' : 'none', height: '100%', width: '100%' }}>
+        <ProfilePage />
+      </div>
+
+      <div style={{ display: isDashboardActive ? 'block' : 'none', height: '100%', width: '100%' }}>
+        <ProtectedRoute allowedRoles={['merchant', 'operator']}>
+          <DashboardPage />
+        </ProtectedRoute>
+      </div>
+
+      {/* ========================================================= */}
+      {/* DYNAMIC ROUTES: Sub-pages load normally only when visited */}
+      {/* ========================================================= */}
+      {!isCachedPageActive && (
+        <Routes>
+          <Route path="/store/:id" element={<StoreProfilePage />} />
+          <Route path="/user/:id" element={<PublicUserProfilePage />} />
+          
+          {/* Notice <Route path="/profile" ... /> has been removed from here! */}
+          
+          <Route path="/identity-verification" element={<ProtectedRoute><IdentityVerificationPage /></ProtectedRoute>} />
+          <Route path="/create-business" element={<ProtectedRoute><CreateBusinessPage /></ProtectedRoute>} />
+
+          <Route path="/billing" element={<ProtectedRoute allowedRoles={['merchant']}><BillingPage /></ProtectedRoute>} />
+        </Routes>
+      )}
+
+    </AppLayout>
+  );
+};
+
+function App() {
+  return (
+    <ThemeProvider>
+      <BrowserRouter>
+        <AppRoutes />
+      </BrowserRouter>
     </ThemeProvider>
   );
 }

@@ -9,9 +9,11 @@ import { useTheme } from '../components/ThemeContext';
 import NotificationBell from '../components/NotificationBell'; 
 import { 
   MdSearch, MdTune, MdExpandMore, MdLocationOn, 
-  MdStorefront, MdFastfood, MdClose, MdStar, MdChevronLeft, 
+  MdStorefront, MdClose, MdStar, MdChevronLeft, 
   MdChevronRight, MdOutlineNearMe, MdDarkMode, MdLightMode, MdPersonOutline,
-  MdSpa, MdLocalHospital, MdDirectionsCar, MdHotel, MdHomeRepairService, MdBusinessCenter, MdGridView
+  MdGridView, MdRestaurant, MdShoppingCart, MdLocalHospital, 
+  MdDirectionsCar, MdFaceRetouchingNatural, MdHotel, 
+  MdHomeRepairService, MdAccountBalance
 } from "react-icons/md";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || '';
@@ -38,22 +40,21 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
   const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  return R * c;
+  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
 };
 
-// 🚀 FIXED: Category Icons now exactly match the map markers, including the Grid View for 'All'
+
 const getCategoryIcon = (cat) => {
   switch(cat) {
     case 'All': return <MdGridView size={18} />;
-    case 'Food & Dining': return <MdFastfood size={18} />;
-    case 'Grocery & Retail': return <MdStorefront size={18} />;
-    case 'Beauty & Personal Care': return <MdSpa size={18} />;
+    case 'Food & Dining': return <MdRestaurant size={18} />;
+    case 'Grocery & Retail': return <MdShoppingCart size={18} />;
     case 'Health & Medical': return <MdLocalHospital size={18} />;
     case 'Automotive': return <MdDirectionsCar size={18} />;
+    case 'Beauty & Personal Care': return <MdFaceRetouchingNatural size={18} />;
     case 'Travel & Accommodation': return <MdHotel size={18} />;
     case 'Home & Professional Services': return <MdHomeRepairService size={18} />;
-    case 'Financial & Business': return <MdBusinessCenter size={18} />;
+    case 'Financial & Business': return <MdAccountBalance size={18} />;
     default: return <MdGridView size={18} />;
   }
 };
@@ -65,6 +66,7 @@ export default function MapPage() {
   const { isDarkMode, toggleDarkMode } = useTheme();
   const categoryScrollRef = useRef(null);
   const dragState = useRef({ isDown: false, startX: 0, scrollLeft: 0 });
+  const animationRef = useRef(null); 
   
   const popupRef = useRef(new mapboxgl.Popup({ 
     offset: [0, -38], 
@@ -85,7 +87,15 @@ export default function MapPage() {
   useEffect(() => { selectedStoreRef.current = selectedStore; }, [selectedStore]);
 
   const [activeLocation, setActiveLocation] = useState(TABLAS_MUNICIPALITIES[0]); 
+  
+  // 🚀 Track location safely for the device orientation events
   const [actualUserLocation, setActualUserLocation] = useState(null);
+  const actualUserLocationRef = useRef(null);
+  
+  // 🚀 Track the device's physical heading direction
+  const headingRef = useRef(0);
+
+  const [showPermissionModal, setShowPermissionModal] = useState(false);
 
   const [isLocationDropdownOpen, setIsLocationDropdownOpen] = useState(false);
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false); 
@@ -122,16 +132,6 @@ export default function MapPage() {
     textMuted: isDarkMode ? '#94A3B8' : '#64748B',
     hover: isDarkMode ? '#334155' : '#F8FAFC',
   };
-
-  useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => setActualUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        (err) => console.log("Silent GPS fallback:", err),
-        { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
-      );
-    }
-  }, []);
 
   const checkScrollArrows = () => {
     if (!categoryScrollRef.current) return;
@@ -172,55 +172,103 @@ export default function MapPage() {
     }
   };
 
-  // 🚀 FIXED: Spinner stays active while fetching GPS AND during map flight animation
+  // 🚀 NEW: Updates the user-location data source instantly for both GPS and Heading changes
+  const updateUserMapSource = (lng, lat, heading, isVisible = true) => {
+    if (map.current) {
+      const source = map.current.getSource('user-location');
+      if (source) {
+        source.setData({
+          type: 'Feature', 
+          geometry: { type: 'Point', coordinates: [lng, lat] }, 
+          properties: { heading: heading, opacity: isVisible ? 1 : 0 }
+        });
+      }
+    }
+  };
+
+  // 🚀 NEW: Parses the mobile device gyroscope hardware to aim the flashlight
+  const handleDeviceOrientation = (e) => {
+    let heading = null;
+    if (e.webkitCompassHeading) {
+      // iOS
+      heading = e.webkitCompassHeading;
+    } else if (e.alpha !== null) {
+      // Android (approximate absolute mapping)
+      heading = 360 - e.alpha; 
+    }
+    
+    if (heading !== null && actualUserLocationRef.current) {
+      headingRef.current = heading;
+      updateUserMapSource(actualUserLocationRef.current.lng, actualUserLocationRef.current.lat, heading, true);
+    }
+  };
+
+  // 🚀 NEW: Requests permission to access the gyroscope (Mandatory for iOS 13+)
+  const requestOrientationPermission = () => {
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      DeviceOrientationEvent.requestPermission()
+        .then(permissionState => {
+          if (permissionState === 'granted') window.addEventListener('deviceorientation', handleDeviceOrientation, true);
+        })
+        .catch(console.warn);
+    } else {
+      window.addEventListener('deviceorientationabsolute', handleDeviceOrientation, true);
+    }
+  };
+
+  // 🚀 FIXED: Smart error routing to instantly catch OS-level and Browser-level blocks
   const handleLocateUser = () => {
     if (!navigator.geolocation || !map.current) {
-      alert("Geolocation is not supported by your browser.");
+      console.warn("Geolocation is not supported by your browser.");
       return;
     }
 
-    // Start spinner INSTANTLY upon click
     setIsLocating(true);
+    requestOrientationPermission();
+
+    const handleSuccess = (pos) => {
+      const { longitude, latitude } = pos.coords;
+      setActualUserLocation({ lat: latitude, lng: longitude });
+      actualUserLocationRef.current = { lat: latitude, lng: longitude };
+
+      updateUserMapSource(longitude, latitude, headingRef.current, true);
+      
+      map.current.once('moveend', () => setIsLocating(false));
+      map.current.flyTo({ center: [longitude, latitude], zoom: 18.5, pitch: 60, speed: 1.5 });
+    };
+
+    const handleError = (err) => {
+      // 🚀 Error Code 1 means Permission Denied (either by the Browser OR the Windows/OS settings)
+      if (err.code === 1) {
+        setIsLocating(false);
+        setShowPermissionModal(true);
+        return;
+      }
+
+      console.warn("High accuracy failed, trying basic location...", err.message);
+      
+      // If it was a Timeout (Code 3) or Signal Unavailable (Code 2), try the lightweight fallback
+      navigator.geolocation.getCurrentPosition(
+        handleSuccess,
+        (fallbackErr) => {
+          setIsLocating(false);
+          if (fallbackErr.code === 1) {
+            setShowPermissionModal(true);
+          } else {
+            alert("We couldn't get a GPS signal. Please make sure your device's location services are turned on.");
+          }
+        },
+        { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+      );
+    };
 
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const { longitude, latitude, heading } = pos.coords;
-        setActualUserLocation({ lat: latitude, lng: longitude });
-
-        const source = map.current.getSource('user-location');
-        if (source) {
-          source.setData({
-            type: 'Feature', 
-            geometry: { type: 'Point', coordinates: [longitude, latitude] }, 
-            properties: { heading: heading || 0 }
-          });
-        }
-        
-        // Wait for the map to FINISH moving before stopping the spinner
-        map.current.once('moveend', () => {
-          setIsLocating(false);
-        });
-        
-        map.current.flyTo({ center: [longitude, latitude], zoom: 18.5, pitch: 60, speed: 1.5 });
-      },
-      (err) => {
-        console.warn("Geolocation error:", err.message);
-        setIsLocating(false); // Guarantee spinner stops immediately on failure
-        
-        if (err.code === 1) { // PERMISSION_DENIED
-          alert("Location access denied. Please click the lock icon in your address bar to allow location.");
-        } else if (err.code === 2) { // POSITION_UNAVAILABLE
-          alert("Location information is currently unavailable. Please check your device's GPS or network connection.");
-        } else if (err.code === 3) { // TIMEOUT
-          alert("The location request timed out. Please try again.");
-        } else {
-          alert("Could not determine your location. Please try again.");
-        }
-      },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 } 
+      handleSuccess,
+      handleError,
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
     );
   };
-
+  
   useEffect(() => {
     const fetchUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -293,53 +341,174 @@ export default function MapPage() {
       updateMapState();
       setIsDataLoaded(true);
 
-      map.current.addModel('user-model', '/user-model.glb');
-      
+      // 1. Initialize the Source Container (Hidden until user locates)
       map.current.addSource('user-location', {
         type: 'geojson',
-        data: { type: 'Feature', geometry: { type: 'Point', coordinates: [0,0] }, properties: { heading: 0 } }
+        data: { type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { heading: 0, opacity: 0 } }
       });
 
-      // 🚀 FIXED: Added a robust 2D dot fallback in case the 3D model fails on mobile WebGL
+      // 2. Generate the Flashlight SVG (Dynamic 90-degree Wedge)
+      const flashlightSvg = `
+        <svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <radialGradient id="grad" cx="50%" cy="50%" r="50%">
+              <stop offset="0%" stop-color="#1877F2" stop-opacity="0.5"/>
+              <stop offset="100%" stop-color="#1877F2" stop-opacity="0.0"/>
+            </radialGradient>
+          </defs>
+          <path d="M 100 100 L 29.3 29.3 A 100 100 0 0 1 170.7 29.3 Z" fill="url(#grad)"/>
+        </svg>
+      `;
+      
+      const img = new Image();
+      img.onload = () => {
+        if (map.current && !map.current.hasImage('flashlight-icon')) {
+          map.current.addImage('flashlight-icon', img);
+        }
+      };
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(flashlightSvg);
+
+      // 3. Add Flashlight Layer (Rotates with Gyroscope, lays flat on Map)
+      map.current.addLayer({
+        id: 'user-flashlight',
+        type: 'symbol',
+        source: 'user-location',
+        layout: {
+          'icon-image': 'flashlight-icon',
+          'icon-pitch-alignment': 'map',     // Forces cone onto the 3D ground
+          'icon-rotation-alignment': 'map',  // Links rotation to map orientation
+          'icon-rotate': ['get', 'heading'], // Targets device compass
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true
+        },
+        paint: {
+          'icon-opacity': ['get', 'opacity']
+        }
+      });
+
+      // 4. Add the Sonar Pulse Ring Layer
+      map.current.addLayer({
+        id: 'user-pulse',
+        type: 'circle',
+        source: 'user-location',
+        paint: {
+          'circle-radius': 0,
+          'circle-color': '#1877F2',
+          'circle-opacity': 1,
+          'circle-stroke-width': 1,
+          'circle-stroke-color': '#1877F2',
+          'circle-pitch-alignment': 'map'
+        }
+      });
+
+      // 5. Add the Solid Core Location Dot Layer
       map.current.addLayer({
         id: 'user-core',
         type: 'circle',
         source: 'user-location',
         paint: {
-          'circle-radius': 8,
-          'circle-color': '#1877F2', // Hardcoded hex for mapbox (matches var(--brand-primary))
+          'circle-radius': 7,
+          'circle-color': '#1877F2',
           'circle-stroke-width': 3,
-          'circle-stroke-color': '#FFFFFF'
+          'circle-stroke-color': '#FFFFFF',
+          'circle-pitch-alignment': 'map',
+          'circle-opacity': ['get', 'opacity'],
+          'circle-stroke-opacity': ['get', 'opacity']
         }
       });
+
+                  // 4. Add the Sonar Pulse Ring Layer (single ring, transitions disabled)
+      const PULSE_DURATION = 4000;   // total ms per cycle (bigger = slower)
+      const PULSE_ACTIVE = 0.75;     // fraction of the cycle the ring is visible (rest is a pause)
+      const PULSE_MIN_RADIUS = 7;
+      const PULSE_MAX_RADIUS = 52;
+
+      if (map.current.getLayer('user-pulse')) map.current.removeLayer('user-pulse');
 
       map.current.addLayer({
         id: 'user-pulse',
         type: 'circle',
         source: 'user-location',
         paint: {
-          'circle-radius': 25,
+          'circle-radius': PULSE_MIN_RADIUS,
           'circle-color': '#1877F2',
-          'circle-opacity': 0.25,
-          'circle-stroke-width': 2,
+          'circle-opacity': 0,
+          'circle-stroke-width': 1.5,
           'circle-stroke-color': '#1877F2',
-          'circle-pitch-alignment': 'map'
+          'circle-stroke-opacity': 0,
+          'circle-pitch-alignment': 'map',
+          // Disable Mapbox's default interpolation so the ring never visibly shrinks back
+          'circle-radius-transition': { duration: 0 },
+          'circle-opacity-transition': { duration: 0 },
+          'circle-stroke-opacity-transition': { duration: 0 }
         }
       });
+
+      // 5. Add the Solid Core Location Dot Layer (added after the ring so it sits on top)
+      if (map.current.getLayer('user-core')) map.current.removeLayer('user-core');
 
       map.current.addLayer({
-        id: 'user-model-layer',
-        type: 'model',
+        id: 'user-core',
+        type: 'circle',
         source: 'user-location',
-        layout: {
-          'model-id': 'user-model',
-          'model-scale': [5, 5, 5], 
-          'model-rotation': [0, 0, ['get', 'heading']], 
+        paint: {
+          'circle-radius': 7,
+          'circle-color': '#1877F2',
+          'circle-stroke-width': 3,
+          'circle-stroke-color': '#FFFFFF',
+          'circle-pitch-alignment': 'map',
+          'circle-opacity': ['get', 'opacity'],
+          'circle-stroke-opacity': ['get', 'opacity']
         }
       });
+
+      // 6. Animation Loop: one slow ripple at a time, with a pause between pulses
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+
+      const isVisible = ['==', ['get', 'opacity'], 1];
+
+      const animateMarker = (timestamp) => {
+        if (!map.current || !map.current.getLayer('user-pulse')) return;
+
+        const cycle = (timestamp % PULSE_DURATION) / PULSE_DURATION;
+
+        let radius = PULSE_MIN_RADIUS;
+        let opacity = 0;
+
+        if (cycle < PULSE_ACTIVE) {
+          const progress = cycle / PULSE_ACTIVE; // 0 -> 1 during the visible part
+
+          // Ease-out: expands quickly at first, then slows toward the edge
+          const eased = 1 - Math.pow(1 - progress, 2);
+          radius = PULSE_MIN_RADIUS + (PULSE_MAX_RADIUS - PULSE_MIN_RADIUS) * eased;
+
+          // Soft fade in, smooth fade out. Opacity hits 0 at both ends,
+          // so the restart (and the rest period) is invisible.
+          const fadeIn = Math.min(progress / 0.1, 1);
+          const fadeOut = 1 - Math.pow(progress, 1.5);
+          opacity = fadeIn * fadeOut;
+        }
+
+        map.current.setPaintProperty('user-pulse', 'circle-radius', radius);
+        map.current.setPaintProperty('user-pulse', 'circle-opacity', [
+          'case', isVisible, opacity * 0.25, 0
+        ]);
+        map.current.setPaintProperty('user-pulse', 'circle-stroke-opacity', [
+          'case', isVisible, opacity, 0
+        ]);
+
+        animationRef.current = requestAnimationFrame(animateMarker);
+      };
+
+      animationRef.current = requestAnimationFrame(animateMarker);
     });
 
-    return () => { if (map.current) { map.current.remove(); map.current = null; } };
+    return () => { 
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      window.removeEventListener('deviceorientation', handleDeviceOrientation, true);
+      window.removeEventListener('deviceorientationabsolute', handleDeviceOrientation, true);
+      if (map.current) { map.current.remove(); map.current = null; } 
+    };
   }, []);
 
   useEffect(() => {
@@ -522,7 +691,7 @@ export default function MapPage() {
               </div>
             </div>
             
-            <button id="view-store-btn" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; background: #1877F2; color: white; border: none; outline: none; -webkit-tap-highlight-color: transparent; padding: 8px; border-radius: 8px; font-weight: 800; font-size: 12px; cursor: pointer; transition: background-color 0.2s;">
+            <button id="view-store-btn" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; background: var(--brand-primary); color: white; border: none; outline: none; -webkit-tap-highlight-color: transparent; padding: 8px; border-radius: 8px; font-weight: 800; font-size: 12px; cursor: pointer; transition: background-color 0.2s;">
               View Full Details
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
             </button>
@@ -557,7 +726,6 @@ export default function MapPage() {
         .mapboxgl-ctrl-logo, .mapboxgl-ctrl-attrib { display: none !important; }
         .custom-scrollbar::-webkit-scrollbar { display: none; }
 
-        /* 🚀 STRICT CSS ISOLATION BETWEEN DESKTOP AND MOBILE */
         .desktop-ui { display: block; }
         .mobile-ui-block { display: none; }
         .mobile-ui-flex { display: none; }
@@ -568,7 +736,25 @@ export default function MapPage() {
           .mobile-ui-flex { display: flex !important; }
         }
       `}</style>
-
+{/* 🚀 PERMISSION DENIED MODAL */}
+      {showPermissionModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: isDarkMode ? 'rgba(15, 23, 42, 0.7)' : 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)', zIndex: 999999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+          <div style={{ backgroundColor: bgColors.primary, padding: '24px', borderRadius: '24px', width: '90%', maxWidth: '340px', boxShadow: '0 20px 40px rgba(0,0,0,0.15)', textAlign: 'center' }}>
+            <div style={{ width: '56px', height: '56px', backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '0 auto 16px auto' }}>
+              <MdLocationOn size={32} color="var(--danger, #EF4444)" />
+            </div>
+            <h3 style={{ margin: '0 0 12px 0', fontSize: '18px', fontWeight: '800', color: bgColors.textMain }}>Location Access Disabled</h3>
+            <p style={{ margin: '0 0 24px 0', fontSize: '14px', color: bgColors.textMuted, lineHeight: '1.5', fontWeight: '500' }}>
+              To show nearby stores, LocalLook needs access to your location. <br/><br/>
+              Please enable location services in your device or browser settings, and try again.
+            </p>
+            <button onClick={() => setShowPermissionModal(false)} style={{ width: '100%', padding: '14px', backgroundColor: 'var(--brand-primary)', color: '#FFFFFF', border: 'none', borderRadius: '12px', fontWeight: '800', fontSize: '15px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(24, 119, 242, 0.2)' }}>
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
+      
       {/* 🚀 SHARED FILTERS MODAL */}
       {isFilterOpen && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: isDarkMode ? 'rgba(15, 23, 42, 0.7)' : 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)', zIndex: 999999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
@@ -579,7 +765,6 @@ export default function MapPage() {
               <button onClick={() => setIsFilterOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: bgColors.textMuted }}><MdClose size={22} /></button>
             </div>
 
-            {/* 🚀 MOBILE CATEGORIES DROPDOWN (ONLY VISIBLE ON MOBILE) */}
             <div className="mobile-ui-block" style={{ marginBottom: '24px' }}>
               <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: bgColors.textMuted, marginBottom: '8px' }}>Category</label>
               <div style={{ position: 'relative' }}>
@@ -755,7 +940,10 @@ export default function MapPage() {
             
             <div style={{ pointerEvents: 'auto' }}>
               {session ? (
-                <div onClick={() => navigate('/profile')} style={{ width: '42px', height: '42px', borderRadius: '50%', backgroundImage: `url('${profile?.avatar_url || `https://ui-avatars.com/api/?name=${profile?.display_name || 'User'}&background=EFF6FF&color=1877F2`}')`, backgroundSize: 'cover', backgroundPosition: 'center', cursor: 'pointer', border: `2px solid ${bgColors.primary}`, boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }} />
+                <div onClick={() => navigate('/profile')} style={{ width: '42px', height: '42px', borderRadius: '50%', backgroundColor: bgColors.primary, backgroundImage: `url('${profile?.avatar_url || `https://ui-avatars.com/api/?name=${profile?.display_name || 'User'}&background=EFF6FF&color=1877F2`}')`, backgroundSize: 'cover', backgroundPosition: 'center', cursor: 'pointer', border: `2px solid ${bgColors.border}`, boxShadow: '0 4px 15px rgba(0,0,0,0.08)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                  {/* 🚀 Placeholder fallback if no avatar URL exists */}
+                  {!profile?.avatar_url && <MdPersonOutline size={24} color={bgColors.textMuted} />}
+                </div>
               ) : (
                 <button onClick={() => navigate('/login')} style={{ padding: '0 20px', height: '42px', backgroundColor: 'var(--brand-primary)', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '700', fontSize: '13.5px', cursor: 'pointer' }}>Sign In</button>
               )}
@@ -818,15 +1006,15 @@ export default function MapPage() {
 
             <div style={{ display: 'flex', gap: '12px', position: 'relative' }}>
               
-              <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: '24px', padding: '0 16px', height: '48px', flexGrow: 1, boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
-                <MdSearch size={24} color="#64748B" />
-                <input type="text" placeholder="Search places, stores..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} onFocus={() => setIsSearchFocused(true)} style={{ border: 'none', background: 'transparent', flexGrow: 1, outline: 'none', color: '#0F172A', fontSize: '15px', marginLeft: '10px', fontWeight: '500', height: '100%', width: '100%' }} />
+              <div style={{ display: 'flex', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: '20px', padding: '0 14px', height: '42px', flexGrow: 1, boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
+                <MdSearch size={20} color="#64748B" />
+                <input type="text" placeholder="Search places, stores..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} onFocus={() => setIsSearchFocused(true)} style={{ border: 'none', background: 'transparent', flexGrow: 1, outline: 'none', color: '#0F172A', fontSize: '14px', marginLeft: '8px', fontWeight: '500', height: '100%', width: '100%' }} />
               </div>
               
-              <button onClick={() => setIsFilterOpen(true)} style={{ width: '48px', height: '48px', backgroundColor: '#FFFFFF', borderRadius: '14px', border: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', color: 'var(--brand-primary)', flexShrink: 0, position: 'relative' }}>
-                <MdTune size={24} />
+              <button onClick={() => setIsFilterOpen(true)} style={{ width: '42px', height: '42px', backgroundColor: '#FFFFFF', borderRadius: '12px', border: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', color: 'var(--brand-primary)', flexShrink: 0, position: 'relative' }}>
+                <MdTune size={20} />
                 {(activeCategory !== 'All' || filters.openNow || filters.distance < 10) && (
-                  <span style={{ position: 'absolute', top: '10px', right: '10px', width: '10px', height: '10px', backgroundColor: 'var(--danger)', borderRadius: '50%', border: '2px solid #FFFFFF' }} />
+                  <span style={{ position: 'absolute', top: '8px', right: '8px', width: '10px', height: '10px', backgroundColor: 'var(--danger)', borderRadius: '50%', border: '2px solid #FFFFFF' }} />
                 )}
               </button>
 
@@ -877,4 +1065,4 @@ export default function MapPage() {
       </div>
     </>
   );
-}
+};
