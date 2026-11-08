@@ -702,6 +702,19 @@ app.patch('/api/users/:id', verifyUser, async (req, res) => {
 // ---------------------------------------------------------
 // 🚀 PUBLIC ENDPOINTS (Read-Only)
 // ---------------------------------------------------------
+
+// 🚀 Keep-Alive Ping (Prevents Render and Supabase from sleeping)
+app.get('/api/keep-awake', async (req, res) => {
+  try {
+    // Ultra-lightweight query to keep the DB connection and Render server awake
+    await db.query('SELECT 1');
+    res.status(200).json({ status: "Awake", time: new Date().toISOString() });
+  } catch (err) { 
+    console.error("Keep-awake error:", err);
+    res.status(500).json({ status: "Error waking up" }); 
+  }
+});
+
 app.get('/api/merchant/stores/:user_id', async (req, res) => {
   try {
     const { user_id } = req.params;
