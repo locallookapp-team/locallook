@@ -24,7 +24,6 @@ import BillingPage from './pages/BillingPage';
 import TermsOfService from './pages/TermsOfService';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 
-// 🚀 Wrap the routing in a sub-component so we can access useLocation()
 const AppRoutes = () => {
   const location = useLocation();
   const path = location.pathname;
@@ -38,17 +37,15 @@ const AppRoutes = () => {
     return () => { authListener.subscription.unsubscribe(); };
   }, []);
 
-  // Isolate pages that don't need the sidebar (Logins, Landing, Policies)
+  // Isolate pages that don't need the sidebar
   const isFullScreenRoute = ['/', '/login', '/signup', '/forgot-password', '/update-password', '/terms', '/privacy'].includes(path);
   
-  // Track which cached page is currently active
+  // 🚀 Track ONLY the public heavy pages for the permanent cache
   const isMapActive = path === '/map';
   const isExploreActive = path === '/explore';
   const isReviewsActive = path === '/reviews';
-  const isProfileActive = path === '/profile';
-  const isDashboardActive = path === '/dashboard';
 
-  const isCachedPageActive = isMapActive || isExploreActive || isReviewsActive|| isProfileActive || isDashboardActive;
+  const isCachedPageActive = isMapActive || isExploreActive || isReviewsActive;
 
   if (isFullScreenRoute) {
     return (
@@ -65,11 +62,10 @@ const AppRoutes = () => {
   }
 
   return (
-    // 🚀 AppLayout wraps EVERYTHING. It never unmounts, fixing the auth flicker!
     <AppLayout>
       
       {/* ========================================================= */}
-      {/* THE CACHE BLOCK: These 4 pages mount once and never die   */}
+      {/* 🌍 THE PUBLIC CACHE BLOCK: Heavy maps & feeds mount once  */}
       {/* ========================================================= */}
       <div style={{ display: isMapActive ? 'block' : 'none', height: '100%', width: '100%' }}>
         <MapPage />
@@ -83,30 +79,29 @@ const AppRoutes = () => {
         <ReviewsFeedPage />
       </div>
 
-
-      <div style={{ display: isProfileActive ? 'block' : 'none', height: '100%', width: '100%' }}>
-        <ProfilePage />
-      </div>
-
-      <div style={{ display: isDashboardActive ? 'block' : 'none', height: '100%', width: '100%' }}>
-        <ProtectedRoute allowedRoles={['merchant', 'operator']}>
-          <DashboardPage />
-        </ProtectedRoute>
-      </div>
-
       {/* ========================================================= */}
-      {/* DYNAMIC ROUTES: Sub-pages load normally only when visited */}
+      {/* 🔒 DYNAMIC ROUTES: Protected & Sub-pages load on demand   */}
       {/* ========================================================= */}
       {!isCachedPageActive && (
         <Routes>
           <Route path="/store/:id" element={<StoreProfilePage />} />
           <Route path="/user/:id" element={<PublicUserProfilePage />} />
           
-          {/* Notice <Route path="/profile" ... /> has been removed from here! */}
+          {/* 🚀 Moved Profile and Dashboard here so their Auth Guards don't fire prematurely */}
+          <Route path="/profile" element={
+            <ProtectedRoute>
+              <ProfilePage />
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/dashboard" element={
+            <ProtectedRoute allowedRoles={['merchant', 'operator']}>
+              <DashboardPage />
+            </ProtectedRoute>
+          } />
           
           <Route path="/identity-verification" element={<ProtectedRoute><IdentityVerificationPage /></ProtectedRoute>} />
           <Route path="/create-business" element={<ProtectedRoute><CreateBusinessPage /></ProtectedRoute>} />
-
           <Route path="/billing" element={<ProtectedRoute allowedRoles={['merchant']}><BillingPage /></ProtectedRoute>} />
         </Routes>
       )}

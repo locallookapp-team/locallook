@@ -13,7 +13,7 @@ import {
   MdChevronRight, MdOutlineNearMe, MdDarkMode, MdLightMode, MdPersonOutline,
   MdGridView, MdRestaurant, MdShoppingCart, MdLocalHospital, 
   MdDirectionsCar, MdFaceRetouchingNatural, MdHotel, 
-  MdHomeRepairService, MdAccountBalance
+  MdHomeRepairService, MdAccountBalance, MdFastfood
 } from "react-icons/md";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || '';
@@ -43,7 +43,6 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
   return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
 };
 
-
 const getCategoryIcon = (cat) => {
   switch(cat) {
     case 'All': return <MdGridView size={18} />;
@@ -64,6 +63,10 @@ export default function MapPage() {
   const map = useRef(null);
   const markersRef = useRef({}); 
   const { isDarkMode, toggleDarkMode } = useTheme();
+  
+  // 🚀 REF: Tracks if the theme actually changed to stop double-loading
+  const appliedThemeRef = useRef(isDarkMode ? 'dark' : 'light');
+  
   const categoryScrollRef = useRef(null);
   const dragState = useRef({ isDown: false, startX: 0, scrollLeft: 0 });
   const animationRef = useRef(null); 
@@ -88,15 +91,11 @@ export default function MapPage() {
 
   const [activeLocation, setActiveLocation] = useState(TABLAS_MUNICIPALITIES[0]); 
   
-  // 🚀 Track location safely for the device orientation events
   const [actualUserLocation, setActualUserLocation] = useState(null);
   const actualUserLocationRef = useRef(null);
-  
-  // 🚀 Track the device's physical heading direction
   const headingRef = useRef(0);
 
   const [showPermissionModal, setShowPermissionModal] = useState(false);
-
   const [isLocationDropdownOpen, setIsLocationDropdownOpen] = useState(false);
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false); 
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false); 
@@ -146,6 +145,117 @@ export default function MapPage() {
     return () => window.removeEventListener('resize', checkScrollArrows);
   }, [categories]);
 
+  // 🚀 NEW: Silent Auto-Locator for returning users
+  useEffect(() => {
+    if (navigator.permissions && navigator.geolocation) {
+      navigator.permissions.query({ name: 'geolocation' }).then((result) => {
+        if (result.state === 'granted') {
+          requestOrientationPermission();
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              const { longitude, latitude } = pos.coords;
+              setActualUserLocation({ lat: latitude, lng: longitude });
+              actualUserLocationRef.current = { lat: latitude, lng: longitude };
+            },
+            () => {}, // Fail silently
+            { enableHighAccuracy: true, timeout: 5000, maximumAge: 60000 }
+          );
+        }
+      });
+    }
+  }, []);
+
+  const updateUserMapSource = (lng, lat, heading, isVisible = true) => {
+    if (map.current) {
+      const source = map.current.getSource('user-location');
+      if (source) {
+        source.setData({
+          type: 'Feature', 
+          geometry: { type: 'Point', coordinates: [lng, lat] }, 
+          properties: { heading: heading, opacity: isVisible ? 1 : 0 }
+        });
+      }
+    }
+  };
+
+  // 🚀 FOOLPROOF SYNC: Guarantees the blue dot appears the exact second both the map and GPS are ready
+  useEffect(() => {
+    if (isDataLoaded && actualUserLocation && map.current) {
+      if (map.current.getSource('user-location')) {
+        updateUserMapSource(actualUserLocation.lng, actualUserLocation.lat, headingRef.current, true);
+      }
+    }
+  }, [actualUserLocation, isDataLoaded]); 
+
+  const handleDeviceOrientation = (e) => {
+    let heading = null;
+    if (e.webkitCompassHeading) {
+      heading = e.webkitCompassHeading;
+    } else if (e.alpha !== null) {
+      heading = 360 - e.alpha; 
+    }
+    
+    if (heading !== null && actualUserLocationRef.current) {
+      headingRef.current = heading;
+      updateUserMapSource(actualUserLocationRef.current.lng, actualUserLocationRef.current.lat, heading, true);
+    }
+  };
+
+  const requestOrientationPermission = () => {
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      DeviceOrientationEvent.requestPermission()
+        .then(permissionState => {
+          if (permissionState === 'granted') window.addEventListener('deviceorientation', handleDeviceOrientation, true);
+        })
+        .catch(console.warn);
+    } else {
+      window.addEventListener('deviceorientationabsolute', handleDeviceOrientation, true);
+    }
+  };
+
+  const handleLocateUser = () => {
+    if (!navigator.geolocation || !map.current) return;
+
+    setIsLocating(true);
+    requestOrientationPermission();
+
+    const handleSuccess = (pos) => {
+      const { longitude, latitude } = pos.coords;
+      setActualUserLocation({ lat: latitude, lng: longitude });
+      actualUserLocationRef.current = { lat: latitude, lng: longitude };
+
+      updateUserMapSource(longitude, latitude, headingRef.current, true);
+      
+      map.current.once('moveend', () => setIsLocating(false));
+      map.current.flyTo({ center: [longitude, latitude], zoom: 18.5, pitch: 60, speed: 1.5 });
+    };
+
+    const handleError = (err) => {
+      console.warn("High accuracy failed, falling back to basic location...", err.message);
+
+      navigator.geolocation.getCurrentPosition(
+        handleSuccess,
+        (fallbackErr) => {
+          setIsLocating(false);
+          if (navigator.permissions) {
+            navigator.permissions.query({ name: 'geolocation' }).then((result) => {
+              if (result.state === 'denied') setShowPermissionModal(true); 
+            });
+          } else {
+            if (fallbackErr.code === 1) setShowPermissionModal(true);
+          }
+        },
+        { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+      );
+    };
+
+    navigator.geolocation.getCurrentPosition(
+      handleSuccess,
+      handleError,
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+    );
+  };
+
   const handleMouseDown = (e) => {
     dragState.current.isDown = true;
     if (categoryScrollRef.current) {
@@ -170,102 +280,6 @@ export default function MapPage() {
       const walk = (x - dragState.current.startX) * 2; 
       categoryScrollRef.current.scrollLeft = dragState.current.scrollLeft - walk;
     }
-  };
-
-  // 🚀 NEW: Updates the user-location data source instantly for both GPS and Heading changes
-  const updateUserMapSource = (lng, lat, heading, isVisible = true) => {
-    if (map.current) {
-      const source = map.current.getSource('user-location');
-      if (source) {
-        source.setData({
-          type: 'Feature', 
-          geometry: { type: 'Point', coordinates: [lng, lat] }, 
-          properties: { heading: heading, opacity: isVisible ? 1 : 0 }
-        });
-      }
-    }
-  };
-
-  // 🚀 NEW: Parses the mobile device gyroscope hardware to aim the flashlight
-  const handleDeviceOrientation = (e) => {
-    let heading = null;
-    if (e.webkitCompassHeading) {
-      // iOS
-      heading = e.webkitCompassHeading;
-    } else if (e.alpha !== null) {
-      // Android (approximate absolute mapping)
-      heading = 360 - e.alpha; 
-    }
-    
-    if (heading !== null && actualUserLocationRef.current) {
-      headingRef.current = heading;
-      updateUserMapSource(actualUserLocationRef.current.lng, actualUserLocationRef.current.lat, heading, true);
-    }
-  };
-
-  // 🚀 NEW: Requests permission to access the gyroscope (Mandatory for iOS 13+)
-  const requestOrientationPermission = () => {
-    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-      DeviceOrientationEvent.requestPermission()
-        .then(permissionState => {
-          if (permissionState === 'granted') window.addEventListener('deviceorientation', handleDeviceOrientation, true);
-        })
-        .catch(console.warn);
-    } else {
-      window.addEventListener('deviceorientationabsolute', handleDeviceOrientation, true);
-    }
-  };
-
-  // 🚀 FIXED: Restored the low-accuracy fallback so desktop PCs can find a signal
-  const handleLocateUser = () => {
-    if (!navigator.geolocation || !map.current) return;
-
-    setIsLocating(true);
-    requestOrientationPermission();
-
-    const handleSuccess = (pos) => {
-      const { longitude, latitude } = pos.coords;
-      setActualUserLocation({ lat: latitude, lng: longitude });
-      actualUserLocationRef.current = { lat: latitude, lng: longitude };
-
-      // 🚀 This turns the pulse and flashlight VISIBLE
-      updateUserMapSource(longitude, latitude, headingRef.current, true);
-      
-      map.current.once('moveend', () => setIsLocating(false));
-      map.current.flyTo({ center: [longitude, latitude], zoom: 18.5, pitch: 60, speed: 1.5 });
-    };
-
-    const handleError = (err) => {
-      console.warn("High accuracy failed, falling back to basic location...", err.message);
-
-      // 🚀 Attempt 2: Try basic location (Crucial for desktop PCs and ethernet connections)
-      navigator.geolocation.getCurrentPosition(
-        handleSuccess,
-        (fallbackErr) => {
-          setIsLocating(false);
-          console.warn("Basic location also failed:", fallbackErr.message);
-
-          if (navigator.permissions) {
-            navigator.permissions.query({ name: 'geolocation' }).then((result) => {
-              if (result.state === 'denied') {
-                setShowPermissionModal(true); // Only show modal if explicitly blocked
-              }
-              // If granted but hardware fails, we fail silently without alerts!
-            });
-          } else {
-            if (fallbackErr.code === 1) setShowPermissionModal(true);
-          }
-        },
-        { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
-      );
-    };
-
-    // Attempt 1: Try high accuracy first
-    navigator.geolocation.getCurrentPosition(
-      handleSuccess,
-      handleError,
-      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
-    );
   };
 
   useEffect(() => {
@@ -307,7 +321,7 @@ export default function MapPage() {
       pitch: 60 
     });
     
-    map.current.on('idle', () => setIsMapLoaded(true));
+    map.current.on('load', () => setIsMapLoaded(true));
 
     const updateMapState = () => {
       const currentZoom = map.current.getZoom();
@@ -319,7 +333,12 @@ export default function MapPage() {
 
     map.current.on('move', updateMapState);
     map.current.on('zoom', updateMapState);
-    map.current.on('moveend', fetchStoresInBounds);
+    
+    let fetchTimeout;
+    map.current.on('moveend', () => {
+      if (fetchTimeout) clearTimeout(fetchTimeout);
+      fetchTimeout = setTimeout(() => fetchStoresInBounds(), 400);
+    });
 
     map.current.on('render', () => {
       Object.entries(markersRef.current).forEach(([id, marker]) => {
@@ -335,18 +354,60 @@ export default function MapPage() {
       });
     });
 
-    map.current.on('style.load', async () => {
-      await fetchStoresInBounds();
-      updateMapState();
+    // 🚀 FIXED: Safe Style Loader with Image Pre-check
+    map.current.on('style.load', () => {
       setIsDataLoaded(true);
+      fetchStoresInBounds().then(() => updateMapState());
+      
+      const savedLoc = actualUserLocationRef.current;
+      const initialCoords = savedLoc ? [savedLoc.lng, savedLoc.lat] : [0, 0];
+      const initialOpacity = savedLoc ? 1 : 0;
+      const initialHeading = headingRef.current || 0;
 
-      // 1. Initialize the Source Container (Hidden until user locates)
-      map.current.addSource('user-location', {
-        type: 'geojson',
-        data: { type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { heading: 0, opacity: 0 } }
-      });
+      if (!map.current.getSource('user-location')) {
+        map.current.addSource('user-location', {
+          type: 'geojson',
+          data: { type: 'Feature', geometry: { type: 'Point', coordinates: initialCoords }, properties: { heading: initialHeading, opacity: initialOpacity } }
+        });
+      }
 
-      // 2. Generate the Flashlight SVG (Dynamic 90-degree Wedge)
+      if (!map.current.getLayer('user-pulse')) {
+        map.current.addLayer({
+          id: 'user-pulse',
+          type: 'circle',
+          source: 'user-location',
+          paint: {
+            'circle-radius': 7,
+            'circle-color': '#1877F2',
+            'circle-opacity': 0,
+            'circle-stroke-width': 1.5,
+            'circle-stroke-color': '#1877F2',
+            'circle-stroke-opacity': 0,
+            'circle-pitch-alignment': 'map',
+            'circle-radius-transition': { duration: 0 },
+            'circle-opacity-transition': { duration: 0 },
+            'circle-stroke-opacity-transition': { duration: 0 }
+          }
+        });
+      }
+
+      if (!map.current.getLayer('user-core')) {
+        map.current.addLayer({
+          id: 'user-core',
+          type: 'circle',
+          source: 'user-location',
+          paint: {
+            'circle-radius': 7,
+            'circle-color': '#1877F2',
+            'circle-stroke-width': 3,
+            'circle-stroke-color': '#FFFFFF',
+            'circle-pitch-alignment': 'map',
+            'circle-opacity': ['get', 'opacity'],
+            'circle-stroke-opacity': ['get', 'opacity']
+          }
+        });
+      }
+
       const flashlightSvg = `
         <svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
           <defs>
@@ -361,140 +422,55 @@ export default function MapPage() {
       
       const img = new Image();
       img.onload = () => {
-        if (map.current && !map.current.hasImage('flashlight-icon')) {
+        if (!map.current) return;
+        if (!map.current.hasImage('flashlight-icon')) {
           map.current.addImage('flashlight-icon', img);
+        }
+        if (map.current.getSource('user-location') && !map.current.getLayer('user-flashlight')) {
+          map.current.addLayer({
+            id: 'user-flashlight',
+            type: 'symbol',
+            source: 'user-location',
+            layout: {
+              'icon-image': 'flashlight-icon',
+              'icon-pitch-alignment': 'map',
+              'icon-rotation-alignment': 'map',
+              'icon-rotate': ['get', 'heading'],
+              'icon-allow-overlap': true,
+              'icon-ignore-placement': true
+            },
+            paint: { 'icon-opacity': ['get', 'opacity'] }
+          }, 'user-pulse'); 
         }
       };
       img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(flashlightSvg);
 
-      // 3. Add Flashlight Layer (Rotates with Gyroscope, lays flat on Map)
-      map.current.addLayer({
-        id: 'user-flashlight',
-        type: 'symbol',
-        source: 'user-location',
-        layout: {
-          'icon-image': 'flashlight-icon',
-          'icon-pitch-alignment': 'map',     // Forces cone onto the 3D ground
-          'icon-rotation-alignment': 'map',  // Links rotation to map orientation
-          'icon-rotate': ['get', 'heading'], // Targets device compass
-          'icon-allow-overlap': true,
-          'icon-ignore-placement': true
-        },
-        paint: {
-          'icon-opacity': ['get', 'opacity']
-        }
-      });
-
-      // 4. Add the Sonar Pulse Ring Layer
-      map.current.addLayer({
-        id: 'user-pulse',
-        type: 'circle',
-        source: 'user-location',
-        paint: {
-          'circle-radius': 0,
-          'circle-color': '#1877F2',
-          'circle-opacity': 1,
-          'circle-stroke-width': 1,
-          'circle-stroke-color': '#1877F2',
-          'circle-pitch-alignment': 'map'
-        }
-      });
-
-      // 5. Add the Solid Core Location Dot Layer
-      map.current.addLayer({
-        id: 'user-core',
-        type: 'circle',
-        source: 'user-location',
-        paint: {
-          'circle-radius': 7,
-          'circle-color': '#1877F2',
-          'circle-stroke-width': 3,
-          'circle-stroke-color': '#FFFFFF',
-          'circle-pitch-alignment': 'map',
-          'circle-opacity': ['get', 'opacity'],
-          'circle-stroke-opacity': ['get', 'opacity']
-        }
-      });
-
-                  // 4. Add the Sonar Pulse Ring Layer (single ring, transitions disabled)
-      const PULSE_DURATION = 4000;   // total ms per cycle (bigger = slower)
-      const PULSE_ACTIVE = 0.75;     // fraction of the cycle the ring is visible (rest is a pause)
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      const isVisible = ['==', ['get', 'opacity'], 1];
+      const PULSE_DURATION = 4000;
+      const PULSE_ACTIVE = 0.75;
       const PULSE_MIN_RADIUS = 7;
       const PULSE_MAX_RADIUS = 52;
-
-      if (map.current.getLayer('user-pulse')) map.current.removeLayer('user-pulse');
-
-      map.current.addLayer({
-        id: 'user-pulse',
-        type: 'circle',
-        source: 'user-location',
-        paint: {
-          'circle-radius': PULSE_MIN_RADIUS,
-          'circle-color': '#1877F2',
-          'circle-opacity': 0,
-          'circle-stroke-width': 1.5,
-          'circle-stroke-color': '#1877F2',
-          'circle-stroke-opacity': 0,
-          'circle-pitch-alignment': 'map',
-          // Disable Mapbox's default interpolation so the ring never visibly shrinks back
-          'circle-radius-transition': { duration: 0 },
-          'circle-opacity-transition': { duration: 0 },
-          'circle-stroke-opacity-transition': { duration: 0 }
-        }
-      });
-
-      // 5. Add the Solid Core Location Dot Layer (added after the ring so it sits on top)
-      if (map.current.getLayer('user-core')) map.current.removeLayer('user-core');
-
-      map.current.addLayer({
-        id: 'user-core',
-        type: 'circle',
-        source: 'user-location',
-        paint: {
-          'circle-radius': 7,
-          'circle-color': '#1877F2',
-          'circle-stroke-width': 3,
-          'circle-stroke-color': '#FFFFFF',
-          'circle-pitch-alignment': 'map',
-          'circle-opacity': ['get', 'opacity'],
-          'circle-stroke-opacity': ['get', 'opacity']
-        }
-      });
-
-      // 6. Animation Loop: one slow ripple at a time, with a pause between pulses
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
-
-      const isVisible = ['==', ['get', 'opacity'], 1];
 
       const animateMarker = (timestamp) => {
         if (!map.current || !map.current.getLayer('user-pulse')) return;
 
         const cycle = (timestamp % PULSE_DURATION) / PULSE_DURATION;
-
         let radius = PULSE_MIN_RADIUS;
         let opacity = 0;
 
         if (cycle < PULSE_ACTIVE) {
-          const progress = cycle / PULSE_ACTIVE; // 0 -> 1 during the visible part
-
-          // Ease-out: expands quickly at first, then slows toward the edge
+          const progress = cycle / PULSE_ACTIVE; 
           const eased = 1 - Math.pow(1 - progress, 2);
           radius = PULSE_MIN_RADIUS + (PULSE_MAX_RADIUS - PULSE_MIN_RADIUS) * eased;
-
-          // Soft fade in, smooth fade out. Opacity hits 0 at both ends,
-          // so the restart (and the rest period) is invisible.
           const fadeIn = Math.min(progress / 0.1, 1);
           const fadeOut = 1 - Math.pow(progress, 1.5);
           opacity = fadeIn * fadeOut;
         }
 
         map.current.setPaintProperty('user-pulse', 'circle-radius', radius);
-        map.current.setPaintProperty('user-pulse', 'circle-opacity', [
-          'case', isVisible, opacity * 0.25, 0
-        ]);
-        map.current.setPaintProperty('user-pulse', 'circle-stroke-opacity', [
-          'case', isVisible, opacity, 0
-        ]);
+        map.current.setPaintProperty('user-pulse', 'circle-opacity', ['case', isVisible, opacity * 0.25, 0]);
+        map.current.setPaintProperty('user-pulse', 'circle-stroke-opacity', ['case', isVisible, opacity, 0]);
 
         animationRef.current = requestAnimationFrame(animateMarker);
       };
@@ -510,9 +486,14 @@ export default function MapPage() {
     };
   }, []);
 
+  // 🚀 FIXED: Prevent redundant style reloads on initial refresh
   useEffect(() => {
     if (!map.current || !isMapLoaded) return;
     
+    const currentTheme = isDarkMode ? 'dark' : 'light';
+    if (appliedThemeRef.current === currentTheme) return; 
+    
+    appliedThemeRef.current = currentTheme;
     const targetStyle = isDarkMode 
       ? 'mapbox://styles/locallook/cmuya47zw00gk01r7gs3thdzs'
       : 'mapbox://styles/locallook/cmqttzcqe004h01rc8ya580zb';
