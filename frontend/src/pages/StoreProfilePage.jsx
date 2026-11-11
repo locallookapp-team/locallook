@@ -406,14 +406,18 @@ export default function StoreProfilePage() {
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {(() => {
-                // 🚀 FIXED: Safely parse database format
+                // 🚀 FIXED: Hide the hours if the merchant turned the scheduler off
+                if (!store.auto_schedule_enabled || store.auto_schedule_enabled === 'false') {
+                  return <p style={{ color: 'var(--text-muted)', fontSize: '14px', textAlign: 'center', fontStyle: 'italic', padding: '10px 0' }}>Hours not provided by merchant.</p>;
+                }
+
                 let parsedHours = store.operating_hours;
                 if (typeof parsedHours === 'string') {
                   try { parsedHours = JSON.parse(parsedHours); } catch (e) { parsedHours = null; }
                 }
 
                 if (!parsedHours || Object.keys(parsedHours).length === 0) {
-                  return <p style={{ color: 'var(--text-muted)', fontSize: '14px', textAlign: 'center', fontStyle: 'italic' }}>Hours not provided by merchant.</p>;
+                  return <p style={{ color: 'var(--text-muted)', fontSize: '14px', textAlign: 'center', fontStyle: 'italic', padding: '10px 0' }}>Hours not provided by merchant.</p>;
                 }
 
                 return DAYS_OF_WEEK.map(day => {
@@ -530,8 +534,24 @@ export default function StoreProfilePage() {
         <div className="header-details-container" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
           <div className="custom-scrollbar" style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '4px' }}>
             
-            <button onClick={() => setShowHoursModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', backgroundColor: store.is_open ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)', color: store.is_open ? '#10B981' : '#EF4444', borderRadius: '20px', fontSize: '13px', fontWeight: '800', flexShrink: 0, border: 'none', cursor: 'pointer', outline: 'none', transition: 'transform 0.1s' }} onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.95)'} onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'} onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}>
-              <MdAccessTime size={16} /> {store.is_open ? 'Open now' : 'Closed'} <MdExpandMore size={16} />
+            {/* 🚀 FIXED: Button only clickable and shows arrow IF schedule is enabled */}
+            <button 
+              onClick={() => store.auto_schedule_enabled && setShowHoursModal(true)} 
+              style={{ 
+                display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', 
+                backgroundColor: store.is_open ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)', 
+                color: store.is_open ? '#10B981' : '#EF4444', 
+                borderRadius: '20px', fontSize: '13px', fontWeight: '800', flexShrink: 0, border: 'none', 
+                cursor: store.auto_schedule_enabled ? 'pointer' : 'default', 
+                outline: 'none', transition: 'transform 0.1s' 
+              }} 
+              onMouseDown={(e) => { if(store.auto_schedule_enabled) e.currentTarget.style.transform = 'scale(0.95)' }}
+              onMouseUp={(e) => { if(store.auto_schedule_enabled) e.currentTarget.style.transform = 'scale(1)' }}
+              onMouseLeave={(e) => { if(store.auto_schedule_enabled) e.currentTarget.style.transform = 'scale(1)' }}
+            >
+              <MdAccessTime size={16} /> 
+              {store.is_open ? 'Open now' : 'Closed'} 
+              {store.auto_schedule_enabled && <MdExpandMore size={16} />}
             </button>
             
             {theme.showPhone && store.phone && (
@@ -640,17 +660,22 @@ export default function StoreProfilePage() {
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
                     {groupedItems[category].map(item => (
                       <div key={item.id} style={{ backgroundColor: 'var(--surface-color)', borderRadius: '16px', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', transition: 'box-shadow 0.2s, transform 0.2s', cursor: 'pointer' }} onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 10px 25px rgba(0,0,0,0.1)'; }} onMouseOut={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}>
+                        
+                        {/* 🚀 FIXED: Dynamic 1:1 Aspect Ratio instead of fixed 200px height */}
                         {item.image_url ? (
-                          <div style={{ height: '200px', backgroundImage: `url(${item.image_url})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundColor: 'var(--surface-hover)', borderBottom: '1px solid var(--border-color)' }} />
+                          <div style={{ aspectRatio: '1 / 1', width: '100%', backgroundImage: `url(${item.image_url})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundColor: 'var(--surface-hover)', borderBottom: '1px solid var(--border-color)' }} />
                         ) : (
-                          <div style={{ height: '200px', backgroundColor: 'var(--surface-hover)', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '40px', borderBottom: '1px solid var(--border-color)' }}><MdRestaurantMenu size={48} color="var(--icon-color)" /></div>
+                          <div style={{ aspectRatio: '1 / 1', width: '100%', backgroundColor: 'var(--surface-hover)', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '40px', borderBottom: '1px solid var(--border-color)' }}><MdRestaurantMenu size={48} color="var(--icon-color)" /></div>
                         )}
+                        
                         <div style={{ padding: '20px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', marginBottom: '8px' }}>
                             <h4 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: 'var(--text-main)', lineHeight: '1.3' }}>{item.item_name}</h4>
                             <span style={{ fontSize: '16px', fontWeight: '900', color: 'var(--text-main)', whiteSpace: 'nowrap' }}>₱{parseFloat(item.price).toFixed(2)}</span>
                           </div>
                           {item.description && <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)', lineHeight: '1.5', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.description}</p>}
+                          {/* 🚀 NEW: Desktop Options Display */}
+                          {item.options && <div style={{ marginTop: '8px', fontSize: '12px', color: brandColor, fontWeight: '700', backgroundColor: 'var(--surface-hover)', padding: '4px 8px', borderRadius: '6px', display: 'inline-block' }}>{item.options}</div>}
                         </div>
                       </div>
                     ))}
@@ -665,6 +690,8 @@ export default function StoreProfilePage() {
                         <h4 style={{ margin: '0 0 6px 0', fontSize: '15px', fontWeight: '800', color: 'var(--text-main)' }}>{item.item_name}</h4>
                         <span style={{ fontSize: '14px', fontWeight: '800', color: 'var(--text-main)' }}>₱{parseFloat(item.price).toFixed(2)}</span>
                         {item.description && <p style={{ margin: '6px 0 0 0', fontSize: '13px', color: 'var(--text-muted)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: '1.4' }}>{item.description}</p>}
+                        {/* 🚀 NEW: Mobile Options Display */}
+                        {item.options && <div style={{ marginTop: '6px', fontSize: '11px', color: brandColor, fontWeight: '700', backgroundColor: 'var(--surface-hover)', padding: '4px 8px', borderRadius: '6px', display: 'inline-block' }}>{item.options}</div>}
                       </div>
                       {item.image_url ? (
                         <div style={{ width: '90px', height: '90px', borderRadius: '12px', backgroundImage: `url(${item.image_url})`, backgroundSize: 'cover', backgroundPosition: 'center', flexShrink: 0, backgroundColor: 'var(--surface-hover)', border: '1px solid var(--border-color)' }} />

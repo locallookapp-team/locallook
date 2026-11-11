@@ -390,7 +390,7 @@ app.patch('/api/stores/:id/schedule', verifyUser, async (req, res) => {
 // ---------------------------------------------------------
 app.post('/api/items', verifyUser, verifyPremium, async (req, res) => {
   try {
-    const { store_id, item_name, description, price, image_url, item_category } = req.body;
+    const { store_id, item_name, description, options, price, image_url, item_category } = req.body;
     if (!(await isStoreOperator(store_id, req.user.id))) return res.status(403).json({ error: "Unauthorized." });
 
     if (!store_id || !item_name || isNaN(parseFloat(price))) {
@@ -398,9 +398,9 @@ app.post('/api/items', verifyUser, verifyPremium, async (req, res) => {
     }
 
     const result = await db.query(`
-      INSERT INTO items (store_id, item_name, description, price, image_url, item_category, is_available) 
-      VALUES ($1, $2, $3, $4, $5, COALESCE($6, 'General'), true) RETURNING *;
-    `, [store_id, item_name, description, parseFloat(price), image_url, item_category]); 
+      INSERT INTO items (store_id, item_name, description, options, price, image_url, item_category, is_available) 
+      VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, 'General'), true) RETURNING *;
+    `, [store_id, item_name, description, options, parseFloat(price), image_url, item_category]); 
     res.json(result.rows[0]);
   } catch (err) { res.status(500).send("Server Error"); }
 });
@@ -411,11 +411,11 @@ app.patch('/api/items/:id', verifyUser, verifyPremium, async (req, res) => {
     if (itemCheck.rows.length === 0) return res.status(404).json({error: "Not found"});
     if (!(await isStoreOperator(itemCheck.rows[0].store_id, req.user.id))) return res.status(403).json({ error: "Unauthorized." });
 
-    const { item_name, description, price, item_category, image_url } = req.body;
-    let query = `UPDATE items SET item_name = $1, description = $2, price = $3, item_category = $4`;
-    let values = [item_name, description, price, item_category];
-    if (image_url) { query += `, image_url = $5 WHERE id = $6 RETURNING *`; values.push(image_url, req.params.id); } 
-    else { query += ` WHERE id = $5 RETURNING *`; values.push(req.params.id); }
+    const { item_name, description, options, price, item_category, image_url } = req.body;
+    let query = `UPDATE items SET item_name = $1, description = $2, options = $3, price = $4, item_category = $5`;
+    let values = [item_name, description, options, price, item_category];
+    if (image_url) { query += `, image_url = $6 WHERE id = $7 RETURNING *`; values.push(image_url, req.params.id); } 
+    else { query += ` WHERE id = $6 RETURNING *`; values.push(req.params.id); }
     const result = await db.query(query, values);
     res.json(result.rows[0]);
   } catch (err) { res.status(500).send("Server Error"); }

@@ -892,9 +892,9 @@ export default function DashboardPage() {
     } catch (err) { alert("Failed to delete store."); } finally { setIsUploading(false); }
   };
 
-  const openAddModal = () => { setEditingItemId(null); setNewItem({ name: '', description: '', price: '', category: '', imageFile: null }); setCroppedPreview(null); setIsItemModalOpen(true); setIsCategoryDropdownOpen(false); };
-  const closeItemModal = () => { setIsItemModalOpen(false); setEditingItemId(null); setNewItem({ name: '', description: '', price: '', category: '', imageFile: null }); setCroppedPreview(null); setIsCategoryDropdownOpen(false); };
-  const startEditItem = (item) => { setEditingItemId(item.id); setNewItem({ name: item.item_name, description: item.description || '', price: item.price, category: item.item_category, imageFile: null }); setCroppedPreview(item.image_url || null); setIsItemModalOpen(true); setIsCategoryDropdownOpen(false); };
+  const openAddModal = () => { setEditingItemId(null); setNewItem({ name: '', description: '', options: '', price: '', category: '', imageFile: null }); setCroppedPreview(null); setIsItemModalOpen(true); setIsCategoryDropdownOpen(false); };
+  const closeItemModal = () => { setIsItemModalOpen(false); setEditingItemId(null); setNewItem({ name: '', description: '', options: '', price: '', category: '', imageFile: null }); setCroppedPreview(null); setIsCategoryDropdownOpen(false); };
+  const startEditItem = (item) => { setEditingItemId(item.id); setNewItem({ name: item.item_name, description: item.description || '', options: item.options || '', price: item.price, category: item.item_category, imageFile: null }); setCroppedPreview(item.image_url || null); setIsItemModalOpen(true); setIsCategoryDropdownOpen(false); };
 
   const handleAddItem = async (e) => {
     e.preventDefault(); setIsUploading(true); let finalImageUrl = null;
@@ -915,7 +915,7 @@ export default function DashboardPage() {
       const existingItem = items.find(i => i.id === editingItemId);
       finalImageUrl = existingItem?.image_url;
     }
-    const payload = { item_name: newItem.name, description: newItem.description, price: parseFloat(newItem.price), image_url: finalImageUrl, item_category: newItem.category };
+    const payload = { item_name: newItem.name, description: newItem.description, options: newItem.options, price: parseFloat(newItem.price), image_url: finalImageUrl, item_category: newItem.category };
     if (editingItemId) {
       const response = await fetch(`${API_BASE_URL}/api/items/${editingItemId}`, { method: 'PATCH', headers: await getAuthHeaders(), body: JSON.stringify(payload) });
       if (response.ok) { const updatedItem = await response.json(); setItems(items.map(i => i.id === editingItemId ? updatedItem : i)); closeItemModal(); }
@@ -1073,14 +1073,15 @@ export default function DashboardPage() {
       {/* UNIVERSAL CROPPER MODAL */}
       {imageToCrop && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: 'rgba(15,23,42,0.95)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px', backdropFilter: 'blur(5px)' }}>
-          <div style={{ width: '100%', maxWidth: '800px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px', color: 'white' }}>
+            <div style={{ width: '100%', maxWidth: '800px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px', color: 'white' }}>
             <div>
+              {/* 🚀 FIXED: Title changed to 1:1 */}
               <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '800' }}>
-                {cropType === 'cover' ? 'Adjust Cover Photo (3:1)' : cropType === 'logo' ? 'Adjust Store Logo (1:1)' : 'Adjust Item Image (4:3)'}
+                {cropType === 'cover' ? 'Adjust Cover Photo (3:1)' : 'Adjust Image (1:1)'}
               </h3>
-              {/* 🚀 FIXED: Dynamic helper text for recommended sizes */}
+              {/* 🚀 FIXED: Helper text updated to 800x800 */}
               <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#94A3B8', fontWeight: '600' }}>
-                {cropType === 'cover' ? 'Recommended size: 1200 x 400 pixels for best quality.' : cropType === 'logo' ? 'Recommended size: 400 x 400 pixels. Position your logo inside the circle.' : 'Recommended size: 800 x 600 pixels for best quality.'}
+                {cropType === 'cover' ? 'Recommended size: 1200 x 400 pixels for best quality.' : cropType === 'logo' ? 'Recommended size: 400 x 400 pixels. Position your logo inside the circle.' : 'Recommended size: 800 x 800 pixels for best quality.'}
               </p>
             </div>
             <button onClick={() => { setImageToCrop(null); setZoom(1); }} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}><MdClose size={28} /></button>
@@ -1091,8 +1092,7 @@ export default function DashboardPage() {
               image={imageToCrop}
               crop={crop}
               zoom={zoom}
-              aspect={cropType === 'cover' ? 3 / 1 : cropType === 'logo' ? 1 / 1 : 4 / 3}
-              /* 🚀 FIXED: Circular mask and hidden grid for logos */
+              aspect={cropType === 'cover' ? 3 / 1 : 1 / 1}
               cropShape={cropType === 'logo' ? 'round' : 'rect'}
               showGrid={cropType !== 'logo'}
               onCropChange={setCrop}
@@ -1279,7 +1279,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* 🚀 FIXED: ITEM MODAL (NO CLIPPING, ALL CATEGORIES VISIBLE) */}
+      {/* 🚀 FIXED: ITEM MODAL (With Options Field & 1:1 Preview) */}
       {isItemModalOpen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: '20px', overflowY: 'auto' }}>
           <div style={{ backgroundColor: 'var(--surface-color)', padding: '30px', borderRadius: '20px', width: '100%', maxWidth: '600px', margin: '40px auto', position: 'relative', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
@@ -1293,58 +1293,44 @@ export default function DashboardPage() {
                 <div style={{ flex: '1 1 100px' }}><label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '4px' }}>Price (₱)</label><input type="number" step="0.01" placeholder="Price" required value={newItem.price} onChange={(e) => setNewItem({...newItem, price: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '10px', boxSizing: 'border-box' }} /></div>
               </div>
               <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
-                <div style={{ flex: '2 1 200px' }}><label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '4px' }}>Description (Optional)</label><input type="text" placeholder="Brief details about the item..." value={newItem.description} onChange={(e) => setNewItem({...newItem, description: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '10px', boxSizing: 'border-box' }} /></div>
+                <div style={{ flex: '1 1 100%' }}><label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '4px' }}>Description (Optional)</label><input type="text" placeholder="Brief details about the item..." value={newItem.description} onChange={(e) => setNewItem({...newItem, description: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '10px', boxSizing: 'border-box' }} /></div>
+              </div>
+              <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
                 
-                {/* 🚀 FIXED: Dropdown Menu */}
+                {/* 🚀 NEW: Lightweight Options Field */}
+                <div style={{ flex: '2 1 200px' }}>
+                  <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '4px' }}>Available Options / Variants (Optional)</label>
+                  <input type="text" placeholder="e.g. Sizes: S, M, L | Colors: Red, Blue" value={newItem.options} onChange={(e) => setNewItem({...newItem, options: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '10px', boxSizing: 'border-box' }} />
+                </div>
+                
                 <div style={{ flex: '1 1 150px' }}>
                   <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '4px' }}>Category Menu</label>
                   <div style={{ position: 'relative', width: '100%' }}>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. Main Dish" 
-                      required 
-                      value={newItem.category} 
-                      onChange={(e) => { setNewItem({...newItem, category: e.target.value}); setIsCategoryDropdownOpen(true); }}
-                      onFocus={() => setIsCategoryDropdownOpen(true)}
-                      onBlur={() => setTimeout(() => setIsCategoryDropdownOpen(false), 200)}
-                      style={{ width: '100%', padding: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '10px', boxSizing: 'border-box' }} 
-                    />
+                    <input type="text" placeholder="e.g. Main Dish" required value={newItem.category} onChange={(e) => { setNewItem({...newItem, category: e.target.value}); setIsCategoryDropdownOpen(true); }} onFocus={() => setIsCategoryDropdownOpen(true)} onBlur={() => setTimeout(() => setIsCategoryDropdownOpen(false), 200)} style={{ width: '100%', padding: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '10px', boxSizing: 'border-box' }} />
                     {isCategoryDropdownOpen && (
                       <div className="custom-scrollbar" style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', backgroundColor: 'var(--surface-color)', border: '1px solid var(--border-color)', borderRadius: '10px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', zIndex: 100, maxHeight: '160px', overflowY: 'auto' }}>
                         {categoryOrder.map(cat => (
-                          <div 
-                            key={cat} 
-                            onMouseDown={(e) => { 
-                              e.preventDefault(); 
-                              setNewItem({...newItem, category: cat}); 
-                              setIsCategoryDropdownOpen(false); 
-                            }} 
-                            style={{ padding: '10px 14px', cursor: 'pointer', fontSize: '13px', fontWeight: '700', borderBottom: '1px solid var(--border-color)', color: 'var(--text-main)', transition: 'background-color 0.2s' }}
-                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--surface-hover)'}
-                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                          >
+                          <div key={cat} onMouseDown={(e) => { e.preventDefault(); setNewItem({...newItem, category: cat}); setIsCategoryDropdownOpen(false); }} style={{ padding: '10px 14px', cursor: 'pointer', fontSize: '13px', fontWeight: '700', borderBottom: '1px solid var(--border-color)', color: 'var(--text-main)', transition: 'background-color 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--surface-hover)'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
                             {cat}
                           </div>
                         ))}
-                        {categoryOrder.length === 0 && (
-                          <div style={{ padding: '10px 14px', fontSize: '12px', color: 'var(--text-muted)', fontStyle: 'italic' }}>Type and save to create your first category!</div>
-                        )}
                       </div>
                     )}
                   </div>
                 </div>
-
               </div>
+              
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', padding: '15px', backgroundColor: 'var(--bg-color)', border: '1px dashed var(--border-color)', borderRadius: '12px', flexWrap: 'wrap', gap: '15px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                   {croppedPreview ? (
                     <div style={{ position: 'relative' }}>
-                      <img src={croppedPreview} alt="Preview" style={{ width: '120px', height: '90px', objectFit: 'cover', borderRadius: '8px', border: '1px solid var(--border-color)' }} />
+                      {/* 🚀 FIXED: Preview is now a 90x90 square to reflect the true 1:1 crop */}
+                      <img src={croppedPreview} alt="Preview" style={{ width: '90px', height: '90px', objectFit: 'cover', borderRadius: '8px', border: '1px solid var(--border-color)' }} />
                       <button type="button" onClick={() => { setCroppedPreview(null); setNewItem({...newItem, imageFile: null}) }} style={{ position: 'absolute', top: '-8px', right: '-8px', background: '#EF4444', color: 'white', border: 'none', borderRadius: '50%', width: '20px', height: '20px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><MdClose /></button>
                     </div>
                   ) : (
                     <div style={{ display: 'flex', gap: '8px' }}>
-                      <div><label htmlFor="item-upload" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 12px', backgroundColor: 'var(--surface-color)', border: '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)' }}><MdCameraAlt size={16} color="var(--brand-primary)" /> Upload Image</label><input id="item-upload" type="file" accept="image/*" onChange={onItemFileSelect} style={{ display: 'none' }} /></div>
+                      <div><label htmlFor="item-upload" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 12px', backgroundColor: 'var(--surface-color)', border: '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)' }}><MdCameraAlt size={16} color="var(--brand-primary)" /> Upload Image (1:1)</label><input id="item-upload" type="file" accept="image/*" onChange={onItemFileSelect} style={{ display: 'none' }} /></div>
                     </div>
                   )}
                 </div>
@@ -1628,7 +1614,8 @@ export default function DashboardPage() {
                                 {groupedItems[category].map(item => (
                                   <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 30px', borderBottom: '1px solid var(--border-color)' }}>
                                     <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
-                                      {item.image_url ? <img src={item.image_url} alt={item.item_name} style={{ width: '80px', height: '60px', objectFit: 'cover', borderRadius: '10px' }} /> : <div style={{ width: '80px', height: '60px', backgroundColor: 'var(--surface-hover)', borderRadius: '10px', display: 'flex', justifyContent: 'center', alignItems: 'center', color: 'var(--icon-color)' }}><MdRestaurantMenu size={24} /></div>}
+                                      {/* 🚀 FIXED: 80x80 Square Thumbnails */}
+                                      {item.image_url ? <img src={item.image_url} alt={item.item_name} style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '10px' }} /> : <div style={{ width: '80px', height: '80px', backgroundColor: 'var(--surface-hover)', borderRadius: '10px', display: 'flex', justifyContent: 'center', alignItems: 'center', color: 'var(--icon-color)' }}><MdRestaurantMenu size={24} /></div>}
                                       <div><h4 style={{ margin: '0 0 4px 0', fontSize: '16px', color: 'var(--text-main)', fontWeight: '800' }}>{item.item_name}</h4><p style={{ margin: '0', color: 'var(--text-muted)', fontSize: '13px', fontWeight: '500' }}>{item.description}</p></div>
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
@@ -1654,7 +1641,9 @@ export default function DashboardPage() {
                                     <div style={{ flexGrow: 1, minWidth: 0 }}>
                                       <h4 style={{ margin: '0 0 4px 0', fontSize: '15px', color: 'var(--text-main)', fontWeight: '800', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.item_name}</h4>
                                       <div style={{ fontSize: '14px', fontWeight: '900', color: 'var(--text-main)', marginBottom: '4px' }}>₱{parseFloat(item.price).toFixed(2)}</div>
-                                      {item.description && <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '12px', display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.description}</p>}
+                                      {item.description && <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)', lineHeight: '1.5', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.description}</p>}
+                                      {/* 🚀 NEW: Desktop Options Display */}
+                                      {item.options && <div style={{ marginTop: '8px', fontSize: '12px', color: brandColor, fontWeight: '700', backgroundColor: 'var(--surface-hover)', padding: '4px 8px', borderRadius: '6px', display: 'inline-block' }}>{item.options}</div>}
                                     </div>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', flexShrink: 0 }}>
                                       <button onClick={isMenuLocked ? () => setIsUpgradeModalOpen(true) : () => startEditItem(item)} style={{ background: 'var(--surface-hover)', color: 'var(--brand-primary)', border: 'none', padding: '8px', borderRadius: '8px', cursor: 'pointer', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>{isMenuLocked ? <MdLock size={14} /> : <MdEdit size={14} />}</button>
