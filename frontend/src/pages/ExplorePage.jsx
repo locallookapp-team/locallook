@@ -590,12 +590,14 @@ export default function ExplorePage() {
                    <>
                      <div className="desktop-ui">
                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px', padding: '0 16px' }}>
-                         {filteredItems.map(item => renderDesktopItemCard(item))}
+                         {/* 🚀 FIXED: Changed to renderItemCard */}
+                         {filteredItems.map(item => renderItemCard(item))}
                        </div>
                      </div>
                      <div className="mobile-ui-block">
-                       <div style={{ display: 'flex', flexDirection: 'column', padding: '0 16px' }}>
-                         {filteredItems.map((item, index) => renderMobileItemCard(item, index))}
+                       <div style={{ display: 'flex', flexDirection: 'column', padding: '0 16px', gap: '12px' }}>
+                         {/* 🚀 FIXED: Changed to renderItemCard */}
+                         {filteredItems.map(item => renderItemCard(item))}
                        </div>
                      </div>
                    </>

@@ -131,7 +131,7 @@ export default function RegisterPage() {
                 <form onSubmit={handleRegister} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#4b5563', marginBottom: '4px' }}>FULL NAME</label>
-                    <input type="text" name="fullName" required value={formData.fullName} onChange={handleChange} placeholder="e.g., Jane Doe" style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '14px', boxSizing: 'border-box', outline: 'none' }} />
+                    <input type="text" name="fullName" required value={formData.fullName} onChange={handleChange} placeholder="e.g., Juan Dela Cruz" style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #d1d5db', fontSize: '14px', boxSizing: 'border-box', outline: 'none' }} />
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: '#4b5563', marginBottom: '4px' }}>EMAIL ADDRESS</label>

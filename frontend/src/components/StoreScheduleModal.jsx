@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MdClose, MdSchedule } from 'react-icons/md';
+import { supabase } from '../supabaseClient';
 
 // --- TIME FORMATTING HELPERS ---
 const hoursArray = Array.from({ length: 12 }, (_, i) => (i + 1).toString().padStart(2, '0'));
@@ -162,8 +163,23 @@ export default function StoreScheduleModal({ store, onClose, onSave, getAuthHead
     Sunday: { isOpen: false, open: '09:00', close: '17:00' }
   };
 
-  const [autoEnabled, setAutoEnabled] = useState(store?.auto_schedule_enabled || false);
-  const [schedule, setSchedule] = useState(store?.operating_hours || defaultSchedule);
+  // 🚀 FIXED: Ensure booleans are read properly regardless of string/boolean format
+  const initialAutoEnabled = store?.auto_schedule_enabled === true || store?.auto_schedule_enabled === 'true';
+  const [autoEnabled, setAutoEnabled] = useState(initialAutoEnabled);
+  
+  // 🚀 FIXED: Safely parse JSON if the DB sends operating_hours as a string
+  const [schedule, setSchedule] = useState(() => {
+    if (!store?.operating_hours) return defaultSchedule;
+    if (typeof store.operating_hours === 'string') {
+      try {
+        return JSON.parse(store.operating_hours);
+      } catch (e) {
+        return defaultSchedule;
+      }
+    }
+    return store.operating_hours;
+  });
+
   const [isSaving, setIsSaving] = useState(false);
   const [activePicker, setActivePicker] = useState(null); 
 
@@ -174,15 +190,29 @@ export default function StoreScheduleModal({ store, onClose, onSave, getAuthHead
     e.preventDefault();
     setIsSaving(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/api/stores/${store.id}/schedule`, {
-        method: 'PATCH',
-        headers: await getAuthHeaders(),
-        body: JSON.stringify({ auto_schedule_enabled: autoEnabled, operating_hours: schedule })
-      });
-      if (!response.ok) throw new Error("Failed to save schedule settings.");
-      onSave(await response.json()); 
+      const payload = { 
+        auto_schedule_enabled: autoEnabled, 
+        operating_hours: schedule 
+      };
+
+      // 🚀 FIXED: Direct Supabase Update
+      // This bypasses the Render API so we don't have to worry if the backend 
+      // is ignoring the newly created 'auto_schedule_enabled' column.
+      const { error } = await supabase
+        .from('stores')
+        .update(payload)
+        .eq('id', store.id);
+      
+      if (error) throw error;
+      
+      // Send the exact payload back to the Dashboard so it updates instantly
+      onSave({ id: store.id, ...payload }); 
       onClose();
-    } catch (error) { alert(error.message); } finally { setIsSaving(false); }
+    } catch (error) { 
+      alert(error.message); 
+    } finally { 
+      setIsSaving(false); 
+    }
   };
 
   const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];

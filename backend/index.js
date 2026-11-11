@@ -723,7 +723,8 @@ app.get('/api/merchant/stores/:user_id', async (req, res) => {
              s.phone, s.email, s.website, s.is_open, s.theme_settings, 
              ST_Y(s.location::geometry) as lat, ST_X(s.location::geometry) as lng, 
              so.role, s.merchant_id, 
-             s.cover_image_url, s.logo_url 
+             s.cover_image_url, s.logo_url,
+             s.auto_schedule_enabled, s.operating_hours
       FROM stores s 
       JOIN store_operators so ON s.id = so.store_id 
       WHERE so.user_id = $1 AND so.status = 'confirmed'
@@ -738,7 +739,8 @@ app.get('/api/stores', async (req, res) => {
   try {
     const { minLng, minLat, maxLng, maxLat, userLat, userLng, radius } = req.query;
     
-    let selectClause = `SELECT id, store_name, store_category, industry, description, phone, email, website, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng, cover_image_url, logo_url`;
+    // 🚀 FIXED: Added auto_schedule_enabled and operating_hours to the SELECT clause
+    let selectClause = `SELECT id, store_name, store_category, industry, description, phone, email, website, is_open, theme_settings, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng, cover_image_url, logo_url, auto_schedule_enabled, operating_hours`;
     let fromClause = ` FROM stores`;
     let whereClauses = [];
     let queryParams = [];
@@ -773,7 +775,8 @@ app.get('/api/stores/:id', async (req, res) => {
     const result = await db.query(`
       SELECT id, store_name, store_category, industry, description, phone, email, 
              website, is_open, theme_settings, ST_Y(location::geometry) AS lat, 
-             ST_X(location::geometry) AS lng, cover_image_url, logo_url 
+             ST_X(location::geometry) AS lng, cover_image_url, logo_url,
+             auto_schedule_enabled, operating_hours
       FROM stores WHERE id = $1;
     `, [req.params.id]);
     

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { renderToString } from 'react-dom/server';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import Cropper from 'react-easy-crop';
@@ -7,6 +8,7 @@ import { QRCodeCanvas } from 'qrcode.react';
 import { supabase } from '../supabaseClient'; 
 import MerchantOnboarding from '../components/MerchantOnboarding';
 import StoreScheduleModal from '../components/StoreScheduleModal';
+import { CustomMapPin } from '../components/MapMarkers';
 import { 
   MdDragIndicator, MdSmartphone, MdChevronLeft, MdChevronRight, MdOutlineNearMe, 
   MdEdit, MdDelete, MdAdd, MdCameraAlt, MdDashboard, MdPeople, MdSecurity, 
@@ -308,6 +310,7 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const [user, setUser] = useState(null);
   const [stores, setStores] = useState([]);
+  const [allStoresForMap, setAllStoresForMap] = useState([]);
   const [activeStore, setActiveStore] = useState(null);
   const [activeTab, setActiveTab] = useState('menu'); 
   const [items, setItems] = useState([]);
@@ -341,6 +344,7 @@ export default function DashboardPage() {
 
   const [isItemModalOpen, setIsItemModalOpen] = useState(false);
   const [newItem, setNewItem] = useState({ name: '', description: '', price: '', category: '', imageFile: null });
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false); 
   const [isUploading, setIsUploading] = useState(false);
   const [isUploadingCover, setIsUploadingCover] = useState(false); 
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
@@ -482,9 +486,34 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (activeStore?.id) {
-      fetch(`${API_BASE_URL}/api/stores/${activeStore.id}`)
-        .then(res => res.json())
-        .then(data => { 
+      
+      // 🚀 FIXED: Fetch detailed store data directly from Supabase!
+      // This bypasses the Render API so we are 100% guaranteed to get ALL 
+      // columns, including your new 'auto_schedule_enabled' column.
+      const fetchDetailedStore = async () => {
+        try {
+          const { data, error } = await supabase
+            .from('stores')
+            .select('*')
+            .eq('id', activeStore.id)
+            .single();
+
+          if (error) throw error;
+          if (!data) return;
+
+          // Safely parse schedule data
+          let parsedHours = data.operating_hours;
+          if (typeof parsedHours === 'string') {
+            try { parsedHours = JSON.parse(parsedHours); } catch (e) { parsedHours = null; }
+          }
+          data.operating_hours = parsedHours;
+          
+          // Ensure boolean type for the toggle
+          if (data.auto_schedule_enabled === 'true') data.auto_schedule_enabled = true;
+          if (data.auto_schedule_enabled === 'false') data.auto_schedule_enabled = false;
+
+          setActiveStore(prev => ({ ...prev, ...data }));
+          
           const theme = data.theme_settings || {};
           if (theme.primaryColor) setStoreTheme(theme); 
           if (theme.categoryOrder) setCategoryOrder(theme.categoryOrder);
@@ -494,7 +523,12 @@ export default function DashboardPage() {
             cover_image_url: data.cover_image_url || '', logo_url: data.logo_url || '', showPhone: !!theme.showPhone, showEmail: !!theme.showEmail, showWebsite: !!theme.showWebsite, showAddress: !!theme.showAddress, 
             addressText: theme.addressText || '', theme_settings: theme
           });
-        }).catch(err => console.error(err));
+        } catch (err) {
+          console.error("Failed to fetch detailed store from Supabase:", err);
+        }
+      };
+      
+      fetchDetailedStore();
 
       fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/items`).then(res => res.json()).then(data => setItems(data)).catch(err => console.error(err));
       
@@ -505,35 +539,7 @@ export default function DashboardPage() {
       fetchSubscription(activeStore.id);
       if (activeTab === 'reviews') fetchStoreReviews();
     }
-  }, [activeStore?.id]);
-
-  useEffect(() => {
-    if (!activeStore?.id) return;
-
-    const storeChannel = supabase.channel(`realtime-store-${activeStore.id}`)
-      .on('postgres_changes', { 
-        event: 'UPDATE', 
-        schema: 'public', 
-        table: 'stores', 
-        filter: `id=eq.${activeStore.id}` 
-      }, (payload) => {
-        if (payload.new) {
-          setActiveStore(prev => ({ ...prev, is_open: payload.new.is_open }));
-          setStores(prevStores => prevStores.map(s => 
-            s.id === payload.new.id ? { ...s, is_open: payload.new.is_open } : s
-          ));
-        }
-      })
-      .subscribe();
-
-    return () => { 
-      supabase.removeChannel(storeChannel); 
-    };
-  }, [activeStore?.id]);
-
-  useEffect(() => {
-    if (activeTab === 'reviews' && activeStore?.id) fetchStoreReviews();
-  }, [activeTab]);
+  }, [activeStore?.id, activeTab]);
 
   useEffect(() => {
     const uniqueCats = [...new Set(items.map(i => i.item_category || 'Uncategorized'))];
@@ -545,29 +551,92 @@ export default function DashboardPage() {
   }, [items]);
 
   useEffect(() => {
+    if (isEditStoreModalOpen && allStoresForMap.length === 0) {
+      fetch(`${API_BASE_URL}/api/stores`)
+        .then(res => res.ok ? res.json() : [])
+        .then(data => setAllStoresForMap(data.filter(s => s.id !== activeStore?.id && s.lat && s.lng)))
+        .catch(err => console.error(err));
+    }
+  }, [isEditStoreModalOpen, activeStore?.id]);
+
+  useEffect(() => {
     if (isEditStoreModalOpen && editMapContainer.current && !editMap.current) {
       editMap.current = new mapboxgl.Map({
-        container: editMapContainer.current, style: 'mapbox://styles/locallook/cmqttzcqe004h01rc8ya580zb', center: [editStoreData.lng || 121.9823, editStoreData.lat || 12.3985], zoom: 15.5, pitch: 45, attributionControl: false 
+        container: editMapContainer.current, 
+        style: 'mapbox://styles/locallook/cmqttzcqe004h01rc8ya580zb', 
+        center: [editStoreData.lng || 121.9823, editStoreData.lat || 12.3985], 
+        zoom: 15.5, 
+        pitch: 60, 
+        attributionControl: false 
       });
-      if (editStoreData.lng && editStoreData.lat) {
+      
+      editMap.current.addControl(new mapboxgl.NavigationControl({ showZoom: false, visualizePitch: true }), 'bottom-right');
+
+      allStoresForMap.forEach(store => {
+        const htmlString = renderToString(
+          <CustomMapPin category={store.store_category} industry={store.industry} storeName={store.store_name} showLabel={false} isDotMode={false} size={28} />
+        );
         const el = document.createElement('div');
-        el.innerHTML = `<div style="background-color: var(--brand-primary); width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); transform: translateY(-12px);"></div>`;
-        editPinRef.current = new mapboxgl.Marker({ element: el, anchor: 'bottom' }).setLngLat([editStoreData.lng, editStoreData.lat]).addTo(editMap.current);
+        el.style.opacity = '0.5'; 
+        el.style.cursor = 'not-allowed';
+        el.innerHTML = htmlString;
+        new mapboxgl.Marker({ element: el, anchor: 'bottom' }).setLngLat([store.lng, store.lat]).addTo(editMap.current);
+      });
+
+      const updateDraggablePin = (lng, lat) => {
+        const htmlString = renderToString(
+          <CustomMapPin category={editStoreData.store_category} industry={editStoreData.industry} storeName={editStoreData.store_name || "Store Location"} showLabel={true} isDotMode={false} size={34} />
+        );
+        
+        if (!editPinRef.current) {
+          const el = document.createElement('div');
+          el.style.zIndex = '99999';
+          el.innerHTML = htmlString;
+          editPinRef.current = new mapboxgl.Marker({ element: el, anchor: 'bottom', draggable: true })
+            .setLngLat([lng, lat])
+            .addTo(editMap.current);
+            
+          editPinRef.current.on('dragend', async () => {
+            const lngLat = editPinRef.current.getLngLat();
+            const newLng = lngLat.lng.toFixed(6); const newLat = lngLat.lat.toFixed(6);
+            let addressText = editStoreRef.current.addressText;
+            if (editStoreRef.current.showAddress) addressText = await fetchAddressFromCoords(newLng, newLat);
+            setEditStoreData(prev => ({ ...prev, lat: newLat, lng: newLng, addressText }));
+          });
+        } else {
+          editPinRef.current.getElement().innerHTML = htmlString;
+          editPinRef.current.setLngLat([lng, lat]);
+        }
+      };
+
+      if (editStoreData.lng && editStoreData.lat) {
+        updateDraggablePin(editStoreData.lng, editStoreData.lat);
       }
+
       editMap.current.on('click', async (e) => {
         const lng = e.lngLat.lng.toFixed(6); const lat = e.lngLat.lat.toFixed(6);
         let addressText = editStoreRef.current.addressText;
         if (editStoreRef.current.showAddress) addressText = await fetchAddressFromCoords(lng, lat);
         setEditStoreData(prev => ({ ...prev, lat, lng, addressText }));
-        if (!editPinRef.current) {
-          const el = document.createElement('div');
-          el.innerHTML = `<div style="background-color: var(--brand-primary); width: 24px; height: 24px; border-radius: 50%; border: 3px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.5); transform: translateY(-12px);"></div>`;
-          editPinRef.current = new mapboxgl.Marker({ element: el, anchor: 'bottom' }).setLngLat([lng, lat]).addTo(editMap.current);
-        } else { editPinRef.current.setLngLat([lng, lat]); }
+        updateDraggablePin(lng, lat);
       });
     }
-    return () => { if (!isEditStoreModalOpen && editMap.current) { editMap.current.remove(); editMap.current = null; editPinRef.current = null; } };
-  }, [isEditStoreModalOpen, editStoreData.lng, editStoreData.lat]);
+
+    if (isEditStoreModalOpen && editMap.current && editPinRef.current && editStoreData.lng && editStoreData.lat) {
+      const htmlString = renderToString(
+        <CustomMapPin category={editStoreData.store_category} industry={editStoreData.industry} storeName={editStoreData.store_name || "Store Location"} showLabel={true} isDotMode={false} size={34} />
+      );
+      editPinRef.current.getElement().innerHTML = htmlString;
+      editPinRef.current.setLngLat([editStoreData.lng, editStoreData.lat]);
+    }
+
+    return () => { 
+      if (!isEditStoreModalOpen && editMap.current) { 
+        editMap.current.remove(); editMap.current = null; editPinRef.current = null; 
+      } 
+    };
+  }, [isEditStoreModalOpen, editStoreData.lng, editStoreData.lat, editStoreData.store_category, editStoreData.store_name, allStoresForMap]);
+
 
   const handleLocateMerchant = (mapRef, isEditing) => {
     if (!navigator.geolocation || !mapRef.current) return;
@@ -594,7 +663,8 @@ export default function DashboardPage() {
     categoryOrder.forEach(cat => {
       const el = sectionRefs.current[cat];
       if (el) {
-        const distance = Math.abs(el.getBoundingClientRect().top - containerTop - 140); 
+        // 🚀 100px calculation offsets perfect for sticky tabs
+        const distance = Math.abs(el.getBoundingClientRect().top - containerTop - 100); 
         if (distance < minDistance) { minDistance = distance; currentActive = cat; }
       }
     });
@@ -603,12 +673,34 @@ export default function DashboardPage() {
 
   const scrollToCategory = (cat) => {
     const el = sectionRefs.current[cat]; const container = scrollContainerRef.current;
-    if (el && container) { container.scrollTo({ top: el.offsetTop - 140, behavior: 'smooth' }); }
+    if (el && container) {
+      // 🚀 Pinpoints exact pixel offset rather than general offsetTop 
+      const containerTop = container.getBoundingClientRect().top;
+      const elTop = el.getBoundingClientRect().top;
+      const scrollPos = container.scrollTop + (elTop - containerTop) - 80;
+      container.scrollTo({ top: scrollPos, behavior: 'smooth' });
+    }
   };
 
-  const handleDragEnd = (event) => {
+  const handleDragEnd = async (event) => {
     const { active, over } = event;
-    if (over && active.id !== over.id) setCategoryOrder((items) => arrayMove(items, items.indexOf(active.id), items.indexOf(over.id)));
+    if (over && active.id !== over.id) {
+      const newOrder = arrayMove(categoryOrder, categoryOrder.indexOf(active.id), categoryOrder.indexOf(over.id));
+      setCategoryOrder(newOrder); 
+      
+      // 🚀 INSTANT DB SYNC: Auto-save the new category order in the background
+      try {
+        const updatedTheme = { ...storeTheme, categoryOrder: newOrder };
+        await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/theme`, { 
+          method: 'PATCH', 
+          headers: await getAuthHeaders(), 
+          body: JSON.stringify({ theme_settings: updatedTheme }) 
+        });
+        setStoreTheme(updatedTheme);
+      } catch (err) { 
+        console.error("Failed to auto-save category order:", err);
+      }
+    }
   };
 
   const onItemFileSelect = (e) => {
@@ -800,9 +892,9 @@ export default function DashboardPage() {
     } catch (err) { alert("Failed to delete store."); } finally { setIsUploading(false); }
   };
 
-  const openAddModal = () => { setEditingItemId(null); setNewItem({ name: '', description: '', price: '', category: '', imageFile: null }); setCroppedPreview(null); setIsItemModalOpen(true); };
-  const closeItemModal = () => { setIsItemModalOpen(false); setEditingItemId(null); setNewItem({ name: '', description: '', price: '', category: '', imageFile: null }); setCroppedPreview(null); };
-  const startEditItem = (item) => { setEditingItemId(item.id); setNewItem({ name: item.item_name, description: item.description || '', price: item.price, category: item.item_category, imageFile: null }); setCroppedPreview(item.image_url || null); setIsItemModalOpen(true); };
+  const openAddModal = () => { setEditingItemId(null); setNewItem({ name: '', description: '', price: '', category: '', imageFile: null }); setCroppedPreview(null); setIsItemModalOpen(true); setIsCategoryDropdownOpen(false); };
+  const closeItemModal = () => { setIsItemModalOpen(false); setEditingItemId(null); setNewItem({ name: '', description: '', price: '', category: '', imageFile: null }); setCroppedPreview(null); setIsCategoryDropdownOpen(false); };
+  const startEditItem = (item) => { setEditingItemId(item.id); setNewItem({ name: item.item_name, description: item.description || '', price: item.price, category: item.item_category, imageFile: null }); setCroppedPreview(item.image_url || null); setIsItemModalOpen(true); setIsCategoryDropdownOpen(false); };
 
   const handleAddItem = async (e) => {
     e.preventDefault(); setIsUploading(true); let finalImageUrl = null;
@@ -954,9 +1046,16 @@ export default function DashboardPage() {
       
       <style>{`
         .mapboxgl-ctrl-bottom-left, .mapboxgl-ctrl-bottom-right, .mapboxgl-ctrl-logo, .mapboxgl-ctrl-attrib { display: none !important; }
-        .custom-scrollbar::-webkit-scrollbar { display: none; }
         
-        /* 🚀 STRICT CSS ISOLATION FOR RESPONSIVE DASHBOARD */
+        /* 🚀 FIXED: Brand Colored Scrollbars */
+        .custom-scrollbar::-webkit-scrollbar { height: 6px; width: 6px; display: block; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: var(--surface-hover); border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--brand-primary, #1877F2); border-radius: 4px; }
+        
+        /* 🚀 FIXED: Dynamic Sticky Top */
+        .sticky-category-tabs { top: -30px; }
+        
+        /* STRICT CSS ISOLATION FOR RESPONSIVE DASHBOARD */
         .desktop-ui { display: block; }
         .mobile-ui-block { display: none; }
         .mobile-ui-flex { display: none; }
@@ -967,25 +1066,35 @@ export default function DashboardPage() {
           .mobile-ui-block { display: block !important; }
           .mobile-ui-flex { display: flex !important; }
           .dashboard-wrapper { padding: 16px; }
+          .sticky-category-tabs { top: -16px; }
         }
       `}</style>
 
-      {/* 🚀 UNIVERSAL CROPPER MODAL */}
+      {/* UNIVERSAL CROPPER MODAL */}
       {imageToCrop && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: 'rgba(15,23,42,0.95)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '20px', backdropFilter: 'blur(5px)' }}>
-          <div style={{ width: '100%', maxWidth: '800px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', color: 'white' }}>
-            <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '800' }}>
-              {cropType === 'cover' ? 'Adjust Cover Photo (3:1)' : cropType === 'logo' ? 'Adjust Store Logo (1:1)' : 'Adjust Item Image (4:3)'}
-            </h3>
+          <div style={{ width: '100%', maxWidth: '800px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '5px', color: 'white' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '18px', fontWeight: '800' }}>
+                {cropType === 'cover' ? 'Adjust Cover Photo (3:1)' : cropType === 'logo' ? 'Adjust Store Logo (1:1)' : 'Adjust Item Image (4:3)'}
+              </h3>
+              {/* 🚀 FIXED: Dynamic helper text for recommended sizes */}
+              <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#94A3B8', fontWeight: '600' }}>
+                {cropType === 'cover' ? 'Recommended size: 1200 x 400 pixels for best quality.' : cropType === 'logo' ? 'Recommended size: 400 x 400 pixels. Position your logo inside the circle.' : 'Recommended size: 800 x 600 pixels for best quality.'}
+              </p>
+            </div>
             <button onClick={() => { setImageToCrop(null); setZoom(1); }} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer' }}><MdClose size={28} /></button>
           </div>
           
-          <div style={{ position: 'relative', width: '100%', maxWidth: '800px', height: '60vh', backgroundColor: '#000', borderRadius: '16px', overflow: 'hidden', marginBottom: '20px', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
+          <div style={{ position: 'relative', width: '100%', maxWidth: '800px', height: '60vh', backgroundColor: '#000', borderRadius: '16px', overflow: 'hidden', marginBottom: '20px', boxShadow: '0 20px 40px rgba(0,0,0,0.5)', marginTop: '10px' }}>
             <Cropper
               image={imageToCrop}
               crop={crop}
               zoom={zoom}
               aspect={cropType === 'cover' ? 3 / 1 : cropType === 'logo' ? 1 / 1 : 4 / 3}
+              /* 🚀 FIXED: Circular mask and hidden grid for logos */
+              cropShape={cropType === 'logo' ? 'round' : 'rect'}
+              showGrid={cropType !== 'logo'}
               onCropChange={setCrop}
               onCropComplete={onCropComplete}
               onZoomChange={setZoom}
@@ -995,7 +1104,8 @@ export default function DashboardPage() {
           
           <div style={{ display: 'flex', gap: '20px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center', backgroundColor: 'var(--surface-color)', padding: '15px 30px', borderRadius: '50px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
             <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-muted)' }}>Zoom</span>
-            <input type="range" value={zoom} min={1} max={3} step={0.1} onChange={(e) => setZoom(Number(e.target.value))} style={{ width: '150px', accentColor: 'var(--brand-primary)' }} />
+            {/* 🚀 FIXED: Step changed from 0.1 to 0.01 for ultra-precise zooming */}
+            <input type="range" value={zoom} min={1} max={2} step={0.001} onChange={(e) => setZoom(Number(e.target.value))} style={{ width: '200px', accentColor: 'var(--brand-primary)' }} />
             <div style={{ width: '1px', height: '24px', backgroundColor: 'var(--border-color)', margin: '0 5px' }} />
             <button onClick={() => { setImageToCrop(null); setZoom(1); }} style={{ padding: '10px 20px', backgroundColor: 'var(--surface-hover)', color: 'var(--text-muted)', border: 'none', borderRadius: '24px', fontWeight: 'bold', cursor: 'pointer' }}>Cancel</button>
             <button onClick={handleSaveCrop} style={{ padding: '10px 24px', backgroundColor: 'var(--brand-primary)', color: 'white', border: 'none', borderRadius: '24px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px' }}><MdCheckCircle size={18} /> Apply Crop</button>
@@ -1112,7 +1222,6 @@ export default function DashboardPage() {
                 <textarea placeholder="Store Description (Optional)" value={editStoreData.description} onChange={(e) => setEditStoreData({...editStoreData, description: e.target.value})} style={{ padding: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '10px', width: '100%', boxSizing: 'border-box', minHeight: '80px', fontFamily: 'inherit' }} />
               </div>
               
-              {/* ... Rest of Edit Form remains the same ... */}
               <div style={{ padding: '15px', backgroundColor: 'var(--surface-hover)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
                 <h4 style={{ margin: '0 0 10px 0', fontSize: '14px', color: 'var(--text-main)' }}>Contact Details</h4>
                 
@@ -1170,9 +1279,10 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* 🚀 FIXED: ITEM MODAL (NO CLIPPING, ALL CATEGORIES VISIBLE) */}
       {isItemModalOpen && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
-          <div style={{ backgroundColor: 'var(--surface-color)', padding: '30px', borderRadius: '20px', width: '100%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'flex-start', padding: '20px', overflowY: 'auto' }}>
+          <div style={{ backgroundColor: 'var(--surface-color)', padding: '30px', borderRadius: '20px', width: '100%', maxWidth: '600px', margin: '40px auto', position: 'relative', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <h2 style={{ margin: 0, fontSize: '20px', color: 'var(--text-main)', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>{editingItemId ? <><MdEdit color="var(--brand-primary)" /> Edit Item</> : <><MdAdd color="var(--brand-primary)" /> Add New Item</>}</h2>
               <button onClick={closeItemModal} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '24px', cursor: 'pointer', lineHeight: '1' }}><MdClose /></button>
@@ -1184,11 +1294,46 @@ export default function DashboardPage() {
               </div>
               <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
                 <div style={{ flex: '2 1 200px' }}><label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '4px' }}>Description (Optional)</label><input type="text" placeholder="Brief details about the item..." value={newItem.description} onChange={(e) => setNewItem({...newItem, description: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '10px', boxSizing: 'border-box' }} /></div>
+                
+                {/* 🚀 FIXED: Dropdown Menu */}
                 <div style={{ flex: '1 1 150px' }}>
                   <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '4px' }}>Category Menu</label>
-                  <input type="text" list="category-suggestions" placeholder="Category" required value={newItem.category} onChange={(e) => setNewItem({...newItem, category: e.target.value})} style={{ width: '100%', padding: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '10px', boxSizing: 'border-box' }} />
-                  <datalist id="category-suggestions"><option value="General" /><option value="Best Sellers" /><option value="Promos" /></datalist>
+                  <div style={{ position: 'relative', width: '100%' }}>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. Main Dish" 
+                      required 
+                      value={newItem.category} 
+                      onChange={(e) => { setNewItem({...newItem, category: e.target.value}); setIsCategoryDropdownOpen(true); }}
+                      onFocus={() => setIsCategoryDropdownOpen(true)}
+                      onBlur={() => setTimeout(() => setIsCategoryDropdownOpen(false), 200)}
+                      style={{ width: '100%', padding: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', borderRadius: '10px', boxSizing: 'border-box' }} 
+                    />
+                    {isCategoryDropdownOpen && (
+                      <div className="custom-scrollbar" style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: '4px', backgroundColor: 'var(--surface-color)', border: '1px solid var(--border-color)', borderRadius: '10px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', zIndex: 100, maxHeight: '160px', overflowY: 'auto' }}>
+                        {categoryOrder.map(cat => (
+                          <div 
+                            key={cat} 
+                            onMouseDown={(e) => { 
+                              e.preventDefault(); 
+                              setNewItem({...newItem, category: cat}); 
+                              setIsCategoryDropdownOpen(false); 
+                            }} 
+                            style={{ padding: '10px 14px', cursor: 'pointer', fontSize: '13px', fontWeight: '700', borderBottom: '1px solid var(--border-color)', color: 'var(--text-main)', transition: 'background-color 0.2s' }}
+                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--surface-hover)'}
+                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                          >
+                            {cat}
+                          </div>
+                        ))}
+                        {categoryOrder.length === 0 && (
+                          <div style={{ padding: '10px 14px', fontSize: '12px', color: 'var(--text-muted)', fontStyle: 'italic' }}>Type and save to create your first category!</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
+
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px', padding: '15px', backgroundColor: 'var(--bg-color)', border: '1px dashed var(--border-color)', borderRadius: '12px', flexWrap: 'wrap', gap: '15px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
@@ -1381,6 +1526,19 @@ export default function DashboardPage() {
             {activeTab === 'menu' && (
               <div>
                 
+                {/* 🚀 FIXED: STICKY MENU CATEGORY TABS MOVED TO TOP */}
+                {categoryOrder.length > 0 && (
+                  <div className="sticky-category-tabs" style={{ position: 'sticky', zIndex: 35, backgroundColor: 'var(--bg-color)', padding: '15px 0', margin: '0 0 15px 0' }}>
+                    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={[restrictToHorizontalAxis]}>
+                      <div className="custom-scrollbar" style={{ display: 'flex', gap: '10px', padding: '10px', overflowX: 'auto', backgroundColor: 'var(--surface-color)', borderRadius: '16px', border: '1px solid var(--border-color)', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
+                        <SortableContext items={categoryOrder} strategy={horizontalListSortingStrategy}>
+                          {categoryOrder.map(cat => <SortableCategory key={cat} id={cat} activeCategory={activeCategory} brandColor={storeTheme.primaryColor} onClick={scrollToCategory} />)}
+                        </SortableContext>
+                      </div>
+                    </DndContext>
+                  </div>
+                )}
+
                 <div style={{ backgroundColor: 'var(--surface-color)', padding: '18px 24px', borderRadius: '16px', border: '1px solid var(--border-color)', boxShadow: '0 4px 10px rgba(0,0,0,0.02)', marginBottom: '30px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -1453,18 +1611,6 @@ export default function DashboardPage() {
                       {isMenuLocked ? <><MdLock size={18} /> Unlock</> : <><MdAdd size={18} /> Add Item</>}
                     </button>
                   </div>
-
-                  {categoryOrder.length > 0 && (
-                    <div style={{ position: 'sticky', top: '0px', zIndex: 30, backgroundColor: 'var(--bg-color)', padding: '10px 0', margin: '0 -10px', paddingLeft: '10px', paddingRight: '10px' }}>
-                      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={[restrictToHorizontalAxis]}>
-                        <div className="custom-scrollbar" style={{ display: 'flex', gap: '10px', padding: '10px', overflowX: 'auto', backgroundColor: 'var(--surface-color)', borderRadius: '16px', border: '1px solid var(--border-color)', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
-                          <SortableContext items={categoryOrder} strategy={horizontalListSortingStrategy}>
-                            {categoryOrder.map(cat => <SortableCategory key={cat} id={cat} activeCategory={activeCategory} brandColor={storeTheme.primaryColor} onClick={scrollToCategory} />)}
-                          </SortableContext>
-                        </div>
-                      </DndContext>
-                    </div>
-                  )}
 
                   <div style={{ backgroundColor: 'var(--surface-color)', borderRadius: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.02)', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
                     <div style={{ display: 'flex', flexDirection: 'column' }}>

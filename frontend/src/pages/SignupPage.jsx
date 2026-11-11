@@ -156,7 +156,7 @@ export default function SignupPage() {
               <form onSubmit={handleRegister} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '6px' }}>FULL NAME</label>
-                  <input type="text" required value={formData.fullName} onChange={(e) => setFormData({...formData, fullName: e.target.value})} placeholder="e.g., Jane Doe" style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1px solid var(--border-color)', fontSize: '14px', boxSizing: 'border-box', outline: 'none', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)' }} />
+                  <input type="text" required value={formData.fullName} onChange={(e) => setFormData({...formData, fullName: e.target.value})} placeholder="e.g., Juan Dela Cruz" style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1px solid var(--border-color)', fontSize: '14px', boxSizing: 'border-box', outline: 'none', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)' }} />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: '11px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '6px' }}>EMAIL ADDRESS</label>

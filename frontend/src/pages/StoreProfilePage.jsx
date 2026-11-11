@@ -5,7 +5,7 @@ import {
   MdArrowBack, MdLocationOn, MdPhone, MdEmail, MdLanguage, 
   MdStar, MdStarBorder, MdAccessTime, MdSend, MdImage, 
   MdClose, MdMoreVert, MdChevronLeft, MdChevronRight, MdExpandMore,
-  MdFlag, MdStorefront, MdRestaurantMenu, MdVisibility, MdShare
+  MdFlag, MdStorefront, MdRestaurantMenu, MdVisibility, MdShare, MdSearch
 } from 'react-icons/md';
 import { VscThumbsup, VscThumbsupFilled } from 'react-icons/vsc';
 
@@ -36,11 +36,11 @@ const timeAgo = (dateString) => {
   const years = Math.round(days / 365);
 
   if (seconds < 60) return 'Just now';
-  if (minutes < 60) return `${minutes} mins ago`;
-  if (hours < 24) return `${hours} hours ago`;
-  if (days < 30) return `${days} days ago`;
-  if (months < 12) return `${months} months ago`;
-  return `${years} years ago`;
+  if (minutes < 60) return `${minutes} min${minutes === 1 ? '' : 's'} ago`;
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  if (days < 30) return `${days} day${days === 1 ? '' : 's'} ago`;
+  if (months < 12) return `${months} month${months === 1 ? '' : 's'} ago`;
+  return `${years} year${years === 1 ? '' : 's'} ago`;
 };
 
 const Avatar = ({ src, name, size, color }) => {
@@ -91,6 +91,35 @@ export default function StoreProfilePage() {
   const [lightbox, setLightbox] = useState({ isOpen: false, images: [], currentIndex: 0 });
   
   const [activeCategory, setActiveCategory] = useState('');
+
+  // 🚀 NEW: Search and Hours Modal States
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showHoursModal, setShowHoursModal] = useState(false);
+
+  // 🚀 NEW: Native Web Share API
+  const handleShare = async () => {
+    const shareData = {
+      title: store.store_name,
+      text: `Check out ${store.store_name} on LocalLook!`,
+      url: window.location.href,
+    };
+    if (navigator.share) {
+      try { await navigator.share(shareData); } catch (err) { console.log('Share canceled'); }
+    } else {
+      navigator.clipboard.writeText(window.location.href);
+      alert('Store link copied to clipboard!');
+    }
+  };
+
+  // Helper to format 24h to 12h AM/PM
+  const formatTime = (timeStr) => {
+    if (!timeStr) return '';
+    const [h, m] = timeStr.split(':');
+    const hour = parseInt(h);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    return `${hour % 12 || 12}:${m} ${ampm}`;
+  };
+  const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
@@ -253,15 +282,18 @@ export default function StoreProfilePage() {
 
   const scrollToSection = (elementId) => {
     const el = document.getElementById(elementId);
-    if (el) {
-      const offset = 80;
-      const bodyRect = document.body.getBoundingClientRect().top;
-      const elementRect = el.getBoundingClientRect().top;
-      const elementPosition = elementRect - bodyRect;
-      const offsetPosition = elementPosition - offset;
+    const container = document.querySelector('.scroll-container');
+    
+    if (el && container) {
+      // Calculate the exact position of the element relative to the scrolling container
+      const containerTop = container.getBoundingClientRect().top;
+      const elTop = el.getBoundingClientRect().top;
+      
+      // The -120 offsets the sticky navigation bar so it doesn't cover the title
+      const scrollPos = container.scrollTop + (elTop - containerTop) - 120; 
 
-      document.querySelector('.scroll-container').scrollTo({
-        top: offsetPosition,
+      container.scrollTo({
+        top: scrollPos,
         behavior: 'smooth'
       });
     }
@@ -275,7 +307,13 @@ export default function StoreProfilePage() {
   const theme = store?.theme_settings || {};
   const brandColor = theme.primaryColor || '#2563EB';
 
-  const groupedItems = items.reduce((groups, item) => {
+  // 🚀 FIXED: Filter items by search query BEFORE grouping
+  const filteredItems = items.filter(item => 
+    item.item_name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    item.description?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const groupedItems = filteredItems.reduce((groups, item) => {
     const category = item.item_category || 'Uncategorized';
     if (!groups[category]) groups[category] = [];
     groups[category].push(item);
@@ -326,7 +364,24 @@ export default function StoreProfilePage() {
     <div className="scroll-container" onScroll={handleScroll} style={{ height: '100%', overflowY: 'auto', width: '100%', backgroundColor: 'var(--bg-color)', fontFamily: 'var(--font-main)' }}>
       
       <style>{`
-        /* 🚀 STRICT CSS ISOLATION BETWEEN DESKTOP AND MOBILE */
+        /* 🚀 UNIFIED RESPONSIVE HEADER STYLES */
+        .store-header-wrapper { padding: 20px; }
+        .cover-header { height: 320px; border-radius: 24px; }
+        .header-text-container { padding-left: 220px !important; }
+        .header-title { font-size: 36px; }
+        .header-logo { left: 40px; bottom: -40px; width: 150px; height: 150px; }
+        .header-details-container { padding-left: 220px !important; }
+
+        @media (max-width: 768px) {
+          .store-header-wrapper { padding: 0px; }
+          .cover-header { height: 260px; border-radius: 0px; }
+          .header-text-container { padding-left: 140px !important; padding-bottom: 20px !important; }
+          .header-title { font-size: 24px; }
+          .header-logo { left: 20px; bottom: -30px; width: 100px; height: 100px; }
+          .header-details-container { padding-left: 20px !important; padding-top: 40px !important; }
+        }
+
+        /* STRICT CSS ISOLATION BETWEEN DESKTOP AND MOBILE */
         .desktop-ui { display: block; }
         .mobile-ui-block { display: none; }
         .mobile-ui-flex { display: none; }
@@ -341,6 +396,43 @@ export default function StoreProfilePage() {
 
         .custom-scrollbar::-webkit-scrollbar { display: none; }
       `}</style>
+
+      {showHoursModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 999999, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(2px)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
+          <div style={{ backgroundColor: 'var(--surface-color)', padding: '30px', borderRadius: '24px', width: '100%', maxWidth: '350px', boxShadow: '0 20px 40px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ margin: 0, fontSize: '20px', fontWeight: '900', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '8px' }}><MdAccessTime color={brandColor} /> Operating Hours</h3>
+              <button onClick={() => setShowHoursModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}><MdClose size={24} /></button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {(() => {
+                // 🚀 FIXED: Safely parse database format
+                let parsedHours = store.operating_hours;
+                if (typeof parsedHours === 'string') {
+                  try { parsedHours = JSON.parse(parsedHours); } catch (e) { parsedHours = null; }
+                }
+
+                if (!parsedHours || Object.keys(parsedHours).length === 0) {
+                  return <p style={{ color: 'var(--text-muted)', fontSize: '14px', textAlign: 'center', fontStyle: 'italic' }}>Hours not provided by merchant.</p>;
+                }
+
+                return DAYS_OF_WEEK.map(day => {
+                  const dayData = parsedHours[day];
+                  return (
+                    <div key={day} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: '8px', borderBottom: '1px solid var(--surface-hover)' }}>
+                      <span style={{ textTransform: 'capitalize', fontWeight: '700', fontSize: '14px', color: 'var(--text-main)' }}>{day}</span>
+                      <span style={{ fontSize: '14px', fontWeight: '600', color: dayData?.isOpen ? 'var(--text-muted)' : '#EF4444' }}>
+                        {dayData?.isOpen && dayData?.open && dayData?.close ? `${formatTime(dayData.open)} - ${formatTime(dayData.close)}` : 'Closed'}
+                      </span>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+            <button onClick={() => setShowHoursModal(false)} style={{ width: '100%', padding: '12px', marginTop: '24px', backgroundColor: 'var(--surface-hover)', color: 'var(--text-main)', border: 'none', borderRadius: '12px', fontWeight: 'bold', cursor: 'pointer' }}>Close</button>
+          </div>
+        </div>
+      )}
 
       {/* --- MODALS (Shared) --- */}
       {reportModal.isOpen && (
@@ -377,156 +469,153 @@ export default function StoreProfilePage() {
 
 
       {/* ========================================================= */}
-      {/* 💻 DESKTOP UI: HEADER                                     */}
+      {/* 🚀 UNIFIED HEADER (Desktop & Mobile)                      */}
       {/* ========================================================= */}
-      <div className="desktop-ui" style={{ maxWidth: '1000px', margin: '0 auto', paddingTop: '20px', paddingBottom: '30px', paddingLeft: '20px', paddingRight: '20px', position: 'relative' }}>
-        <div style={{ height: '320px', width: '100%', borderRadius: '24px', overflow: 'hidden', backgroundImage: `url(${getStoreCoverImage(store)})`, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative' }}>
+      <div className="store-header-wrapper" style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
+        <div style={{ position: 'relative' }}>
           
-          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(15,23,42,0.95) 0%, rgba(15,23,42,0.3) 60%, transparent 100%)' }} />
-          
-          <button onClick={() => navigate(-1)} style={{ position: 'absolute', top: '20px', left: '20px', backgroundColor: 'rgba(255, 255, 255, 0.2)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.4)', color: 'white', padding: '10px 20px', borderRadius: '24px', display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '14px', zIndex: 10 }}>
-            <MdArrowBack size={18} /> Back
-          </button>
-
-          <div style={{ position: 'absolute', bottom: '0', left: '0', right: '0', padding: '25px', display: 'flex', alignItems: 'flex-end', gap: '20px' }}>
-            <div style={{ paddingLeft: '180px', color: 'white', width: '100%' }}>
-              <h1 style={{ margin: '0 0 6px 0', fontSize: '36px', fontWeight: '900', textShadow: '0 2px 4px rgba(0,0,0,0.5)', lineHeight: '1.1' }}>{store.store_name}</h1>
-              <p style={{ margin: '0 0 14px 0', fontSize: '15px', color: '#E2E8F0', fontWeight: '600' }}>{store.store_category}</p>
-              
-              <div style={{ display: 'flex', alignItems: 'center', gap: '15px', flexWrap: 'wrap', fontSize: '13px', fontWeight: '500', color: '#F8FAFC' }}>
-                {theme.showAddress && <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><MdLocationOn size={16} /> {theme.addressText || 'Location not set'}</span>}
+          {/* Cover Photo */}
+          <div className="cover-header" style={{ width: '100%', backgroundColor: 'var(--surface-color)', backgroundImage: `url(${getStoreCoverImage(store)})`, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative', overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(15,23,42,0.95) 0%, rgba(15,23,42,0.3) 60%, transparent 100%)' }} />
+            <button onClick={() => navigate(-1)} style={{ position: 'absolute', top: '20px', left: '20px', backgroundColor: 'rgba(255, 255, 255, 0.2)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.4)', color: 'white', padding: '8px 16px', borderRadius: '24px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '13px', zIndex: 10 }}>
+              <MdArrowBack size={18} /> Back
+            </button>
+            
+            <div className="header-text-container" style={{ position: 'absolute', bottom: '0', left: '0', right: '0', display: 'flex', alignItems: 'flex-end', padding: '24px' }}>
+              <div style={{ color: 'white', width: '100%' }}>
+                <h1 className="header-title" style={{ margin: '0 0 6px 0', fontWeight: '900', textShadow: '0 2px 4px rgba(0,0,0,0.5)', lineHeight: '1.1' }}>{store.store_name}</h1>
                 
-                <button onClick={() => scrollToSection('reviews-section')} style={{ background: 'none', border: 'none', color: 'white', padding: 0, margin: 0, fontSize: '13px', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', outline: 'none' }}>
-                  <MdStar size={16} color="#F59E0B" /> {totalReviews > 0 ? `${averageRating} (${totalReviews} Reviews)` : 'No reviews yet'}
-                </button>
+                {/* 🚀 FIXED: Specific Industry displayed instead of general category */}
+                <p style={{ margin: '0 0 10px 0', fontSize: '15px', color: '#E2E8F0', fontWeight: '600', textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>
+                  {store.industry || store.store_category}
+                </p>
+                
+                {/* 🚀 FIXED: Location and Reviews side-by-side below industry */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '15px', flexWrap: 'wrap', fontSize: '13px', fontWeight: '500', color: '#F8FAFC' }}>
+                  {theme.showAddress && (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px', textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>
+                      <MdLocationOn size={16} /> {theme.addressText || 'Location not set'}
+                    </span>
+                  )}
+                  <button onClick={() => scrollToSection('reviews-section')} style={{ background: 'none', border: 'none', color: 'white', padding: 0, margin: 0, fontSize: '13px', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', outline: 'none', textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>
+                    <MdStar size={16} color="#FFFFFF" /> {totalReviews > 0 ? `${averageRating} (${totalReviews} review${totalReviews === 1 ? '' : 's'})` : 'No reviews yet'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <div style={{ position: 'absolute', bottom: '-20px', left: '60px', width: '160px', height: '160px', borderRadius: '50%', border: '6px solid rgba(255, 255, 255, 0.3)', backgroundClip: 'padding-box', backgroundColor: 'var(--surface-color)', zIndex: 30, boxShadow: '0 10px 30px rgba(0,0,0,0.2)', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }}>
-          {store.logo_url ? (
-            <img src={store.logo_url} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          ) : (
-            <MdStorefront size={60} color="var(--icon-color)" />
-          )}
-        </div>
-      </div>
-
-      <div className="desktop-ui" style={{ maxWidth: '1000px', margin: '0 auto', padding: '10px 20px 40px 20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', paddingLeft: '180px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', backgroundColor: store.is_open ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)', color: store.is_open ? '#10B981' : '#EF4444', borderRadius: '20px', fontSize: '13px', fontWeight: '800' }}>
-            <MdAccessTime size={16} /> {store.is_open ? 'Open now' : 'Closed'}
-          </div>
-          {theme.showPhone && <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', backgroundColor: 'var(--surface-hover)', color: 'var(--text-main)', borderRadius: '20px', fontSize: '13px', fontWeight: '700' }}><MdPhone size={16} /> {store.phone}</div>}
-        </div>
-        
-        {store.description && (
-          <p style={{ margin: '15px 0 0 0', color: 'var(--text-main)', fontSize: '15px', lineHeight: '1.6', wordBreak: 'break-word', maxWidth: '800px', paddingLeft: '180px' }}>
-            {store.description}
-          </p>
-        )}
-      </div>
-
-
-      {/* ========================================================= */}
-      {/* 📱 MOBILE UI: NATIVE APP HEADER                           */}
-      {/* ========================================================= */}
-      <div className="mobile-ui-block">
-        {/* Massive Cover Image */}
-        <div style={{ position: 'relative', width: '100%', height: '260px', backgroundImage: `url(${getStoreCoverImage(store)})`, backgroundSize: 'cover', backgroundPosition: 'center' }}>
-          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, var(--bg-color) 0%, transparent 40%)' }} />
-          
-          <button onClick={() => navigate(-1)} style={{ position: 'absolute', top: '16px', left: '16px', width: '40px', height: '40px', borderRadius: '50%', backgroundColor: 'rgba(255,255,255,0.9)', display: 'flex', justifyContent: 'center', alignItems: 'center', border: 'none', boxShadow: '0 4px 10px rgba(0,0,0,0.15)', cursor: 'pointer', zIndex: 10 }}>
-            <MdArrowBack size={24} color="#0F172A" />
-          </button>
-        </div>
-
-        {/* Store Title Block */}
-        <div style={{ padding: '0 16px 24px 16px', position: 'relative', marginTop: '-30px', zIndex: 5 }}>
-          <div style={{ position: 'absolute', top: '-50px', right: '20px', width: '80px', height: '80px', borderRadius: '50%', border: '4px solid var(--bg-color)', backgroundColor: 'var(--surface-color)', display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}>
+          {/* 🚀 FIXED: Polished Logo Rendering with White Border and Soft Shadow */}
+          <div className="header-logo" style={{ 
+            position: 'absolute', 
+            borderRadius: '50%', 
+            backgroundColor: 'white', 
+            border: '4px solid white', 
+            zIndex: 30, 
+            boxShadow: '0 8px 24px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.08)', 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            overflow: 'hidden' 
+          }}>
             {store.logo_url ? (
               <img src={store.logo_url} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             ) : (
               <MdStorefront size={40} color="var(--icon-color)" />
             )}
           </div>
-          
-          <h1 style={{ margin: '0 0 4px 0', fontSize: '26px', fontWeight: '900', color: 'var(--text-main)', lineHeight: '1.2', width: 'calc(100% - 90px)' }}>
-            {store.store_name}
-          </h1>
-          <p style={{ margin: '0 0 12px 0', fontSize: '14px', color: 'var(--text-muted)', fontWeight: '600' }}>
-            {store.store_category} {theme.showAddress && `• ${theme.addressText || 'Odiongan'}`}
-          </p>
+        </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
-            <span style={{ padding: '6px 12px', backgroundColor: store.is_open ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)', color: store.is_open ? '#10B981' : '#EF4444', borderRadius: '12px', fontSize: '12px', fontWeight: '800' }}>
-              {store.is_open ? 'Open Now' : 'Closed'}
-            </span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '14px', fontWeight: '800', color: 'var(--text-main)' }}>
-              <MdStar color="#F59E0B" size={18} /> {averageRating} <span style={{ color: 'var(--text-muted)', fontWeight: '600', fontSize: '13px' }}>({totalReviews})</span>
-            </span>
+        {/* Details Section */}
+        <div className="header-details-container" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
+          <div className="custom-scrollbar" style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '4px' }}>
+            
+            <button onClick={() => setShowHoursModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', backgroundColor: store.is_open ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)', color: store.is_open ? '#10B981' : '#EF4444', borderRadius: '20px', fontSize: '13px', fontWeight: '800', flexShrink: 0, border: 'none', cursor: 'pointer', outline: 'none', transition: 'transform 0.1s' }} onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.95)'} onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'} onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}>
+              <MdAccessTime size={16} /> {store.is_open ? 'Open now' : 'Closed'} <MdExpandMore size={16} />
+            </button>
+            
+            {theme.showPhone && store.phone && (
+              <a href={`tel:${store.phone}`} style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', backgroundColor: 'var(--surface-hover)', color: 'var(--text-main)', borderRadius: '20px', fontSize: '13px', fontWeight: '700', flexShrink: 0 }}><MdPhone size={16} color={brandColor} /> {store.phone}</a>
+            )}
+            
+            {/* 🚀 FIXED: Showing actual Email and Website */}
+            {theme.showEmail && store.email && (
+              <a href={`mailto:${store.email}`} style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', backgroundColor: 'var(--surface-hover)', color: 'var(--text-main)', borderRadius: '20px', fontSize: '13px', fontWeight: '700', flexShrink: 0 }}><MdEmail size={16} color={brandColor} /> {store.email}</a>
+            )}
+            
+            {theme.showWebsite && store.website && (
+              <a href={store.website} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px', backgroundColor: 'var(--surface-hover)', color: 'var(--text-main)', borderRadius: '20px', fontSize: '13px', fontWeight: '700', flexShrink: 0 }}><MdLanguage size={16} color={brandColor} /> {store.website.replace(/^https?:\/\//, '').replace(/\/$/, '')}</a>
+            )}
+            
           </div>
-
+          
           {store.description && (
-            <p style={{ margin: '0 0 20px 0', color: 'var(--text-main)', fontSize: '14px', lineHeight: '1.6' }}>
+            <p style={{ margin: '0', color: 'var(--text-main)', fontSize: '14px', lineHeight: '1.6', wordBreak: 'break-word', maxWidth: '800px' }}>
               {store.description}
             </p>
           )}
-
-          {/* Quick Action Buttons */}
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <button style={{ flex: 1, padding: '12px', backgroundColor: brandColor, color: 'white', border: 'none', borderRadius: '12px', fontWeight: '800', fontSize: '14px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
-              <MdLocationOn size={18} /> Directions
-            </button>
-            <button onClick={() => scrollToSection('reviews-section')} style={{ flex: 1, padding: '12px', backgroundColor: 'var(--surface-hover)', color: 'var(--text-main)', border: 'none', borderRadius: '12px', fontWeight: '800', fontSize: '14px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '6px' }}>
-              <MdStar size={18} color="#F59E0B" /> Review
-            </button>
-          </div>
         </div>
       </div>
 
-
       {/* ========================================================= */}
-      {/* 🚀 SHARED NAV BAR (Categories & Reviews Link)             */}
+      {/* 🚀 SHARED NAV BAR & SEARCH                                */}
       {/* ========================================================= */}
       {(items.length > 0 || totalReviews > 0) && (
-        <div style={{ position: 'sticky', top: 0, backgroundColor: 'var(--bg-color)', zIndex: 50, borderTop: '1px solid var(--border-color)', borderBottom: '1px solid var(--border-color)', padding: '12px 16px', display: 'flex', gap: '10px', overflowX: 'auto', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
-          <div style={{ maxWidth: '1000px', margin: '0 auto', display: 'flex', gap: '10px', width: '100%' }}>
+        <div style={{ position: 'sticky', top: 0, backgroundColor: 'var(--bg-color)', zIndex: 50, borderTop: '1px solid var(--border-color)', borderBottom: '1px solid var(--border-color)' }}>
+          
+          {/* 🚀 FIXED: nav-padding on the parent wrapper aligns tabs and search perfectly */}
+          <div className="nav-padding" style={{ maxWidth: '1000px', margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
             
-            {activeCategories.map(category => (
-              <button
-                key={category}
-                onClick={() => {
-                   setActiveCategory(category);
-                   scrollToSection(`category-${category}`);
-                }}
-                style={{
-                  padding: '8px 20px',
-                  borderRadius: '24px',
-                  backgroundColor: activeCategory === category ? brandColor : 'var(--surface-color)',
-                  color: activeCategory === category ? 'white' : 'var(--text-muted)',
-                  border: activeCategory === category ? `1px solid ${brandColor}` : '1px solid var(--border-color)',
-                  fontWeight: '800',
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap',
-                  transition: 'all 0.2s',
-                  boxShadow: activeCategory === category ? '0 4px 10px rgba(0,0,0,0.1)' : 'none'
-                }}
-              >
-                {category}
-              </button>
-            ))}
+            <div className="custom-scrollbar" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%', paddingTop: '12px', paddingBottom: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 'max-content' }}>
+                
+                {activeCategories.map(category => (
+                  <button
+                    key={category}
+                    onClick={() => {
+                       setActiveCategory(category);
+                       scrollToSection(`category-${category}`);
+                    }}
+                    style={{
+                      padding: '8px 20px', borderRadius: '24px', flexShrink: 0,
+                      backgroundColor: activeCategory === category ? brandColor : 'var(--surface-color)',
+                      color: activeCategory === category ? '#FFFFFF' : 'var(--text-muted)',
+                      border: activeCategory === category ? `1px solid ${brandColor}` : '1px solid var(--border-color)',
+                      fontWeight: '800', fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.2s',
+                      boxShadow: activeCategory === category ? `0 4px 10px ${brandColor}40` : 'none'
+                    }}
+                  >
+                    {category}
+                  </button>
+                ))}
 
-            <div style={{ marginLeft: 'auto', paddingLeft: '20px', borderLeft: '1px solid var(--border-color)', display: 'flex' }}>
-              <button
-                onClick={() => scrollToSection('reviews-section')}
-                style={{ padding: '8px 20px', borderRadius: '24px', backgroundColor: 'var(--surface-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', fontWeight: '800', fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s' }}
-              >
-                <MdStar size={16} color="#F59E0B" /> Reviews
-              </button>
+                <div style={{ marginLeft: 'auto', paddingLeft: '20px', borderLeft: '1px solid var(--border-color)', display: 'flex', gap: '10px', flexShrink: 0 }}>
+                  <button onClick={handleShare} style={{ padding: '8px 16px', borderRadius: '24px', backgroundColor: 'var(--surface-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', fontWeight: '800', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s' }}>
+                    <MdShare size={16} color={brandColor} /> Share
+                  </button>
+                  <button onClick={() => scrollToSection('reviews-section')} style={{ padding: '8px 20px', borderRadius: '24px', backgroundColor: 'var(--surface-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', fontWeight: '800', fontSize: '13px', cursor: 'pointer', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '6px', transition: 'all 0.2s' }}>
+                    <MdStar size={16} color="#F59E0B" /> Reviews
+                  </button>
+                </div>
+              </div>
             </div>
+            
+            {/* Mini Search Bar */}
+            {items.length > 0 && (
+              <div style={{ paddingBottom: '12px', width: '100%' }}>
+                <div style={{ display: 'flex', alignItems: 'center', backgroundColor: 'var(--surface-hover)', borderRadius: '12px', padding: '10px 16px', border: '1px solid var(--border-color)' }}>
+                  <MdSearch size={20} color="var(--text-muted)" />
+                  <input 
+                    type="text" 
+                    placeholder="Search the menu..." 
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    style={{ border: 'none', background: 'transparent', outline: 'none', width: '100%', fontSize: '14px', marginLeft: '10px', color: 'var(--text-main)', fontWeight: '500' }}
+                  />
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
       )}
@@ -607,7 +696,7 @@ export default function StoreProfilePage() {
               <div style={{ display: 'flex', margin: '8px 0' }}>
                 {[1, 2, 3, 4, 5].map(star => <MdStar key={star} size={20} color={star <= Math.round(averageRating) ? '#F59E0B' : 'var(--border-color)'} />)}
               </div>
-              <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '600' }}>{totalReviews} ratings</div>
+              <div style={{ fontSize: '13px', color: 'var(--text-muted)', fontWeight: '600' }}>{totalReviews} rating{totalReviews === 1 ? '' : 's'}</div>
             </div>
 
             <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '400px', minWidth: '200px' }}>
