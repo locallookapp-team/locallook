@@ -91,6 +91,53 @@ export default function StoreProfilePage() {
   const [lightbox, setLightbox] = useState({ isOpen: false, images: [], currentIndex: 0 });
   
   const [activeCategory, setActiveCategory] = useState('');
+  // 🚀 NEW: Customer Item Selection Modal States
+  const [activeItemModal, setActiveItemModal] = useState(null);
+  const [itemSelections, setItemSelections] = useState({});
+  const [itemQuantity, setItemQuantity] = useState(1);
+
+  const handleOpenItem = (item) => {
+    setActiveItemModal(item);
+    setItemQuantity(1);
+    
+    // Parse options and auto-select the first choice of each group by default
+    let parsedOptions = [];
+    try {
+      parsedOptions = typeof item.options === 'string' ? JSON.parse(item.options) : item.options;
+    } catch(e) {}
+    
+    const initialSelections = {};
+    if (Array.isArray(parsedOptions)) {
+      parsedOptions.forEach(group => {
+        if (group.choices && group.choices.length > 0) {
+          initialSelections[group.name] = group.choices[0]; // Store the whole choice object
+        }
+      });
+    }
+    setItemSelections(initialSelections);
+  };
+
+  // 🚀 FIXED: Absolute Pricing Calculation
+  const calculateItemTotal = () => {
+    if (!activeItemModal) return 0;
+    
+    let unitPrice = parseFloat(activeItemModal.price);
+    let hasVariantPrice = false;
+    let maxVariantPrice = 0;
+    
+    // If multiple options have a price (e.g. Size and Add-on), we take the highest absolute price for the item base
+    Object.values(itemSelections).forEach(choice => {
+      if (choice && choice.priceDiff && !isNaN(parseFloat(choice.priceDiff))) {
+        hasVariantPrice = true;
+        const price = parseFloat(choice.priceDiff);
+        if (price > maxVariantPrice) maxVariantPrice = price;
+      }
+    });
+    
+    if (hasVariantPrice) unitPrice = maxVariantPrice;
+    
+    return unitPrice * itemQuantity;
+  };
 
   // 🚀 NEW: Search and Hours Modal States
   const [searchQuery, setSearchQuery] = useState('');
@@ -306,6 +353,27 @@ export default function StoreProfilePage() {
 
   const theme = store?.theme_settings || {};
   const brandColor = theme.primaryColor || '#2563EB';
+
+  // 🚀 Helper to safely parse and display JSON variants on the storefront cards
+  const renderOptionsSummary = (optionsString) => {
+    if (!optionsString) return null;
+    try {
+      const opts = typeof optionsString === 'string' ? JSON.parse(optionsString) : optionsString;
+      if (!Array.isArray(opts) || opts.length === 0) return null;
+      return (
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px' }}>
+          {opts.map((opt, i) => (
+            <span key={i} style={{ fontSize: '11px', color: brandColor, fontWeight: '700', backgroundColor: 'var(--surface-hover)', padding: '4px 8px', borderRadius: '6px', border: `1px solid ${brandColor}30` }}>
+              {opt.name}: {opt.choices?.length || 0} Options
+            </span>
+          ))}
+        </div>
+      );
+    } catch (e) {
+      // Fallback for older items that just used plain text
+      return <div style={{ marginTop: '8px', fontSize: '11px', color: brandColor, fontWeight: '700', backgroundColor: 'var(--surface-hover)', padding: '4px 8px', borderRadius: '6px', display: 'inline-block' }}>{optionsString}</div>;
+    }
+  };
 
   // 🚀 FIXED: Filter items by search query BEFORE grouping
   const filteredItems = items.filter(item => 
@@ -659,9 +727,8 @@ export default function StoreProfilePage() {
                 <div className="desktop-ui">
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
                     {groupedItems[category].map(item => (
-                      <div key={item.id} style={{ backgroundColor: 'var(--surface-color)', borderRadius: '16px', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', transition: 'box-shadow 0.2s, transform 0.2s', cursor: 'pointer' }} onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 10px 25px rgba(0,0,0,0.1)'; }} onMouseOut={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}>
+                      <div onClick={() => handleOpenItem(item)} key={item.id} style={{ backgroundColor: 'var(--surface-color)', borderRadius: '16px', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', transition: 'box-shadow 0.2s, transform 0.2s', cursor: 'pointer' }} onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 10px 25px rgba(0,0,0,0.1)'; }} onMouseOut={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}>
                         
-                        {/* 🚀 FIXED: Dynamic 1:1 Aspect Ratio instead of fixed 200px height */}
                         {item.image_url ? (
                           <div style={{ aspectRatio: '1 / 1', width: '100%', backgroundImage: `url(${item.image_url})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundColor: 'var(--surface-hover)', borderBottom: '1px solid var(--border-color)' }} />
                         ) : (
@@ -674,8 +741,7 @@ export default function StoreProfilePage() {
                             <span style={{ fontSize: '16px', fontWeight: '900', color: 'var(--text-main)', whiteSpace: 'nowrap' }}>₱{parseFloat(item.price).toFixed(2)}</span>
                           </div>
                           {item.description && <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)', lineHeight: '1.5', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.description}</p>}
-                          {/* 🚀 NEW: Desktop Options Display */}
-                          {item.options && <div style={{ marginTop: '8px', fontSize: '12px', color: brandColor, fontWeight: '700', backgroundColor: 'var(--surface-hover)', padding: '4px 8px', borderRadius: '6px', display: 'inline-block' }}>{item.options}</div>}
+                          {renderOptionsSummary(item.options)}
                         </div>
                       </div>
                     ))}
@@ -685,13 +751,12 @@ export default function StoreProfilePage() {
                 {/* 📱 MOBILE LIST LAYOUT (UberEats Style) */}
                 <div className="mobile-ui-block" style={{ backgroundColor: 'var(--surface-color)', borderRadius: '16px', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
                   {groupedItems[category].map((item, index) => (
-                    <div key={item.id} style={{ display: 'flex', padding: '16px', borderBottom: index === groupedItems[category].length - 1 ? 'none' : '1px solid var(--border-color)', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
+                    <div onClick={() => handleOpenItem(item)} key={item.id} style={{ display: 'flex', padding: '16px', borderBottom: index === groupedItems[category].length - 1 ? 'none' : '1px solid var(--border-color)', justifyContent: 'space-between', alignItems: 'center', gap: '16px', cursor: 'pointer' }}>
                       <div style={{ flex: 1 }}>
                         <h4 style={{ margin: '0 0 6px 0', fontSize: '15px', fontWeight: '800', color: 'var(--text-main)' }}>{item.item_name}</h4>
                         <span style={{ fontSize: '14px', fontWeight: '800', color: 'var(--text-main)' }}>₱{parseFloat(item.price).toFixed(2)}</span>
                         {item.description && <p style={{ margin: '6px 0 0 0', fontSize: '13px', color: 'var(--text-muted)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', lineHeight: '1.4' }}>{item.description}</p>}
-                        {/* 🚀 NEW: Mobile Options Display */}
-                        {item.options && <div style={{ marginTop: '6px', fontSize: '11px', color: brandColor, fontWeight: '700', backgroundColor: 'var(--surface-hover)', padding: '4px 8px', borderRadius: '6px', display: 'inline-block' }}>{item.options}</div>}
+                        {renderOptionsSummary(item.options)}
                       </div>
                       {item.image_url ? (
                         <div style={{ width: '90px', height: '90px', borderRadius: '12px', backgroundImage: `url(${item.image_url})`, backgroundSize: 'cover', backgroundPosition: 'center', flexShrink: 0, backgroundColor: 'var(--surface-hover)', border: '1px solid var(--border-color)' }} />
@@ -706,6 +771,121 @@ export default function StoreProfilePage() {
             ))}
           </div>
         )}
+        {/* 🚀 NEW: Customer Variant Modal (Two-Column Desktop / Stacked Mobile) */}
+      {activeItemModal && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }} onClick={() => setActiveItemModal(null)}>
+          
+          <style>{`
+            .desktop-modal-flex { display: flex; flex-direction: column; }
+            .modal-image-container { width: 100%; aspect-ratio: 1 / 1; border-bottom: 1px solid var(--border-color); }
+            .modal-content-container { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+            .modal-scroll-area { padding: 24px; overflow-y: auto; flex-grow: 1; }
+            .modal-wrapper { width: 100%; max-width: 450px; max-height: 90vh; }
+            
+            @media (min-width: 768px) {
+              .modal-wrapper { max-width: 850px; max-height: 80vh; }
+              .desktop-modal-flex { flex-direction: row; height: 100%; }
+              .modal-image-container { width: 50%; max-width: 400px; height: auto; border-bottom: none; border-right: 1px solid var(--border-color); }
+              .modal-scroll-area { padding: 32px; }
+            }
+          `}</style>
+
+          <div className="modal-wrapper" style={{ backgroundColor: 'var(--surface-color)', borderRadius: '24px', display: 'flex', flexDirection: 'column', overflow: 'hidden', animation: 'slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1)', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }} onClick={e => e.stopPropagation()}>
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', borderBottom: '1px solid var(--border-color)', flexShrink: 0 }}>
+              <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '900', color: 'var(--text-main)', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', paddingRight: '10px' }}>{activeItemModal.item_name}</h2>
+              <button onClick={() => setActiveItemModal(null)} style={{ background: 'var(--surface-hover)', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', flexShrink: 0 }}>
+                <MdClose size={20} color="var(--text-main)" />
+              </button>
+            </div>
+
+            <div className="desktop-modal-flex" style={{ flexGrow: 1, overflow: 'hidden' }}>
+              
+              <div className="modal-image-container">
+                {activeItemModal.image_url ? (
+                  <img src={activeItemModal.image_url} alt={activeItemModal.item_name} style={{ width: '100%', height: '100%', objectFit: 'cover', backgroundColor: 'var(--surface-hover)' }} />
+                ) : (
+                  <div style={{ width: '100%', height: '100%', backgroundColor: 'var(--surface-hover)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                    <MdRestaurantMenu size={64} color="var(--icon-color)" />
+                  </div>
+                )}
+              </div>
+
+              <div className="modal-content-container">
+                <div className="custom-scrollbar modal-scroll-area">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '8px' }}>
+                    {/* 🚀 FIXED: Top price now dynamically updates based on the selected variant */}
+                    <span style={{ fontSize: '24px', fontWeight: '900', color: 'var(--text-main)', lineHeight: '1' }}>
+                      ₱{(calculateItemTotal() / itemQuantity).toFixed(2)}
+                    </span>
+                    
+                    {/* 🚀 FIXED: Badge text changes depending on if a variant price is overriding the base price */}
+                    <span style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', backgroundColor: 'var(--surface-hover)', padding: '4px 8px', borderRadius: '6px' }}>
+                      {(calculateItemTotal() / itemQuantity) !== parseFloat(activeItemModal.price) ? 'Selected Price' : 'Base Price'}
+                    </span>
+                  </div>
+                  {activeItemModal.description && <p style={{ margin: '0 0 20px 0', fontSize: '14px', color: 'var(--text-muted)', lineHeight: '1.5' }}>{activeItemModal.description}</p>}
+
+                  {(() => {
+                    let parsedOptions = [];
+                    try { parsedOptions = typeof activeItemModal.options === 'string' ? JSON.parse(activeItemModal.options) : activeItemModal.options; } catch(e) {}
+                    if (!Array.isArray(parsedOptions) || parsedOptions.length === 0) return null;
+
+                    return parsedOptions.map((group, gIndex) => (
+                      <div key={gIndex} style={{ marginBottom: '20px' }}>
+                        <h3 style={{ margin: '0 0 10px 0', fontSize: '14px', fontWeight: '800', color: 'var(--text-main)' }}>{group.name}</h3>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                          {group.choices.map((choice, cIndex) => {
+                            const isSelected = itemSelections[group.name]?.name === choice.name;
+                            const priceDiff = parseFloat(choice.priceDiff);
+                            return (
+                              <button
+                                key={cIndex}
+                                onClick={() => setItemSelections(prev => ({ ...prev, [group.name]: choice }))}
+                                style={{
+                                  padding: '10px 16px', borderRadius: '12px', border: isSelected ? `2px solid ${brandColor}` : '1px solid var(--border-color)',
+                                  backgroundColor: isSelected ? `${brandColor}15` : 'var(--surface-color)', color: isSelected ? brandColor : 'var(--text-main)',
+                                  fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '4px', transition: 'all 0.2s'
+                                }}
+                              >
+                                <span>{choice.name}</span>
+                                {/* 🚀 FIXED: Show absolute price on the variant button without the + sign */}
+                                {priceDiff > 0 && <span style={{ fontSize: '11px', opacity: 0.8 }}>₱{priceDiff.toFixed(2)}</span>}
+                              </button>
+                            );  
+                          })}
+                        </div>
+                      </div>
+                    ));
+                  })()}
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '20px', borderTop: '1px solid var(--border-color)' }}>
+                    <span style={{ fontSize: '15px', fontWeight: '800', color: 'var(--text-main)' }}>Quantity</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '15px', backgroundColor: 'var(--surface-hover)', borderRadius: '50px', padding: '6px' }}>
+                      <button onClick={() => setItemQuantity(Math.max(1, itemQuantity - 1))} style={{ width: '36px', height: '36px', borderRadius: '50%', border: 'none', backgroundColor: 'var(--surface-color)', color: 'var(--text-main)', fontSize: '20px', fontWeight: 'bold', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }}>-</button>
+                      <span style={{ fontSize: '16px', fontWeight: '900', color: 'var(--text-main)', minWidth: '24px', textAlign: 'center' }}>{itemQuantity}</span>
+                      <button onClick={() => setItemQuantity(itemQuantity + 1)} style={{ width: '36px', height: '36px', borderRadius: '50%', border: 'none', backgroundColor: 'var(--surface-color)', color: 'var(--text-main)', fontSize: '20px', fontWeight: 'bold', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }}>+</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ padding: '20px', backgroundColor: 'var(--surface-color)', borderTop: '1px solid var(--border-color)', flexShrink: 0 }}>
+                  <button 
+                    onClick={() => {
+                      alert(`Saved to Shopping List!\n\nItem: ${activeItemModal.item_name}\nTotal: ₱${calculateItemTotal().toFixed(2)}`);
+                      setActiveItemModal(null);
+                    }}
+                    style={{ width: '100%', padding: '16px', backgroundColor: brandColor, color: 'white', border: 'none', borderRadius: '14px', fontWeight: '900', fontSize: '15px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: `0 8px 20px ${brandColor}40` }}
+                  >
+                    <span>Add to List</span>
+                    <span>₱{calculateItemTotal().toFixed(2)}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
 
       <div style={{ height: '8px', backgroundColor: 'var(--surface-hover)', width: '100%', margin: '0' }} />

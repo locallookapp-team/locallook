@@ -423,13 +423,21 @@ app.patch('/api/items/:id', verifyUser, verifyPremium, async (req, res) => {
 
 app.delete('/api/items/:id', verifyUser, verifyPremium, async (req, res) => {
   try {
+    // Check if item exists and user has permission
     const itemCheck = await db.query('SELECT store_id FROM items WHERE id = $1', [req.params.id]);
-    if (itemCheck.rows.length === 0) return res.status(404).json({error: "Not found"});
-    if (!(await isStoreOperator(itemCheck.rows[0].store_id, req.user.id))) return res.status(403).json({ error: "Unauthorized." });
+    if (itemCheck.rows.length === 0) return res.status(404).json({error: "Item not found"});
+    
+    if (!(await isStoreOperator(itemCheck.rows[0].store_id, req.user.id))) {
+      return res.status(403).json({ error: "Unauthorized." });
+    }
 
-    await db.query('DELETE FROM items WHERE id = $1 RETURNING *', [req.params.id]);
+    // Delete the item
+    await db.query('DELETE FROM items WHERE id = $1', [req.params.id]);
     res.json({ message: "Item deleted successfully" });
-  } catch (err) { res.status(500).send("Server Error"); }
+  } catch (err) { 
+    console.error("Delete Error:", err);
+    res.status(500).json({ error: "Internal Server Error" }); 
+  }
 });
 
 // ---------------------------------------------------------
