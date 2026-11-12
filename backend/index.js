@@ -421,7 +421,7 @@ app.patch('/api/items/:id', verifyUser, verifyPremium, async (req, res) => {
   } catch (err) { res.status(500).send("Server Error"); }
 });
 
-app.delete('/api/items/:id', verifyUser, verifyPremium, async (req, res) => {
+app.delete('/api/items/:id', verifyUser, async (req, res) => {
   try {
     // Check if item exists and user has permission
     const itemCheck = await db.query('SELECT store_id FROM items WHERE id = $1', [req.params.id]);
