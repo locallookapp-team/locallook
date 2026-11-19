@@ -186,11 +186,11 @@ export default function BillingPage() {
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '14px' }}>
                     <li style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: 'var(--text-main)', fontWeight: '500' }}><MdCheck color="#10B981" size={18} /> Map Pin & Search Listing</li>
                     <li style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: 'var(--text-main)', fontWeight: '500' }}><MdCheck color="#10B981" size={18} /> Toggle Open/Closed Status</li>
-                    <li style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: 'var(--text-main)', fontWeight: '500' }}><MdCheck color="#10B981" size={18} /> Business Contact Info</li>
-                    <li style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: 'var(--text-main)', fontWeight: '500' }}><MdCheck color="#10B981" size={18} /> Custom Logo & Cover Photo</li>
-                    <li style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: 'var(--text-main)', fontWeight: '500' }}><MdCheck color="#10B981" size={18} /> Brand Color Customization</li>
-                    <li style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: 'var(--text-muted)' }}><MdClose size={18} /> Digital Menu Builder</li>
-                    <li style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: 'var(--text-muted)' }}><MdClose size={18} /> Printable QR Code</li>
+                    <li style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: 'var(--text-main)', fontWeight: '500' }}><MdCheck color="#10B981" size={18} /> Business Contact Info & Branding</li>
+                    <li style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: 'var(--text-main)', fontWeight: '500' }}><MdCheck color="#10B981" size={18} /> Customer Reviews & Store Followers</li>
+                    <li style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: 'var(--text-muted)' }}><MdClose size={18} /> Digital Menu & Variants Builder</li>
+                    <li style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: 'var(--text-muted)' }}><MdClose size={18} /> Official Store Updates & Broadcasts</li>
+                    <li style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: 'var(--text-muted)' }}><MdClose size={18} /> Printable QR Code & Auto-Schedule</li>
                   </ul>
                 </div>
               </div>
@@ -218,11 +218,13 @@ export default function BillingPage() {
                 <div style={{ flexGrow: 1 }}>
                   <div style={{ fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '15px' }}>Everything in Free, plus:</div>
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                    <li style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: 'var(--text-main)', fontWeight: '500' }}><MdCheck color="var(--brand-primary)" size={18} /> Unlimited Digital Menu Items</li>
+                    <li style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: 'var(--text-main)', fontWeight: '500' }}><MdCheck color="var(--brand-primary)" size={18} /> Unlimited Digital Menu Items & Variants</li>
+                    <li style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: 'var(--text-main)', fontWeight: '500' }}><MdCheck color="var(--brand-primary)" size={18} /> Post Official Store Updates & Promos</li>
+                    <li style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: 'var(--text-main)', fontWeight: '500' }}><MdCheck color="var(--brand-primary)" size={18} /> Automated Operating Hours Scheduler</li>
                     <li style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: 'var(--text-main)', fontWeight: '500' }}><MdCheck color="var(--brand-primary)" size={18} /> Printable QR Code Generation</li>
                     <li style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: 'var(--text-main)', fontWeight: '500' }}><MdCheck color="var(--brand-primary)" size={18} /> Reply to Customer Reviews</li>
                     <li style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '13px', color: 'var(--text-main)', fontWeight: '500' }}><MdCheck color="var(--brand-primary)" size={18} /> Invite Staff / Operator Accounts</li>
-                  </ul>
+                  </ul> 
                 </div>
               </div>
 
@@ -273,7 +275,9 @@ export default function BillingPage() {
           <div style={{ position: 'fixed', inset: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px' }}>
             <div style={{ backgroundColor: 'var(--surface-color)', padding: '30px', borderRadius: '20px', width: '100%', maxWidth: '450px', textAlign: 'center', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
               <h2 style={{ margin: '0 0 10px 0', fontSize: '24px', color: 'var(--text-main)', fontWeight: '900', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>Unlock Premium <MdRocketLaunch color="var(--brand-primary)" /></h2>
-              <p style={{ color: 'var(--text-muted)', marginBottom: '25px', fontSize: '14px', lineHeight: '1.5' }}>Get full access to edit your menu, customize your store branding, and accept online orders.</p>
+              <p style={{ color: 'var(--text-muted)', marginBottom: '25px', fontSize: '14px', lineHeight: '1.5' }}>
+                Get full access to build your digital menu with variants, post official store updates, reply to reviews, and manage staff accounts.
+              </p>
               
               <div style={{ marginBottom: '15px', textAlign: 'left' }}>
                 <label style={{ display: 'block', fontSize: '12px', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '8px' }}>Have a percentage or fixed discount code?</label>
