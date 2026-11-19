@@ -12,6 +12,7 @@ export default function SignupPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [countdown, setCountdown] = useState(0);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   useEffect(() => {
     let timer;
@@ -21,16 +22,32 @@ export default function SignupPage() {
     return () => clearInterval(timer);
   }, [isOtpSent, countdown]);
 
+  const handleBack = () => {
+    if (window.history.state && window.history.state.idx > 0) {
+      navigate(-1);
+    } else {
+      navigate('/map');
+    }
+  };
+
   const handleGoogleSignIn = async () => {
+    if (!agreedToTerms) {
+      setErrorMsg('Please agree to the Terms of Service & Privacy Policy to continue.');
+      return;
+    }
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin }
+      options: { redirectTo: `${window.location.origin}/map` }
     });
     if (error) alert("Google Sign-In Error: " + error.message);
   };
 
   const handleRegister = async (e) => {
     if (e) e.preventDefault();
+    if (!agreedToTerms) {
+      setErrorMsg('Please agree to the Terms of Service & Privacy Policy to continue.');
+      return;
+    }
     setIsLoading(true);
     setErrorMsg('');
     try {
@@ -66,12 +83,15 @@ export default function SignupPage() {
       if (!data.user) throw new Error("Verification failed.");
       
       const { error: updateError } = await supabase.auth.updateUser({
-        data: { full_name: formData.fullName }
+        data: {
+          full_name: formData.fullName,
+          terms_accepted_at: new Date().toISOString()
+        }
       });
 
       if (updateError) console.error("Could not update name:", updateError);
       
-      navigate('/');
+      navigate('/map');
     } catch (err) {
       setErrorMsg(err.message);
     } finally {
@@ -86,6 +106,8 @@ export default function SignupPage() {
       setErrorMsg(''); 
     }
   };
+
+  const isSubmitDisabled = isLoading || !formData.email || !formData.fullName || !agreedToTerms;
 
   return (
     <>
@@ -127,8 +149,8 @@ export default function SignupPage() {
       <div className="auth-container">
         <div className="auth-card">
 
-          <button onClick={() => navigate('/map')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)', fontWeight: 'bold', fontSize: '13px', marginBottom: '24px', width: 'fit-content' }}>
-            <MdArrowBack size={18} /> Back to Home
+          <button onClick={handleBack} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)', fontWeight: 'bold', fontSize: '13px', marginBottom: '24px', width: 'fit-content' }}>
+            <MdArrowBack size={18} /> Back
           </button>
 
           <h2 style={{ margin: '0 0 6px 0', color: 'var(--text-main)', fontSize: '24px', fontWeight: '900', letterSpacing: '-0.5px' }}>Join the Community</h2>
@@ -163,7 +185,46 @@ export default function SignupPage() {
                   <input type="email" required placeholder="name@example.com" value={formData.email} onChange={(e) => setFormData({...formData, email: e.target.value})} style={{ width: '100%', padding: '10px 14px', borderRadius: '10px', border: '1px solid var(--border-color)', fontSize: '14px', boxSizing: 'border-box', outline: 'none', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)' }} />
                 </div>
 
-                <button type="submit" disabled={isLoading || !formData.email || !formData.fullName} style={{ padding: '12px', backgroundColor: (isLoading || !formData.email || !formData.fullName) ? 'var(--border-color)' : 'var(--brand-primary)', color: (isLoading || !formData.email || !formData.fullName) ? 'var(--text-muted)' : 'white', border: 'none', borderRadius: '10px', cursor: (isLoading || !formData.email || !formData.fullName) ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '14px', marginTop: '4px', transition: 'all 0.2s' }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', fontSize: '12.5px', color: 'var(--text-muted)', cursor: 'pointer', lineHeight: '1.4', marginTop: '4px' }}>
+                  <input
+                    type="checkbox"
+                    checked={agreedToTerms}
+                    onChange={(e) => {
+                      setAgreedToTerms(e.target.checked);
+                      if (e.target.checked) setErrorMsg('');
+                    }}
+                    style={{ marginTop: '2px', accentColor: 'var(--brand-primary)', cursor: 'pointer', flexShrink: 0 }}
+                  />
+                  <span>
+                    I agree to LocalLook's{' '}
+                    <a
+                      href="/terms"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      style={{ color: 'var(--brand-primary)', fontWeight: '700', textDecoration: 'none' }}
+                    >
+                      Terms of Service & Privacy Policy
+                    </a>.
+                  </span>
+                </label>
+
+                <button
+                  type="submit"
+                  disabled={isSubmitDisabled}
+                  style={{
+                    padding: '12px',
+                    backgroundColor: isSubmitDisabled ? 'var(--border-color)' : 'var(--brand-primary)',
+                    color: isSubmitDisabled ? 'var(--text-muted)' : 'white',
+                    border: 'none',
+                    borderRadius: '10px',
+                    cursor: isSubmitDisabled ? 'not-allowed' : 'pointer',
+                    fontWeight: 'bold',
+                    fontSize: '14px',
+                    marginTop: '4px',
+                    transition: 'all 0.2s'
+                  }}
+                >
                   {isLoading ? 'Sending Code...' : 'Create Account'}
                 </button>
               </form>
@@ -205,7 +266,7 @@ export default function SignupPage() {
           )}
 
           <div style={{ textAlign: 'center', marginTop: '32px', fontSize: '13px', color: 'var(--text-muted)' }}>
-            Already have an account? <span onClick={() => navigate('/login')} style={{ color: 'var(--brand-primary)', fontWeight: 'bold', cursor: 'pointer' }}>Log in</span>
+            Already have an account? <span onClick={() => navigate('/login', { replace: true })} style={{ color: 'var(--brand-primary)', fontWeight: 'bold', cursor: 'pointer' }}>Log in</span>
           </div>
 
         </div>

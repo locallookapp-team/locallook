@@ -355,16 +355,26 @@ export default function StoreProfilePage() {
       const fallbackName = session.user.email?.split('@')[0] || 'LocalLook User';
       const displayName = session.user.user_metadata?.full_name || fallbackName;
 
+      const userAvatar =
+        session.user.user_metadata?.custom_avatar_url ||
+        session.user.user_metadata?.avatar_url ||
+        session.user.user_metadata?.picture ||
+        null;
+
       if (editingReviewId) {
         const { error } = await supabase.from('reviews')
-          .update({ rating, comment: comment.trim() || null, photo_urls: finalPhotoUrls })
+          .update({ rating, comment: comment.trim() || null, photo_urls: finalPhotoUrls, reviewer_avatar: userAvatar })
           .eq('id', editingReviewId);
         if (error) throw error;
       } else {
         const { error } = await supabase.from('reviews').insert([{
-          store_id: id, user_id: session.user.id, reviewer_name: displayName,
-          reviewer_avatar: session.user.user_metadata?.avatar_url || null, rating: rating,
-          comment: comment.trim() || null, photo_urls: finalPhotoUrls
+          store_id: id,
+          user_id: session.user.id,
+          reviewer_name: displayName,
+          reviewer_avatar: userAvatar,
+          rating: rating,
+          comment: comment.trim() || null,
+          photo_urls: finalPhotoUrls
         }]);
         if (error) throw error;
       }

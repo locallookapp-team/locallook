@@ -317,8 +317,9 @@ export default function MapPage() {
   }, []);
 
   const userAvatar =
-    session?.user?.user_metadata?.avatar_url ||
+    session?.user?.user_metadata?.custom_avatar_url ||
     profile?.avatar_url ||
+    session?.user?.user_metadata?.avatar_url ||
     session?.user?.user_metadata?.picture;
 
   const userInitial = (
@@ -335,7 +336,46 @@ export default function MapPage() {
       const res = await fetch(`${API_BASE_URL}/api/stores?minLng=${b.getWest()}&minLat=${b.getSouth()}&maxLng=${b.getEast()}&maxLat=${b.getNorth()}`);
       if (!res.ok) return [];
       const data = await res.json();
-      globalStoreCache = Array.isArray(data) ? data : [];
+      const storeList = Array.isArray(data) ? data : [];
+
+      if (storeList.length > 0) {
+        const storeIds = storeList.map(s => s.id);
+        const [reviewsRes, followersRes] = await Promise.all([
+          supabase
+            .from('reviews')
+            .select('store_id, rating')
+            .in('store_id', storeIds),
+          supabase
+            .from('store_followers')
+            .select('store_id')
+            .in('store_id', storeIds)
+        ]);
+
+        const reviewStats = {};
+        if (!reviewsRes.error && reviewsRes.data) {
+          reviewsRes.data.forEach(r => {
+            if (!reviewStats[r.store_id]) reviewStats[r.store_id] = { sum: 0, count: 0 };
+            reviewStats[r.store_id].sum += Number(r.rating) || 0;
+            reviewStats[r.store_id].count += 1;
+          });
+        }
+
+        const followerCounts = {};
+        if (!followersRes.error && followersRes.data) {
+          followersRes.data.forEach(f => {
+            followerCounts[f.store_id] = (followerCounts[f.store_id] || 0) + 1;
+          });
+        }
+
+        storeList.forEach(store => {
+          const s = reviewStats[store.id];
+          store.review_count = s ? s.count : 0;
+          store.rating = s ? s.sum / s.count : 0;
+          store.follower_count = followerCounts[store.id] || 0;
+        });
+      }
+
+      globalStoreCache = storeList;
       setStores(globalStoreCache);
     } catch (err) { console.error(err); }
   };

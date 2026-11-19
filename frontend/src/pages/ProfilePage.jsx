@@ -91,13 +91,20 @@ export default function ProfilePage() {
           ]);
           
           let role = 'consumer';
+          let dbAvatar = '';
           if (profileRes.ok) {
             const profileData = await profileRes.json();
             role = profileData.role || 'consumer';
+            dbAvatar = profileData.avatar_url || '';
           }
 
           const currentName = meta?.full_name || session.user.email.split('@')[0];
-          const currentAvatar = meta?.avatar_url || meta?.picture || '';
+          const currentAvatar =
+            meta?.custom_avatar_url ||
+            dbAvatar ||
+            meta?.avatar_url ||
+            meta?.picture ||
+            '';         
           
           setProfile({ display_name: currentName, avatar_url: currentAvatar, role: role });
           setAvatarError(false);
@@ -171,8 +178,12 @@ export default function ProfilePage() {
       }
 
       const { error: updateError } = await supabase.auth.updateUser({
-        data: { avatar_url: publicUrl }
+        data: { 
+          avatar_url: publicUrl,
+          custom_avatar_url: publicUrl
+        }
       });
+
 
       if (updateError) throw updateError;
 

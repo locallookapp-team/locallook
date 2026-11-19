@@ -42,7 +42,7 @@ const Avatar = ({ src, name, size, color }) => {
   
   return (
     <div style={{ width: size, height: size, borderRadius: '50%', backgroundColor: 'var(--surface-hover)', display: 'flex', justifyContent: 'center', alignItems: 'center', flexShrink: 0, overflow: 'hidden' }}>
-      <img src={src} alt="avatar" onError={() => setError(true)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      <img src={src} alt="avatar" referrerPolicy="no-referrer" onError={() => setError(true)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
     </div>
   );
 };

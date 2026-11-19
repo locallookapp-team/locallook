@@ -185,8 +185,9 @@ export default function AppLayout({ children }) {
   ];
 
   const finalAvatar =
-    session?.user?.user_metadata?.avatar_url ||
+    session?.user?.user_metadata?.custom_avatar_url ||
     avatarUrl ||
+    session?.user?.user_metadata?.avatar_url ||
     session?.user?.user_metadata?.picture;
 
   return (

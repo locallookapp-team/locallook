@@ -21,10 +21,18 @@ export default function LoginPage() {
     return () => clearInterval(timer);
   }, [isOtpSent, countdown]);
 
+  const handleBack = () => {
+    if (window.history.state && window.history.state.idx > 0) {
+      navigate(-1);
+    } else {
+      navigate('/map');
+    }
+  };
+
   const handleGoogleSignIn = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin } 
+      options: { redirectTo: `${window.location.origin}/map` } 
     });
     if (error) alert("Google Sign-In Error: " + error.message);
   };
@@ -82,12 +90,12 @@ export default function LoginPage() {
     try {
       const { data: userData } = await supabase.from('users').select('role').eq('id', userId).maybeSingle();
       if (userData?.role === 'merchant' || userData?.role === 'operator') {
-        navigate('/dashboard'); 
+        navigate('/map'); 
       } else {
-        navigate('/'); 
+        navigate('/map'); 
       }
     } catch (err) {
-      navigate('/');
+      navigate('/map');
     }
   };
 
@@ -119,7 +127,7 @@ export default function LoginPage() {
           box-shadow: 0 10px 30px rgba(0,0,0,0.05);
           width: 100%;
           max-width: 400px;
-          min-height: 560px; /* 🚀 Fixed size matches Signup */
+          min-height: 560px;
           display: flex;
           flex-direction: column;
           box-sizing: border-box;
@@ -142,8 +150,8 @@ export default function LoginPage() {
       <div className="auth-container">
         <div className="auth-card">
 
-          <button onClick={() => navigate('/map')} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)', fontWeight: 'bold', fontSize: '13px', marginBottom: '24px', width: 'fit-content' }}>
-            <MdArrowBack size={18} /> Back to Home
+          <button onClick={handleBack} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-muted)', fontWeight: 'bold', fontSize: '13px', marginBottom: '24px', width: 'fit-content' }}>
+            <MdArrowBack size={18} /> Back
           </button>
 
           <h2 style={{ margin: '0 0 6px 0', color: 'var(--text-main)', fontSize: '24px', fontWeight: '900', letterSpacing: '-0.5px' }}>Welcome back</h2>
@@ -215,9 +223,20 @@ export default function LoginPage() {
             </form>
           )}
 
-          {/* 🚀 FIXED FOOTER: margin-top: auto pushes the empty space below the form */}
+          <p style={{ textAlign: 'center', margin: '18px 0 0 0', fontSize: '11.5px', color: 'var(--text-muted)', lineHeight: '1.5' }}>
+            By continuing, you agree to LocalLook's{' '}
+            <a
+              href="/terms"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: 'var(--brand-primary)', fontWeight: '700', textDecoration: 'none' }}
+            >
+              Terms of Service & Privacy Policy
+            </a>.
+          </p>
+
           <div style={{ textAlign: 'center', marginTop: 'auto', paddingTop: '24px', fontSize: '13px', color: 'var(--text-muted)' }}>
-            New here? <span onClick={() => navigate('/signup')} style={{ color: 'var(--brand-primary)', fontWeight: 'bold', cursor: 'pointer' }}>Create an account</span>
+            New here? <span onClick={() => navigate('/signup', { replace: true })} style={{ color: 'var(--brand-primary)', fontWeight: 'bold', cursor: 'pointer' }}>Create an account</span>
           </div>
 
         </div>

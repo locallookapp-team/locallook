@@ -6,13 +6,8 @@ export const ThemeProvider = ({ children }) => {
   // Check local storage or system preference on initial load
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const savedTheme = localStorage.getItem('theme');
-    if (savedTheme) {
-      return savedTheme === 'dark';
-    }
-    // Fallback to their OS/Browser preference
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    return savedTheme === 'dark';
   });
-
   // Save preference to local storage whenever it changes
   useEffect(() => {
     localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
