@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
+import { CATEGORY_COLORS } from '../components/MapMarkers';
 import { 
-  MdLocationOn, MdLocationOff, MdStorefront, 
+  MdLocationOn, MdLocationOff, MdStorefront, MdStore,
   MdStar, MdRestaurantMenu, MdCheckCircle, MdLocalOffer,
   MdFastfood, MdLocalMall, MdSpa, MdLocalHospital, 
   MdDirectionsCar, MdHotel, MdHomeRepairService, MdBusinessCenter,
@@ -192,27 +193,51 @@ export default function ExplorePage() {
 
   // --- RENDERERS ---
   const renderDesktopStoreCard = (store, index, isSwimlane = false) => {
-    const brandColor = store.theme_settings?.primaryColor || 'var(--brand-primary)';
+    const fallbackColor = CATEGORY_COLORS[store.store_category] || '#1E293B';
     return (
       <div 
-        key={`desktop-${store.id}-${index}`} onClick={() => navigate(`/store/${store.id}`)}
-        style={{ minWidth: isSwimlane ? '280px' : '100%', width: isSwimlane ? '280px' : '100%', backgroundColor: 'var(--surface-color)', borderRadius: '16px', overflow: 'hidden', border: '1px solid var(--border-color)', cursor: 'pointer', boxShadow: '0 4px 10px rgba(0,0,0,0.03)', flexShrink: 0, scrollSnapAlign: 'start', transition: 'transform 0.2s', userSelect: 'none' }}
-        onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-4px)'} onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
+        key={`desktop-${store.id}-${index}`}
+        className="explore-card"
+        onClick={() => navigate(`/store/${store.id}`)}
+        style={{
+          minWidth: isSwimlane ? 'calc((100% - 40px) / 3)' : '100%',
+          width: isSwimlane ? 'calc((100% - 40px) / 3)' : '100%',
+          backgroundColor: 'var(--surface-color)',
+          borderRadius: '16px',
+          overflow: 'hidden',
+          border: '1px solid var(--border-color)',
+          cursor: 'pointer',
+          boxShadow: '0 4px 10px rgba(0,0,0,0.03)',
+          flexShrink: 0,
+          scrollSnapAlign: 'start',
+          userSelect: 'none'
+        }}
       >
-        <div style={{ height: '140px', backgroundColor: brandColor, backgroundImage: store.cover_image_url ? `url(${store.cover_image_url})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0) 100%)' }} />
-          {!store.cover_image_url && <MdStorefront size={50} color="rgba(255,255,255,0.3)" style={{ position: 'relative', zIndex: 1 }} />}
+        <div style={{ height: '140px', background: store.cover_image_url ? `url(${store.cover_image_url}) center/cover no-repeat` : `linear-gradient(135deg, ${fallbackColor} 0%, ${fallbackColor}CC 100%)`, position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0) 100%)' }} />
+          {!store.cover_image_url && <MdStore size={52} color="rgba(255,255,255,0.45)" style={{ position: 'relative', zIndex: 1 }} />}
+          <div className="explore-card-vignette" />
           
           <div style={{ 
             position: 'absolute', top: '12px', right: '12px', 
-            backgroundColor: store.is_open ? 'rgba(16, 185, 129, 0.15)' : 'rgba(100, 116, 139, 0.15)', 
-            backdropFilter: 'blur(8px)', border: `1px solid ${store.is_open ? 'rgba(16,185,129,0.3)' : 'rgba(100,116,139,0.3)'}`,
-            color: store.is_open ? '#10B981' : '#E2E8F0', 
-            padding: '4px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: '900', zIndex: 2 
+            backgroundColor: 'rgba(15, 23, 42, 0.35)', 
+            backdropFilter: 'blur(12px) saturate(160%)', WebkitBackdropFilter: 'blur(12px) saturate(160%)',
+            border: '1px solid rgba(255, 255, 255, 0.28)',
+            color: store.is_open ? '#FFFFFF' : '#F1F5F9', 
+            textShadow: '0 1px 2px rgba(0, 0, 0, 0.35)',
+            padding: '4px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: '900', letterSpacing: '0.5px',
+            display: 'flex', alignItems: 'center', gap: '6px', zIndex: 2 
           }}>
+            {store.is_open && (
+              <span style={{ position: 'relative', display: 'flex', width: '6px', height: '6px' }}>
+                <span style={{ position: 'absolute', display: 'inline-flex', height: '100%', width: '100%', borderRadius: '50%', backgroundColor: '#34D399', opacity: 0.8, animation: 'ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite' }} />
+                <span style={{ position: 'relative', display: 'inline-flex', borderRadius: '50%', width: '6px', height: '6px', backgroundColor: '#34D399', boxShadow: '0 0 6px rgba(52, 211, 153, 0.9)' }} />
+              </span>
+            )}
             {store.is_open ? 'OPEN' : 'CLOSED'}
           </div>
         </div>
+
         <div style={{ padding: '16px' }}>
           <h3 style={{ margin: '0 0 4px 0', fontSize: '17px', fontWeight: '900', color: 'var(--text-main)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{store.store_name}</h3>
           <p style={{ margin: '0 0 12px 0', fontSize: '13px', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{store.industry || store.store_category}</p>
@@ -226,7 +251,7 @@ export default function ExplorePage() {
   };
 
   const renderMobileStoreCard = (store, index) => {
-    const brandColor = store.theme_settings?.primaryColor || 'var(--brand-primary)';
+    const fallbackColor = CATEGORY_COLORS[store.store_category] || '#1E293B';
     
     return (
       <div 
@@ -239,16 +264,18 @@ export default function ExplorePage() {
           boxShadow: '0 2px 10px rgba(0,0,0,0.02)', flexShrink: 0
         }}
       >
-        <div style={{ position: 'relative', width: '100px', height: '75px', borderRadius: '10px', backgroundImage: store.cover_image_url ? `url(${store.cover_image_url})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center', flexShrink: 0, backgroundColor: brandColor, display: 'flex', justifyContent: 'center', alignItems: 'center', border: '1px solid var(--border-color)' }}>
-          {!store.cover_image_url && <MdStorefront size={32} color="rgba(255,255,255,0.3)" />}
+        <div style={{ position: 'relative', width: '100px', height: '75px', borderRadius: '10px', background: store.cover_image_url ? `url(${store.cover_image_url}) center/cover no-repeat` : `linear-gradient(135deg, ${fallbackColor} 0%, ${fallbackColor}CC 100%)`, flexShrink: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
+          {!store.cover_image_url && <MdStore size={32} color="rgba(255,255,255,0.45)" />}
           
           <div style={{ 
             position: 'absolute', top: '6px', right: '6px', 
-            padding: '2px 6px', borderRadius: '4px', fontSize: '9px', fontWeight: '900',
-            backgroundColor: store.is_open ? 'rgba(16, 185, 129, 0.15)' : 'rgba(100, 116, 139, 0.15)',
-            border: `1px solid ${store.is_open ? 'rgba(16,185,129,0.3)' : 'rgba(100,116,139,0.3)'}`,
-            color: store.is_open ? '#10B981' : '#64748B', backdropFilter: 'blur(4px)'
+            padding: '2px 6px', borderRadius: '6px', fontSize: '9px', fontWeight: '900', letterSpacing: '0.4px',
+            backgroundColor: 'rgba(15, 23, 42, 0.72)',
+            border: '1px solid rgba(255, 255, 255, 0.15)',
+            color: store.is_open ? '#FFFFFF' : '#CBD5E1', backdropFilter: 'blur(6px)',
+            display: 'flex', alignItems: 'center', gap: '4px'
           }}>
+            {store.is_open && <span style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: '#10B981' }} />}
             {store.is_open ? 'OPEN' : 'CLOSED'}
           </div>
         </div>
@@ -271,7 +298,8 @@ export default function ExplorePage() {
   };
 
   const renderItemCard = (item) => (
-    <div key={`desktop-item-${item.id}`} onClick={() => navigate(`/store/${item.store_id}`)} style={{ display: 'flex', padding: '16px', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--surface-color)', gap: '16px', alignItems: 'center', cursor: 'pointer', borderRadius: '16px', border: '1px solid var(--border-color)', boxShadow: '0 4px 10px rgba(0,0,0,0.02)', transition: 'transform 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-4px)'} onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}>
+    <div key={`desktop-item-${item.id}`} className="explore-card" onClick={() => navigate(`/store/${item.store_id}`)} style={{ display: 'flex', padding: '16px', backgroundColor: 'var(--surface-color)', gap: '16px', alignItems: 'center', cursor: 'pointer', borderRadius: '16px', border: '1px solid var(--border-color)', boxShadow: '0 4px 10px rgba(0,0,0,0.02)', overflow: 'hidden' }}>
+      <div className="explore-card-vignette" />
       {item.image_url ? (
         <img src={item.image_url} alt={item.item_name} style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '12px', flexShrink: 0, border: '1px solid var(--border-color)' }} />
       ) : (
@@ -281,7 +309,7 @@ export default function ExplorePage() {
         <h4 style={{ margin: '0 0 6px 0', fontSize: '16px', color: 'var(--text-main)', fontWeight: '800', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.item_name}</h4>
         <div style={{ fontSize: '15px', fontWeight: '900', color: 'var(--brand-primary)', marginBottom: '6px' }}>₱{parseFloat(item.price).toFixed(0)}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: 'var(--text-muted)', fontWeight: '600' }}>
-          <MdStorefront size={14} flexShrink={0} /> <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.stores?.store_name || 'Unknown'}</span>
+          <MdStorefront size={14} style={{ flexShrink: 0 }} /> <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.stores?.store_name || 'Unknown'}</span>
         </div>
       </div>
     </div>
@@ -314,8 +342,24 @@ export default function ExplorePage() {
         .swimlane-arrow.left { left: 5px; }
         .swimlane-arrow.right { right: 5px; }
 
+        @keyframes ping { 75%, 100% { transform: scale(2); opacity: 0; } }
+
         .swimlane-container { display: flex; gap: 20px; overflow-x: auto; padding-bottom: 15px; padding-top: 5px; cursor: grab; }
-        .grid-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 24px; }
+        .grid-container { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+
+        .explore-card { position: relative; }
+        .explore-card-vignette {
+          position: absolute;
+          inset: 0;
+          background: radial-gradient(circle, rgba(15, 23, 42, 0.1) 20%, rgba(15, 23, 42, 0.55) 100%);
+          opacity: 0;
+          transition: opacity 0.25s ease;
+          pointer-events: none;
+          z-index: 1;
+        }
+        .explore-card:hover .explore-card-vignette {
+          opacity: 1;
+        }
 
         @media (max-width: 768px) {
           .desktop-ui { display: none !important; }
@@ -362,8 +406,8 @@ export default function ExplorePage() {
                 <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--brand-primary)' }}>{filters.distance} km</span>
               </div>
               <input type="range" min="1" max="50" value={filters.distance} onChange={(e) => setFilters({...filters, distance: Number(e.target.value)})} style={{ width: '100%', accentColor: 'var(--brand-primary)' }} />
-              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>Searching near Odiongan</div>
-            </div>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>{locationError ? 'Searching near Odiongan Plaza' : 'Searching near your current location'}</div>
+              </div>
 
             <div style={{ marginBottom: '24px' }}>
               <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: 'var(--text-muted)', marginBottom: '8px' }}>Minimum Rating</label>
@@ -376,9 +420,23 @@ export default function ExplorePage() {
               </div>
             </div>
 
-            <button onClick={() => setIsFilterOpen(false)} style={{ width: '100%', padding: '14px', backgroundColor: 'var(--brand-primary)', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '900', fontSize: '15px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(37,99,235,0.2)' }}>
-              Show Results
-            </button>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={() => {
+                  setFilters({ category: 'All', distance: 10, minRating: 0, openNow: false });
+                  setFocusedSwimlane(null);
+                }}
+                style={{ padding: '14px 18px', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', borderRadius: '12px', fontWeight: '800', fontSize: '14px', cursor: 'pointer' }}
+              >
+                Reset
+              </button>
+              <button
+                onClick={() => setIsFilterOpen(false)}
+                style={{ flex: 1, padding: '14px', backgroundColor: 'var(--brand-primary)', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '900', fontSize: '15px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(37,99,235,0.2)' }}
+              >
+                Show {viewMode === 'places' ? filteredStores.length : filteredItems.length} Results
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -404,7 +462,7 @@ export default function ExplorePage() {
           </div>
           <button onClick={() => setIsFilterOpen(true)} style={{ position: 'relative', width: '42px', height: '42px', backgroundColor: 'var(--surface-color)', border: '1px solid var(--border-color)', borderRadius: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', color: 'var(--text-main)', flexShrink: 0 }}>
             <MdTune size={20} />
-            {(filters.category !== 'All' || filters.distance < 50 || filters.minRating > 0) && (
+            {(filters.category !== 'All' || filters.distance !== 10 || filters.minRating > 0) && (
               <span style={{ position: 'absolute', top: '8px', right: '8px', width: '8px', height: '8px', backgroundColor: '#EF4444', borderRadius: '50%', border: '2px solid var(--surface-color)' }} />
             )}
           </button>
@@ -554,7 +612,16 @@ export default function ExplorePage() {
                     {filteredStores.length === 0 ? (
                       <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)', border: '1px dashed var(--border-color)', borderRadius: '16px', margin: '0 16px' }}>
                         <MdStorefront size={48} style={{ opacity: 0.3, marginBottom: '12px' }} />
-                        <p style={{ margin: 0, fontWeight: '700', fontSize: '16px' }}>No places found matching your filters.</p>
+                        <p style={{ margin: '0 0 16px 0', fontWeight: '700', fontSize: '16px' }}>No places found matching your filters.</p>
+                        <button
+                          onClick={() => {
+                            setFilters({ category: 'All', distance: 10, minRating: 0, openNow: false });
+                            setSearchTerm('');
+                          }}
+                          style={{ padding: '10px 20px', backgroundColor: 'var(--brand-primary)', color: 'white', border: 'none', borderRadius: '10px', fontWeight: '800', fontSize: '13px', cursor: 'pointer' }}
+                        >
+                          Clear Filters
+                        </button>
                       </div>
                     ) : (
                       <>

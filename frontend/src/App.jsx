@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { supabase } from './supabaseClient'; 
 import { ThemeProvider } from './components/ThemeContext';
+import { ShoppingListProvider } from './context/ShoppingListContext';
 import './App.css';
 
 import LandingPage from './components/LandingPage'; 
@@ -14,6 +15,7 @@ import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import UpdatePasswordPage from './pages/UpdatePasswordPage';
 import ExplorePage from './pages/ExplorePage'; 
 import ProfilePage from './pages/ProfilePage'; 
+import NotificationsPage from './pages/NotificationsPage';
 import CreateBusinessPage from './pages/CreateBusinessPage'; 
 import IdentityVerificationPage from './pages/IdentityVerificationPage';
 import ReviewsFeedPage from './pages/ReviewsFeedPage';
@@ -23,6 +25,8 @@ import ProtectedRoute from './components/ProtectedRoute';
 import BillingPage from './pages/BillingPage';
 import TermsOfService from './pages/TermsOfService';
 import PrivacyPolicy from './pages/PrivacyPolicy';
+import ShoppingListPage from './pages/ShoppingListPage';
+
 
 const AppRoutes = () => {
   const location = useLocation();
@@ -86,7 +90,8 @@ const AppRoutes = () => {
         <Routes>
           <Route path="/store/:id" element={<StoreProfilePage />} />
           <Route path="/user/:id" element={<PublicUserProfilePage />} />
-          
+          <Route path="/my-list" element={<ShoppingListPage />} />
+          <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
           {/* 🚀 Moved Profile and Dashboard here so their Auth Guards don't fire prematurely */}
           <Route path="/profile" element={
             <ProtectedRoute>
@@ -105,6 +110,7 @@ const AppRoutes = () => {
           <Route path="/billing" element={<ProtectedRoute allowedRoles={['merchant']}><BillingPage /></ProtectedRoute>} />
         </Routes>
       )}
+      
 
     </AppLayout>
   );
@@ -113,9 +119,11 @@ const AppRoutes = () => {
 function App() {
   return (
     <ThemeProvider>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
+      <ShoppingListProvider>
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+      </ShoppingListProvider>
     </ThemeProvider>
   );
 }

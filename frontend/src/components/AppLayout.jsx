@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../supabaseClient';
-import NotificationBell from './NotificationBell'; 
-import BottomNav from './BottomNav'; // 🚀 Added Bottom Navigation
+import BottomNav from './BottomNav'; 
+import { useShoppingList } from '../context/ShoppingListContext';
 import { 
   MdExplore, MdStarBorder, MdMap, 
-  MdAddBusiness, MdSpaceDashboard, MdOutlineSettings, MdOutlineHelpOutline, 
-  MdLocationOn, MdLogin, MdClose, MdPersonOutline, MdPayment
+  MdAddBusiness, MdSpaceDashboard, 
+  MdLocationOn, MdLogin, MdPayment,
+  MdFormatListBulleted, MdNotifications
 } from "react-icons/md";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://locallook-api.onrender.com';
@@ -15,11 +16,17 @@ export default function AppLayout({ children }) {
   const navigate = useNavigate();
   const location = useLocation();
   
+  const { shoppingList } = useShoppingList();
+  const totalListItems = shoppingList.reduce((sum, item) => sum + item.quantity, 0);
+
+  const [avatarError, setAvatarError] = useState(false);
   const [session, setSession] = useState(null);
   const [isMerchant, setIsMerchant] = useState(false); 
   const [displayName, setDisplayName] = useState('');
-  
+  const [avatarUrl, setAvatarUrl] = useState(''); 
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
+  const lastUserIdRef = useRef(null);
 
   const checkMerchantStatus = async (userId) => {
     try {
@@ -34,6 +41,11 @@ export default function AppLayout({ children }) {
       const res = await fetch(`${API_BASE_URL}/api/users/${userId}`);
       if (res.ok) {
         const userData = await res.json();
+        
+        if (userData.avatar_url) {
+          setAvatarUrl(userData.avatar_url);
+        }
+
         if (userData.role === 'merchant' || userData.role === 'super_admin') {
           return true;
         }
@@ -49,6 +61,7 @@ export default function AppLayout({ children }) {
     const fetchSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       setSession(session);
+      setAvatarError(false);
       
       if (session) {
         setDisplayName(session.user.user_metadata?.full_name || session.user.email.split('@')[0]);
@@ -61,25 +74,103 @@ export default function AppLayout({ children }) {
     fetchSession();
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, newSession) => {
-      setIsAuthLoading(true); 
-      setSession(newSession);
-      if (newSession) {
-        setDisplayName(newSession.user.user_metadata?.full_name || newSession.user.email.split('@')[0]);
-        const merchantStatus = await checkMerchantStatus(newSession.user.id);
-        setIsMerchant(merchantStatus);
-      } else {
+      // 1. Handle Sign Out cleanly and clear cache
+      if (!newSession) {
+        if (lastUserIdRef.current) {
+          sessionStorage.removeItem(`locallook_merchant_${lastUserIdRef.current}`);
+        }
+        lastUserIdRef.current = null;
+        setSession(null);
         setIsMerchant(false);
+        setAvatarUrl('');
+        setIsAuthLoading(false);
+        return;
       }
+
+      const userId = newSession.user.id;
+
+      // 2. Tab-switch / token-refresh guard: same user is already loaded, update session silently
+      if (lastUserIdRef.current === userId) {
+        setSession(newSession);
+        return;
+      }
+
+      // 3. New login or initial page load
+      lastUserIdRef.current = userId;
+      setSession(newSession);
+      setAvatarError(false);
+      setDisplayName(newSession.user.user_metadata?.full_name || newSession.user.email.split('@')[0]);
+
+      const cacheKey = `locallook_merchant_${userId}`;
+      const cachedStatus = sessionStorage.getItem(cacheKey);
+
+      if (cachedStatus !== null) {
+        // Use cached role immediately (no loading flicker)
+        setIsMerchant(cachedStatus === 'true');
+        setIsAuthLoading(false);
+      } else {
+        setIsAuthLoading(true);
+      }
+
+      // Verify in the background so role changes still sync without blocking the UI
+      const merchantStatus = await checkMerchantStatus(userId);
+      setIsMerchant(merchantStatus);
+      sessionStorage.setItem(cacheKey, String(merchantStatus));
       setIsAuthLoading(false);
     });
 
     return () => { authListener.subscription.unsubscribe(); };
   }, []);
 
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    navigate('/');
-  };
+  useEffect(() => {
+    if (!session) {
+      setUnreadNotifCount(0);
+      return;
+    }
+
+    const fetchUnreadCount = async () => {
+      let inviteCount = 0;
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/invitations/pending`, {
+          headers: { Authorization: `Bearer ${session.access_token}` }
+        });
+        if (res.ok) {
+          const invites = await res.json();
+          inviteCount = Array.isArray(invites) ? invites.length : 0;
+        }
+      } catch (err) {
+        console.error("Failed to fetch invite count:", err);
+      }
+
+      const { count } = await supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', session.user.id)
+        .eq('is_read', false);
+
+      setUnreadNotifCount(inviteCount + (count || 0));
+    };
+
+    fetchUnreadCount();
+
+    const channel = supabase
+      .channel('public-notifications-sidebar')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${session.user.id}`
+        },
+        () => fetchUnreadCount()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [session]);
 
   const handleNavigation = (path) => {
     navigate(path);
@@ -88,9 +179,15 @@ export default function AppLayout({ children }) {
   const navItems = [
     { label: 'Map', path: '/map', icon: <MdMap size={22} /> }, 
     { label: 'Explore', path: '/explore', icon: <MdExplore size={22} /> }, 
-    { label: 'Profile', path: '/profile', icon: <MdPersonOutline size={22} /> },
     { label: 'Reviews', path: '/reviews', icon: <MdStarBorder size={22} /> },
+    { label: 'My List', path: '/my-list', icon: <MdFormatListBulleted size={22} /> },
+    { label: 'Notifications', path: '/notifications', icon: <MdNotifications size={22} /> },
   ];
+
+  const finalAvatar =
+    session?.user?.user_metadata?.avatar_url ||
+    avatarUrl ||
+    session?.user?.user_metadata?.picture;
 
   return (
     <>
@@ -99,7 +196,6 @@ export default function AppLayout({ children }) {
         
         * { font-family: 'Plus Jakarta Sans', sans-serif; }
         
-        /* 🚀 Changed to 100dvh for native mobile browser support */
         .app-wrapper { display: flex; height: 100dvh; width: 100vw; overflow: hidden; background-color: var(--bg-color); }
         
         .desktop-sidebar { 
@@ -153,15 +249,12 @@ export default function AppLayout({ children }) {
 
         @keyframes skeletonPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
         
-        /* 🚀 NATIVE MOBILE OVERRIDES */
         @media (max-width: 768px) {
           .desktop-sidebar { 
-            display: none; /* Completely hide desktop sidebar */
+            display: none; 
           }
           
           .main-content {
-            /* Add bottom padding so content scrolls behind the BottomNav */
-            /* 65px bar height + safe area for iPhone home indicator */
             padding-bottom: calc(65px + env(safe-area-inset-bottom)); 
           }
         }
@@ -172,7 +265,7 @@ export default function AppLayout({ children }) {
           <div className="sidebar-inner">
             
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '30px', width: '100%', boxSizing: 'border-box' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden' }}>
+              <div onClick={() => handleNavigation('/')} style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden', cursor: 'pointer' }}>
                 <div style={{ color: 'var(--brand-primary)', display: 'flex', flexShrink: 0 }}><MdLocationOn size={28} /></div>
                 <h2 style={{ margin: 0, fontSize: '20px', color: 'var(--text-main)', fontWeight: '900', letterSpacing: '-0.5px' }}>LocalLook</h2>
               </div>
@@ -187,10 +280,47 @@ export default function AppLayout({ children }) {
                 >
                   <span className="nav-icon">{item.icon}</span> 
                   <span className="nav-label">{item.label}</span>
+                  
+                  {item.label === 'My List' && totalListItems > 0 && (
+                    <div style={{
+                      marginLeft: 'auto', 
+                      backgroundColor: '#EF4444', 
+                      color: 'white', 
+                      fontSize: '11px', 
+                      fontWeight: '800',
+                      padding: '2px 8px', 
+                      borderRadius: '12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      animation: 'slideUp 0.2s ease-out'
+                    }}>
+                      {totalListItems > 99 ? '99+' : totalListItems}
+                    </div>
+                  )}
+                  {item.label === 'Notifications' && unreadNotifCount > 0 && (
+                    <div style={{
+                      marginLeft: 'auto',
+                      backgroundColor: '#EF4444',
+                      color: 'white',
+                      fontSize: '11px',
+                      fontWeight: '800',
+                      padding: '2px 8px',
+                      borderRadius: '12px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      animation: 'slideUp 0.2s ease-out'
+                    }}>
+                      {unreadNotifCount > 99 ? '99+' : unreadNotifCount}
+                    </div>
+                  )}
                 </div>
               ))}
-              
-              <div style={{ height: '24px' }} />
+            </div>
+            
+
+            <div style={{ display: 'flex', flexDirection: 'column', width: '100%', marginTop: 'auto' }}>
               
               {isAuthLoading ? (
                 <div className="nav-item">
@@ -223,50 +353,72 @@ export default function AppLayout({ children }) {
                   <span className="nav-label">List Business</span>
                 </div>
               )}
-            </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', width: '100%', marginTop: 'auto' }}>
-              
-              <div className="nav-wrapper">
-                <NotificationBell session={session} isSidebarMode={true} onInviteAccepted={() => setIsMerchant(true)} />
-              </div>
-
-              <div className="nav-item"><span className="nav-icon" style={{ color: 'var(--icon-color)' }}><MdOutlineSettings size={22} /></span> <span className="nav-label">Settings</span></div>
-              <div className="nav-item"><span className="nav-icon" style={{ color: 'var(--icon-color)' }}><MdOutlineHelpOutline size={22} /></span> <span className="nav-label">Help</span></div>
-              
               {session ? (
                 <div 
+                  onClick={() => handleNavigation('/profile')}
                   style={{ 
                     display: 'flex', 
-                    flexDirection: 'row',
                     alignItems: 'center', 
-                    justifyContent: 'space-between', 
-                    padding: '12px 10px', 
-                    marginTop: '10px', 
+                    gap: '12px',
+                    padding: '12px', 
+                    marginTop: '8px', 
                     borderRadius: '12px', 
                     transition: 'background-color 0.2s', 
                     border: '1px solid transparent',
                     width: '100%',
-                    boxSizing: 'border-box'
-                  }} 
+                    boxSizing: 'border-box',
+                    cursor: 'pointer'
+                  }}
                   onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--surface-hover)'; e.currentTarget.style.borderColor = 'var(--border-color)'; }} 
                   onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.borderColor = 'transparent'; }}
                 >
-                  <div onClick={() => handleNavigation('/profile')} style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', overflow: 'hidden', width: '100%', justifyContent: 'flex-start' }}>
-                    <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'var(--surface-hover)', display: 'flex', justifyContent: 'center', alignItems: 'center', color: 'var(--text-muted)', fontWeight: '900', fontSize: '15px', flexShrink: 0 }}>
-                      {displayName.charAt(0).toUpperCase()}
+                  {!finalAvatar || avatarError ? (
+                    <div
+                      style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '50%',
+                        backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                        color: 'var(--brand-primary)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontWeight: '800',
+                        fontSize: '14px',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {(displayName || 'U').charAt(0).toUpperCase()}
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1 }}>
-                      <span style={{ fontSize: '14px', fontWeight: '800', color: 'var(--text-main)', maxWidth: '100px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{displayName}</span>
-                      <span style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '800', letterSpacing: '0.5px' }}>
-                        {isAuthLoading ? '...' : (isMerchant ? 'MERCHANT' : 'CONSUMER')}
-                      </span>
-                    </div>
+                  ) : (
+                    <img
+                      src={finalAvatar}
+                      alt={displayName || 'User'}
+                      referrerPolicy="no-referrer"
+                      onError={() => setAvatarError(true)}
+                      style={{
+                        width: '36px',
+                        height: '36px',
+                        borderRadius: '50%',
+                        objectFit: 'cover',
+                        flexShrink: 0,
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                      }}
+                    />
+                  )}
+                  
+                  <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1, overflow: 'hidden' }}>
+                    <span style={{ fontSize: '14px', fontWeight: '800', color: 'var(--text-main)', width: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {displayName}
+                    </span>
+                    <span style={{ fontSize: '10px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: '800', letterSpacing: '0.5px', marginTop: '2px' }}>
+                      {isAuthLoading ? '...' : (isMerchant ? 'MERCHANT' : 'CONSUMER')}
+                    </span>
                   </div>
-                  <button onClick={handleSignOut} style={{ background: 'none', border: 'none', color: '#EF4444', fontSize: '12px', fontWeight: '800', cursor: 'pointer', padding: '8px' }}>Out</button>
                 </div>
               ) : (
-                <div onClick={() => handleNavigation('/login')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: '12px', padding: '12px', marginTop: '10px', cursor: 'pointer', borderRadius: '12px', backgroundColor: 'rgba(37, 99, 235, 0.1)', color: 'var(--brand-primary)', fontWeight: '800', fontSize: '14px' }}>
+                <div onClick={() => handleNavigation('/login')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: '12px', padding: '12px 14px', marginTop: '8px', cursor: 'pointer', borderRadius: '12px', backgroundColor: 'rgba(37, 99, 235, 0.1)', color: 'var(--brand-primary)', fontWeight: '800', fontSize: '14px' }}>
                   <MdLogin size={22} style={{ flexShrink: 0 }} /> <span className="nav-label">Log In</span>
                 </div>
               )}

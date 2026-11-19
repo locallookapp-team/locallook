@@ -8,15 +8,15 @@ import { QRCodeCanvas } from 'qrcode.react';
 import { supabase } from '../supabaseClient'; 
 import MerchantOnboarding from '../components/MerchantOnboarding';
 import StoreScheduleModal from '../components/StoreScheduleModal';
-import { CustomMapPin } from '../components/MapMarkers';
+import { CustomMapPin, CATEGORY_COLORS } from '../components/MapMarkers';
 import { 
   MdDragIndicator, MdSmartphone, MdChevronLeft, MdChevronRight, MdOutlineNearMe, 
   MdEdit, MdDelete, MdAdd, MdCameraAlt, MdDashboard, MdPeople, MdSecurity, 
   MdLocalOffer, MdRocketLaunch, MdPayment, MdRestaurantMenu, MdCheckCircle, 
-  MdCancel, MdWarning, MdClose, MdSettings, MdStorefront, MdVerifiedUser, MdUploadFile,
+  MdCancel, MdWarning, MdClose, MdSettings, MdStorefront, MdStore, MdVerifiedUser, MdUploadFile,
   MdInsertDriveFile, MdStar, MdReply, MdMoreVert, MdDesktopMac, MdQrCode,
   MdLocationOn, MdVisibility, MdLock, MdSchedule, MdPalette
-} from "react-icons/md";
+} from "react-icons/md";  
 
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { arrayMove, SortableContext, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -78,16 +78,6 @@ const getCroppedImg = async (imageSrc, pixelCrop, maxWidth = 1200) => {
   });
 };
 
-const getStoreCoverImage = (store) => {
-  if (store?.cover_image_url) return store.cover_image_url;
-  switch (store?.store_category) {
-    case 'Food & Dining': return 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1200&q=80';
-    case 'Retail': return 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1200&q=80';
-    case 'Services': return 'https://images.unsplash.com/photo-1521791136064-7986c2920216?w=1200&q=80';
-    case 'Groceries': return 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=1200&q=80';
-    default: return 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=1200&q=80';
-  }
-};
 
 function SortableCategory({ id, activeCategory, brandColor, onClick }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
@@ -104,12 +94,14 @@ function SortableCategory({ id, activeCategory, brandColor, onClick }) {
 function VerificationPanel({ store, userId, onStoreUpdate }) {
   const [dtiFile, setDtiFile] = useState(null);
   const [birFile, setBirFile] = useState(null);
-  const [loading, setLoading] = useState(true); 
+  const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState(null);
+  
 
   const [existingDti, setExistingDti] = useState(null);
   const [existingBir, setExistingBir] = useState(null);
   const [isVerified, setIsVerified] = useState(false);
+  
 
   useEffect(() => {
     const fetchFreshDocs = async () => {
@@ -316,6 +308,7 @@ export default function DashboardPage() {
   const [items, setItems] = useState([]);
   const [storeOperators, setStoreOperators] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isFetchingItems, setIsFetchingItems] = useState(false);
 
   const [storeReviews, setStoreReviews] = useState([]);
   const [loadingReviews, setLoadingReviews] = useState(false);
@@ -327,6 +320,7 @@ export default function DashboardPage() {
   const [isPreviewMobile, setIsPreviewMobile] = useState(true);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
 
+  const storeCache = useRef({});
   const storeScrollRef = useRef(null);
   const storeDragState = useRef({ isDown: false, startX: 0, scrollLeft: 0 });
   const [showStoreLeft, setShowStoreLeft] = useState(false);
@@ -381,6 +375,13 @@ export default function DashboardPage() {
   const [voucherCode, setVoucherCode] = useState('');
   const [voucherLoading, setVoucherLoading] = useState(false);
   const [voucherMessage, setVoucherMessage] = useState(null);
+
+  const [broadcastText, setBroadcastText] = useState('');
+  const [broadcastFile, setBroadcastFile] = useState(null);
+  const [isBroadcasting, setIsBroadcasting] = useState(false);
+
+  const [merchantPosts, setMerchantPosts] = useState([]);
+  const [loadingPosts, setLoadingPosts] = useState(false);
 
   const editMapContainer = useRef(null);
   const editMap = useRef(null);
@@ -483,62 +484,140 @@ export default function DashboardPage() {
       setStoreReviews(data || []);
     } catch (err) { console.error("Failed to fetch reviews:", err); } finally { setLoadingReviews(false); }
   };
+  
+  const fetchMerchantPosts = async () => {
+    setLoadingPosts(true);
+    try {
+      const { data, error } = await supabase
+        .from('merchant_posts')
+        .select('*')
+        .eq('store_id', activeStore.id)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      setMerchantPosts(data || []);
+    } catch (err) {
+      console.error("Failed to fetch posts:", err);
+    } finally {
+      setLoadingPosts(false);
+    }
+  };
+
+  const handleDeletePost = async (postId) => {
+    if (!window.confirm("Are you sure you want to delete this broadcast?")) return;
+    try {
+      // 1. Find the post to check if there is a photo to delete from storage
+      const post = merchantPosts.find(p => p.id === postId);
+      if (post?.photo_url) {
+         const oldPath = post.photo_url.split('/merchant-posts/')[1];
+         if (oldPath) await supabase.storage.from('merchant-posts').remove([oldPath]);
+      }
+      // 2. Delete from database
+      const { error } = await supabase.from('merchant_posts').delete().eq('id', postId);
+      if (error) throw error;
+      
+      // 3. Update UI
+      setMerchantPosts(prev => prev.filter(p => p.id !== postId));
+    } catch (err) {
+      alert("Failed to delete post: " + err.message);
+    }
+  };
 
   useEffect(() => {
+    let isCurrent = true; // 🚀 FIXED: Race Condition Flag prevents old fetches from overriding the UI
+
     if (activeStore?.id) {
+      const currentId = activeStore.id;
       
-      // 🚀 FIXED: Fetch detailed store data directly from Supabase!
-      // This bypasses the Render API so we are 100% guaranteed to get ALL 
-      // columns, including your new 'auto_schedule_enabled' column.
-      const fetchDetailedStore = async () => {
+      // 1. INSTANT CACHE LOAD
+      if (storeCache.current[currentId]) {
+        const cached = storeCache.current[currentId];
+        setItems(cached.items);
+        setCategoryOrder(cached.categoryOrder);
+        setStoreOperators(cached.operators);
+        setIsFetchingItems(false);
+      } else {
+        setItems([]);
+        setCategoryOrder([]);
+        setStoreOperators([]);
+        setIsFetchingItems(true); // 🚀 Trigger skeleton loading
+      }
+
+      if (activeTab === 'reviews') setStoreReviews([]);
+
+      // 2. BACKGROUND SYNC
+      const loadStoreData = async () => {
         try {
-          const { data, error } = await supabase
-            .from('stores')
-            .select('*')
-            .eq('id', activeStore.id)
-            .single();
+          const [storeRes, itemsRes] = await Promise.all([
+            supabase.from('stores').select('*').eq('id', currentId).single(),
+            fetch(`${API_BASE_URL}/api/stores/${currentId}/items`).then(res => res.ok ? res.json() : [])
+          ]);
 
-          if (error) throw error;
-          if (!data) return;
+          if (!isCurrent) return; // 🚀 FIXED: If the user clicked another store, kill this fetch!
 
-          // Safely parse schedule data
-          let parsedHours = data.operating_hours;
+          if (storeRes.error) throw storeRes.error;
+          const storeData = storeRes.data;
+
+          let parsedHours = storeData.operating_hours;
           if (typeof parsedHours === 'string') {
             try { parsedHours = JSON.parse(parsedHours); } catch (e) { parsedHours = null; }
           }
-          data.operating_hours = parsedHours;
-          
-          // Ensure boolean type for the toggle
-          if (data.auto_schedule_enabled === 'true') data.auto_schedule_enabled = true;
-          if (data.auto_schedule_enabled === 'false') data.auto_schedule_enabled = false;
+          storeData.operating_hours = parsedHours;
+          if (storeData.auto_schedule_enabled === 'true') storeData.auto_schedule_enabled = true;
+          if (storeData.auto_schedule_enabled === 'false') storeData.auto_schedule_enabled = false;
 
-          setActiveStore(prev => ({ ...prev, ...data }));
+          const theme = storeData.theme_settings || {};
+          if (theme.primaryColor) setStoreTheme(theme);
+
+          const fetchedItems = itemsRes || [];
+          const uniqueCats = [...new Set(fetchedItems.map(i => i.item_category || 'Uncategorized'))];
           
-          const theme = data.theme_settings || {};
-          if (theme.primaryColor) setStoreTheme(theme); 
-          if (theme.categoryOrder) setCategoryOrder(theme.categoryOrder);
+          let savedOrder = theme.categoryOrder || [];
+          const mergedOrder = [...savedOrder];
+          uniqueCats.forEach(c => { if (!mergedOrder.includes(c)) mergedOrder.push(c); });
+          const finalCategoryOrder = mergedOrder.filter(c => uniqueCats.includes(c));
+
+          const headers = await getAuthHeaders();
+          const operatorsRes = await fetch(`${API_BASE_URL}/api/stores/${currentId}/operators`, { headers });
+          const fetchedOperators = operatorsRes.ok ? await operatorsRes.json() : [];
+
+          if (!isCurrent) return; // 🚀 FIXED: Final check before setting state to prevent glitches
+
+          // 3. UPDATE UI & SAVE TO CACHE
+          setCategoryOrder(finalCategoryOrder);
+          setItems(fetchedItems);
+          setStoreOperators(fetchedOperators);
+          setActiveStore(prev => ({ ...prev, ...storeData }));
+          setIsFetchingItems(false); // Hide skeletons
+          
           setEditStoreData({ 
-            id: data.id, store_name: data.store_name, store_category: data.store_category, industry: data.industry || '', description: data.description || '', 
-            phone: data.phone || '', email: data.email || '', website: data.website || '', lat: data.lat, lng: data.lng,
-            cover_image_url: data.cover_image_url || '', logo_url: data.logo_url || '', showPhone: !!theme.showPhone, showEmail: !!theme.showEmail, showWebsite: !!theme.showWebsite, showAddress: !!theme.showAddress, 
+            id: storeData.id, store_name: storeData.store_name, store_category: storeData.store_category, industry: storeData.industry || '', description: storeData.description || '', 
+            phone: storeData.phone || '', email: storeData.email || '', website: storeData.website || '', lat: storeData.lat, lng: storeData.lng,
+            cover_image_url: storeData.cover_image_url || '', logo_url: storeData.logo_url || '', showPhone: !!theme.showPhone, showEmail: !!theme.showEmail, showWebsite: !!theme.showWebsite, showAddress: !!theme.showAddress, 
             addressText: theme.addressText || '', theme_settings: theme
           });
+
+          storeCache.current[currentId] = {
+            items: fetchedItems,
+            categoryOrder: finalCategoryOrder,
+            operators: fetchedOperators
+          };
+
         } catch (err) {
-          console.error("Failed to fetch detailed store from Supabase:", err);
+          if (isCurrent) setIsFetchingItems(false);
+          console.error("Failed to fetch store and items safely:", err);
         }
       };
-      
-      fetchDetailedStore();
 
-      fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/items`).then(res => res.json()).then(data => setItems(data)).catch(err => console.error(err));
-      
-      getAuthHeaders().then(headers => {
-        fetch(`${API_BASE_URL}/api/stores/${activeStore.id}/operators`, { headers }).then(res => res.ok ? res.json() : []).then(data => setStoreOperators(data)).catch(err => console.error(err));
-      });
-
-      fetchSubscription(activeStore.id);
+      loadStoreData();
+      fetchSubscription(currentId);
       if (activeTab === 'reviews') fetchStoreReviews();
+      if (activeTab === 'broadcast') fetchMerchantPosts(); 
     }
+
+    // 🚀 FIXED: Cleanup function runs the millisecond the activeStore.id changes!
+    return () => {
+      isCurrent = false; 
+    };
   }, [activeStore?.id, activeTab]);
 
   useEffect(() => {
@@ -703,28 +782,47 @@ export default function DashboardPage() {
     }
   };
 
-  const onItemFileSelect = (e) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const reader = new FileReader(); reader.readAsDataURL(e.target.files[0]);
-      reader.onload = () => { setImageToCrop(reader.result); setCropType('item'); }; 
-      e.target.value = null; 
+  const validateImageFile = (file) => {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    if (!allowedTypes.includes(file.type)) {
+      alert('Invalid file type. Please upload a JPG, PNG, or WebP image.');
+      return false;
     }
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image is too large. Maximum file size is 5MB.');
+      return false;
+    }
+    return true;
+  };
+
+  const onItemFileSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (file && validateImageFile(file)) {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => { setImageToCrop(reader.result); setCropType('item'); };
+    }
+    e.target.value = null;
   };
 
   const onCoverFileSelect = (e) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const reader = new FileReader(); reader.readAsDataURL(e.target.files[0]);
-      reader.onload = () => { setImageToCrop(reader.result); setCropType('cover'); }; 
-      e.target.value = null; 
+    const file = e.target.files?.[0];
+    if (file && validateImageFile(file)) {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => { setImageToCrop(reader.result); setCropType('cover'); };
     }
+    e.target.value = null;
   };
 
   const onLogoFileSelect = (e) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const reader = new FileReader(); reader.readAsDataURL(e.target.files[0]);
-      reader.onload = () => { setImageToCrop(reader.result); setCropType('logo'); }; 
-      e.target.value = null; 
+    const file = e.target.files?.[0];
+    if (file && validateImageFile(file)) {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => { setImageToCrop(reader.result); setCropType('logo'); };
     }
+    e.target.value = null;
   };
 
   const onCropComplete = (croppedArea, croppedAreaPixels) => setCroppedAreaPixels(croppedAreaPixels);
@@ -772,26 +870,108 @@ export default function DashboardPage() {
     setIsUploadingLogo(true);
     try {
       if (activeStore.logo_url) {
-         const oldPath = activeStore.logo_url.split('/avatars/')[1];
-         if (oldPath) await supabase.storage.from('avatars').remove([oldPath]);
+        if (activeStore.logo_url.includes('/store-logos/')) {
+          const oldPath = activeStore.logo_url.split('/store-logos/')[1];
+          if (oldPath) await supabase.storage.from('store-logos').remove([oldPath]);
+        } else if (activeStore.logo_url.includes('/avatars/')) {
+          const oldPath = activeStore.logo_url.split('/avatars/')[1];
+          if (oldPath) await supabase.storage.from('avatars').remove([oldPath]);
+        }
       }
+
       const fileExt = 'jpg'; 
-      const filePath = `store-logos/${activeStore.id}-${Date.now()}.${fileExt}`;
-      const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, file);
+      const filePath = `${activeStore.id}/${activeStore.id}-logo-${Date.now()}.${fileExt}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('store-logos')
+        .upload(filePath, file);
       if (uploadError) throw uploadError;
-      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(filePath);
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('store-logos')
+        .getPublicUrl(filePath);
       
       const response = await fetch(`${API_BASE_URL}/api/stores/${activeStore.id}`, { 
-        method: 'PATCH', headers: await getAuthHeaders(), body: JSON.stringify({ logo_url: publicUrl }) 
+        method: 'PATCH',
+        headers: await getAuthHeaders(),
+        body: JSON.stringify({ logo_url: publicUrl }) 
       });
       if (!response.ok) throw new Error("Failed to save logo to database.");
 
       setActiveStore({ ...activeStore, logo_url: publicUrl }); 
       setStores(stores.map(s => s.id === activeStore.id ? { ...s, logo_url: publicUrl } : s)); 
-    } catch (err) { alert("Error uploading logo: " + err.message); } finally { setIsUploadingLogo(false); }
+    } catch (err) {
+      alert("Error uploading logo: " + err.message);
+    } finally {
+      setIsUploadingLogo(false);
+    }
   };
 
   const handleLogout = async () => { await supabase.auth.signOut(); navigate('/'); };
+
+  const handleBroadcastSubmit = async () => {
+    if (!broadcastText.trim()) return alert("Please write a message first.");
+    setIsBroadcasting(true);
+    
+    try {
+      let finalImageUrl = null;
+      if (broadcastFile) {
+        const fileExt = broadcastFile.name.split('.').pop() || 'jpg';
+        const filePath = `${activeStore.id}/${Date.now()}.${fileExt}`;
+        const { error: uploadError } = await supabase.storage.from('merchant-posts').upload(filePath, broadcastFile);
+        if (uploadError) throw uploadError;
+        finalImageUrl = supabase.storage.from('merchant-posts').getPublicUrl(filePath).data.publicUrl;
+      }
+
+      const { data, error: insertError } = await supabase.from('merchant_posts').insert([{
+        store_id: activeStore.id,
+        merchant_id: user.id,
+        content: broadcastText.trim(),
+        photo_url: finalImageUrl
+      }]).select();
+
+      if (insertError) throw insertError;
+
+      // Notify all followers of this store in real time
+      const { data: followers } = await supabase
+        .from('store_followers')
+        .select('user_id')
+        .eq('store_id', activeStore.id);
+
+      if (followers && followers.length > 0) {
+        const preview = broadcastText.trim().length > 90
+          ? `${broadcastText.trim().slice(0, 90)}...`
+          : broadcastText.trim();
+
+        const notificationsPayload = followers
+          .filter(f => f.user_id !== user.id)
+          .map(f => ({
+            user_id: f.user_id,
+            type: 'announcement',
+            title: `New update from ${activeStore.store_name}`,
+            message: preview,
+            action_url: '/reviews',
+            is_read: false
+          }));
+
+        if (notificationsPayload.length > 0) {
+          await supabase.from('notifications').insert(notificationsPayload);
+        }
+      }
+
+      alert("Successfully broadcasted to the Local Feed!");
+      setBroadcastText('');
+      setBroadcastFile(null);
+      
+      if (data && data.length > 0) {
+        setMerchantPosts(prev => [data[0], ...prev]);
+      }
+    } catch (err) {
+      alert("Failed to post: " + err.message);
+    } finally {
+      setIsBroadcasting(false);
+    }
+  };
 
   const toggleStoreStatus = async () => {
     try {
@@ -907,6 +1087,17 @@ export default function DashboardPage() {
     setIsItemModalOpen(true); 
     setIsCategoryDropdownOpen(false); 
   };
+
+  <input
+    type="file"
+    accept="image/jpeg,image/png,image/webp"
+    onChange={(e) => {
+      const file = e.target.files?.[0];
+      if (file && validateImageFile(file)) setBroadcastFile(file);
+      e.target.value = null;
+    }}
+    style={{ display: 'none' }}
+  />
 
   const handleAddItem = async (e) => {
     e.preventDefault(); setIsUploading(true); let finalImageUrl = null;
@@ -1064,6 +1255,8 @@ export default function DashboardPage() {
 
   const reviewCount = storeReviews.length;
   const avgRating = reviewCount > 0 ? (storeReviews.reduce((sum, r) => sum + r.rating, 0) / reviewCount).toFixed(1) : 0;
+  const fallbackColor = CATEGORY_COLORS[activeStore?.store_category] || '#1E293B';
+
   // 🚀 Helper to safely parse and display JSON variants as smart badges
   const renderOptionsSummary = (optionsString) => {
     if (!optionsString) return null;
@@ -1485,8 +1678,24 @@ export default function DashboardPage() {
             
             {/* 💻 DESKTOP STORE HEADER */}
             <div className="desktop-ui" style={{ position: 'relative', marginBottom: '60px' }}>
-              <div style={{ width: '100%', height: '320px', borderRadius: '24px', overflow: 'hidden', backgroundImage: `url(${getStoreCoverImage(activeStore)})`, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative', boxShadow: '0 10px 30px rgba(0,0,0,0.08)' }}>
-                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0) 100%)', pointerEvents: 'none' }} />
+              <div style={{
+                width: '100%',
+                height: '320px',
+                borderRadius: '24px',
+                overflow: 'hidden',
+                background: activeStore.cover_image_url
+                  ? `url(${activeStore.cover_image_url}) center/cover no-repeat`
+                  : `linear-gradient(135deg, ${fallbackColor} 0%, ${fallbackColor}CC 100%)`,
+                position: 'relative',
+                boxShadow: '0 10px 30px rgba(0,0,0,0.08)',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center'
+              }}>
+                {!activeStore.cover_image_url && (
+                  <MdStore size={84} color="rgba(255,255,255,0.4)" style={{ marginBottom: '36px' }} />
+                )}
+                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0) 100%)', pointerEvents: 'none' }} />
                 
                 <div style={{ position: 'absolute', top: '20px', right: '20px', zIndex: 20 }}>
                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '8px 16px', backgroundColor: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(4px)', color: '#0F172A', borderRadius: '10px', fontSize: '12px', fontWeight: 'bold', cursor: isUploadingCover ? 'not-allowed' : 'pointer', border: 'none', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
@@ -1522,8 +1731,23 @@ export default function DashboardPage() {
 
             {/* 📱 MOBILE STORE HEADER */}
             <div className="mobile-ui-block" style={{ position: 'relative', marginBottom: '30px' }}>
-              <div style={{ width: '100%', height: '200px', borderRadius: '20px', backgroundImage: `url(${getStoreCoverImage(activeStore)})`, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative' }}>
-                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 100%)', borderRadius: '20px' }} />
+              <div style={{
+                width: '100%',
+                height: '200px',
+                borderRadius: '20px',
+                overflow: 'hidden',
+                background: activeStore.cover_image_url
+                  ? `url(${activeStore.cover_image_url}) center/cover no-repeat`
+                  : `linear-gradient(135deg, ${fallbackColor} 0%, ${fallbackColor}CC 100%)`,
+                position: 'relative',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center'
+              }}>
+                {!activeStore.cover_image_url && (
+                  <MdStore size={56} color="rgba(255,255,255,0.4)" />
+                )}
+                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 100%)', borderRadius: '20px', pointerEvents: 'none' }} />
                 <div style={{ position: 'absolute', top: '15px', right: '15px', zIndex: 20 }}>
                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '6px 12px', backgroundColor: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(4px)', color: '#0F172A', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold', cursor: isUploadingCover ? 'not-allowed' : 'pointer', border: 'none', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
                       {isUploadingCover ? 'Uploading...' : <><MdCameraAlt size={16} color="var(--brand-primary)" /> Cover</>}
@@ -1552,9 +1776,10 @@ export default function DashboardPage() {
             </div>
 
             <div className="custom-scrollbar" style={{ display: 'flex', alignItems: 'center', gap: '10px', overflowX: 'auto', marginBottom: '20px', padding: '0 10px 10px 10px' }}>
-              {['menu', 'staff', 'verification', 'reviews', 'preview'].map(tab => {
+              {['menu', 'broadcast', 'staff', 'verification', 'reviews', 'preview'].map(tab => {
                 const labels = { 
                   menu: <><MdDashboard size={18} /> Menu</>, 
+                  broadcast: <><MdRocketLaunch size={18} /> Broadcast</>,
                   staff: <><MdPeople size={18} /> Staff</>, 
                   verification: <><MdVerifiedUser size={18} /> Verification</>,
                   reviews: <><MdStar size={18} /> Reviews</>,
@@ -1680,7 +1905,21 @@ export default function DashboardPage() {
 
                   <div style={{ backgroundColor: 'var(--surface-color)', borderRadius: '20px', boxShadow: '0 4px 20px rgba(0,0,0,0.02)', border: '1px solid var(--border-color)', overflow: 'hidden' }}>
                     <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      {Object.keys(groupedItems).length === 0 ? (
+                      {isFetchingItems ? (
+                        /* 🚀 NEW: Skeletal Loading State for Items */
+                        <div style={{ padding: '30px', display: 'flex', flexDirection: 'column', gap: '25px' }}>
+                          {[1, 2, 3].map(i => (
+                            <div key={i} style={{ display: 'flex', gap: '20px', alignItems: 'center', borderBottom: i !== 3 ? '1px solid var(--border-color)' : 'none', paddingBottom: i !== 3 ? '20px' : '0' }}>
+                              <div style={{ width: '80px', height: '80px', backgroundColor: 'var(--surface-hover)', borderRadius: '12px', animation: 'pulse 1.5s infinite' }} />
+                              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                <div style={{ height: '18px', width: '40%', backgroundColor: 'var(--surface-hover)', borderRadius: '6px', animation: 'pulse 1.5s infinite' }} />
+                                <div style={{ height: '14px', width: '70%', backgroundColor: 'var(--surface-hover)', borderRadius: '6px', animation: 'pulse 1.5s infinite' }} />
+                                <div style={{ height: '14px', width: '20%', backgroundColor: 'var(--surface-hover)', borderRadius: '6px', animation: 'pulse 1.5s infinite' }} />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : Object.keys(groupedItems).length === 0 ? (
                         <div style={{ padding: '60px 40px', textAlign: 'center', color: 'var(--text-muted)', fontStyle: 'italic', fontWeight: '500', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}><MdRestaurantMenu size={32} /> Your menu is currently empty.</div>
                       ) : (
                         categoryOrder.map(category => {
@@ -1745,6 +1984,77 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* --- TAB: BROADCAST (New Feed Post) --- */}
+            {activeTab === 'broadcast' && (
+              <div style={{ backgroundColor: 'var(--surface-color)', padding: '30px', borderRadius: '20px', border: '1px solid var(--border-color)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px' }}>
+                  <div>
+                    <h3 style={{ margin: '0 0 10px 0', color: 'var(--text-main)', fontSize: '18px', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <MdRocketLaunch color="var(--brand-primary)" /> Community Broadcast
+                    </h3>
+                    <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '14px', maxWidth: '500px', lineHeight: '1.5' }}>
+                      Publish promos, new arrivals, or urgent updates directly to the Local Feed. Odiongan locals will see this instantly.
+                    </p>
+                  </div>
+                </div>
+
+                <div style={{ backgroundColor: 'var(--bg-color)', padding: '20px', borderRadius: '16px', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                  <textarea 
+                    value={broadcastText}
+                    onChange={(e) => setBroadcastText(e.target.value)}
+                    placeholder="What's happening at your store right now? e.g. 'Fresh batch of pandesal just came out!' or '20% off all iced drinks until 5PM!'" 
+                    style={{ 
+                      width: '100%', padding: '15px', borderRadius: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--surface-color)', color: 'var(--text-main)', minHeight: '120px', fontSize: '14px', resize: 'vertical', boxSizing: 'border-box', fontFamily: 'inherit', fontWeight: '500' 
+                    }} 
+                  />
+                  
+                  {broadcastFile && (
+                    <div style={{ position: 'relative', width: '100px', height: '100px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
+                      <img src={URL.createObjectURL(broadcastFile)} alt="Upload preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <button onClick={() => setBroadcastFile(null)} style={{ position: 'absolute', top: 4, right: 4, background: '#EF4444', color: 'white', border: 'none', borderRadius: '50%', width: '20px', height: '20px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><MdClose size={14}/></button>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 16px', backgroundColor: 'var(--surface-hover)', border: '1px solid var(--border-color)', borderRadius: '10px', fontSize: '13px', fontWeight: 'bold', color: 'var(--text-main)', cursor: 'pointer' }}>
+                      <MdCameraAlt size={18} color="var(--brand-primary)" /> Attach Photo
+                      <input type="file" accept="image/*" onChange={(e) => { if (e.target.files[0]) setBroadcastFile(e.target.files[0]) }} style={{ display: 'none' }} />
+                    </label>
+                    
+                    <button onClick={handleBroadcastSubmit} disabled={isBroadcasting || !broadcastText.trim()} style={{ padding: '12px 24px', backgroundColor: 'var(--brand-primary)', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '800', cursor: isBroadcasting || !broadcastText.trim() ? 'not-allowed' : 'pointer', opacity: isBroadcasting || !broadcastText.trim() ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 15px rgba(37, 99, 235, 0.2)' }}>
+                      {isBroadcasting ? 'Publishing...' : 'Post to Local Feed'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* 🚀 NEW: History List */}
+                <div style={{ marginTop: '30px', borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
+                  <h4 style={{ margin: '0 0 15px 0', fontSize: '16px', color: 'var(--text-main)', fontWeight: '800' }}>Recent Broadcasts</h4>
+                  {loadingPosts ? (
+                    <div style={{ color: 'var(--text-muted)', fontSize: '13px' }}>Loading posts...</div>
+                  ) : merchantPosts.length === 0 ? (
+                    <div style={{ padding: '20px', border: '1px dashed var(--border-color)', borderRadius: '12px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>No broadcasts published yet.</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                      {merchantPosts.map(post => (
+                        <div key={post.id} style={{ padding: '15px', backgroundColor: 'var(--bg-color)', border: '1px solid var(--border-color)', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '15px' }}>
+                          <div style={{ flexGrow: 1 }}>
+                            <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 'bold' }}>{new Date(post.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+                            <div style={{ fontSize: '14px', color: 'var(--text-main)', whiteSpace: 'pre-wrap', marginBottom: post.photo_url ? '10px' : '0' }}>{post.content}</div>
+                            {post.photo_url && (
+                              <img src={post.photo_url} alt="Broadcast" style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: '8px', border: '1px solid var(--border-color)' }} />
+                            )}
+                          </div>
+                          <button onClick={() => handleDeletePost(post.id)} style={{ background: 'rgba(239, 68, 68, 0.1)', color: '#EF4444', border: 'none', padding: '8px 12px', borderRadius: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold', flexShrink: 0 }}>Delete</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
               </div>
             )}
 

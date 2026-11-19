@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabaseClient'; 
+import { useShoppingList } from '../context/ShoppingListContext';
+import { CATEGORY_COLORS } from '../components/MapMarkers';
 import { 
   MdArrowBack, MdLocationOn, MdPhone, MdEmail, MdLanguage, 
   MdStar, MdStarBorder, MdAccessTime, MdSend, MdImage, 
   MdClose, MdMoreVert, MdChevronLeft, MdChevronRight, MdExpandMore,
-  MdFlag, MdStorefront, MdRestaurantMenu, MdVisibility, MdShare, MdSearch
+  MdFlag, MdStorefront, MdStore, MdRestaurantMenu, MdVisibility, MdShare, MdSearch,
+  MdPersonAdd, MdCheck, MdPeople
 } from 'react-icons/md';
 import { VscThumbsup, VscThumbsupFilled } from 'react-icons/vsc';
 
@@ -13,17 +16,6 @@ const API_BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env && i
   ? import.meta.env.VITE_API_URL 
   : 'https://locallook-api.onrender.com';
 
-const getStoreCoverImage = (store) => {
-  if (store.cover_image_url) return store.cover_image_url;
-  switch (store.store_category) {
-    case 'Food & Dining': return 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1200&q=80';
-    case 'Retail': return 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1200&q=80';
-    case 'Services': return 'https://images.unsplash.com/photo-1521791136064-7986c2920216?w=1200&q=80';
-    case 'Groceries': return 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=1200&q=80';
-    case 'Health': return 'https://images.unsplash.com/photo-1505751172876-fa1923c5c528?w=1200&q=80';
-    default: return 'https://images.unsplash.com/photo-1497366216548-37526070297c?w=1200&q=80';
-  }
-};
 
 const timeAgo = (dateString) => {
   const date = new Date(dateString);
@@ -55,13 +47,15 @@ const Avatar = ({ src, name, size, color }) => {
   }
   
   return (
-    <img src={src} alt="avatar" onError={() => setError(true)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+    <img src={src} alt="avatar" referrerPolicy="no-referrer" onError={() => setError(true)} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
   );
 };
 
 export default function StoreProfilePage() {
   const { id } = useParams();
   const navigate = useNavigate();
+
+  const { addToList } = useShoppingList();
   
   const reviewFormRef = useRef(null);
   
@@ -69,6 +63,10 @@ export default function StoreProfilePage() {
   const [store, setStore] = useState(null);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followerCount, setFollowerCount] = useState(0);
+  const [isTogglingFollow, setIsTogglingFollow] = useState(false);
 
   const [reviews, setReviews] = useState([]);
   const [visibleCount, setVisibleCount] = useState(5);
@@ -95,6 +93,8 @@ export default function StoreProfilePage() {
   const [activeItemModal, setActiveItemModal] = useState(null);
   const [itemSelections, setItemSelections] = useState({});
   const [itemQuantity, setItemQuantity] = useState(1);
+
+  const [toast, setToast] = useState(null);
 
   const handleOpenItem = (item) => {
     setActiveItemModal(item);
@@ -191,6 +191,66 @@ export default function StoreProfilePage() {
     fetchStoreData();
   }, [id]);
 
+  useEffect(() => {
+    const fetchFollowStatus = async () => {
+      const { count } = await supabase
+        .from('store_followers')
+        .select('*', { count: 'exact', head: true })
+        .eq('store_id', id);
+
+      setFollowerCount(count || 0);
+
+      if (session?.user?.id) {
+        const { data } = await supabase
+          .from('store_followers')
+          .select('id')
+          .eq('store_id', id)
+          .eq('user_id', session.user.id)
+          .maybeSingle();
+
+        setIsFollowing(!!data);
+      } else {
+        setIsFollowing(false);
+      }
+    };
+
+    fetchFollowStatus();
+  }, [id, session]);
+
+  const handleToggleFollow = async () => {
+    if (!session) return navigate('/login');
+    if (isTogglingFollow) return;
+
+    setIsTogglingFollow(true);
+    const nextState = !isFollowing;
+
+    // Optimistic UI update
+    setIsFollowing(nextState);
+    setFollowerCount(prev => Math.max(0, prev + (nextState ? 1 : -1)));
+
+    try {
+      if (nextState) {
+        const { error } = await supabase
+          .from('store_followers')
+          .insert([{ store_id: id, user_id: session.user.id }]);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('store_followers')
+          .delete()
+          .match({ store_id: id, user_id: session.user.id });
+        if (error) throw error;
+      }
+    } catch (err) {
+      console.error('Error toggling follow:', err);
+      // Revert on failure
+      setIsFollowing(!nextState);
+      setFollowerCount(prev => Math.max(0, prev + (nextState ? -1 : 1)));
+    } finally {
+      setIsTogglingFollow(false);
+    }
+  };
+
   const fetchReviews = async () => {
     const { data, error } = await supabase
       .from('reviews')
@@ -241,10 +301,27 @@ export default function StoreProfilePage() {
 
   const handlePhotoSelect = (e) => {
     const files = Array.from(e.target.files);
-    if (files.length + reviewPhotos.length > 4) {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+    const maxSize = 5 * 1024 * 1024; // 5MB
+
+    const validFiles = files.filter(file => {
+      if (!allowedTypes.includes(file.type)) {
+        alert(`"${file.name}" is not supported. Please use JPG, PNG, or WebP.`);
+        return false;
+      }
+      if (file.size > maxSize) {
+        alert(`"${file.name}" is too large. Max file size is 5MB.`);
+        return false;
+      }
+      return true;
+    });
+
+    if (validFiles.length + reviewPhotos.length > 4) {
+      e.target.value = '';
       return alert("You can only attach a maximum of 4 photos per review.");
     }
-    setReviewPhotos(prev => [...prev, ...files]);
+    setReviewPhotos(prev => [...prev, ...validFiles]);
+    e.target.value = '';
   };
 
   const removePhoto = (index) => {
@@ -547,35 +624,57 @@ export default function StoreProfilePage() {
         <div style={{ position: 'relative' }}>
           
           {/* Cover Photo */}
-          <div className="cover-header" style={{ width: '100%', backgroundColor: 'var(--surface-color)', backgroundImage: `url(${getStoreCoverImage(store)})`, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative', overflow: 'hidden' }}>
-            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(15,23,42,0.95) 0%, rgba(15,23,42,0.3) 60%, transparent 100%)' }} />
-            <button onClick={() => navigate(-1)} style={{ position: 'absolute', top: '20px', left: '20px', backgroundColor: 'rgba(255, 255, 255, 0.2)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.4)', color: 'white', padding: '8px 16px', borderRadius: '24px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '13px', zIndex: 10 }}>
-              <MdArrowBack size={18} /> Back
-            </button>
-            
-            <div className="header-text-container" style={{ position: 'absolute', bottom: '0', left: '0', right: '0', display: 'flex', alignItems: 'flex-end', padding: '24px' }}>
-              <div style={{ color: 'white', width: '100%' }}>
-                <h1 className="header-title" style={{ margin: '0 0 6px 0', fontWeight: '900', textShadow: '0 2px 4px rgba(0,0,0,0.5)', lineHeight: '1.1' }}>{store.store_name}</h1>
+          {(() => {
+            const fallbackColor = CATEGORY_COLORS[store.store_category] || '#1E293B';
+            return (
+              <div
+                className="cover-header"
+                style={{
+                  width: '100%',
+                  background: store.cover_image_url
+                    ? `url(${store.cover_image_url}) center/cover no-repeat`
+                    : `linear-gradient(135deg, ${fallbackColor} 0%, ${fallbackColor}CC 100%)`,
+                  position: 'relative',
+                  overflow: 'hidden',
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center'
+                }}
+              >
+                {!store.cover_image_url && (
+                  <MdStore size={84} color="rgba(255,255,255,0.4)" style={{ marginBottom: '36px' }} />
+                )}
+                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(15,23,42,0.85) 0%, rgba(15,23,42,0.2) 60%, transparent 100%)' }} />
+                <button onClick={() => navigate(-1)} style={{ position: 'absolute', top: '20px', left: '20px', backgroundColor: 'rgba(255, 255, 255, 0.2)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.4)', color: 'white', padding: '8px 16px', borderRadius: '24px', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '13px', zIndex: 10 }}>
+                  <MdArrowBack size={18} /> Back
+                </button>
                 
-                {/* 🚀 FIXED: Specific Industry displayed instead of general category */}
-                <p style={{ margin: '0 0 10px 0', fontSize: '15px', color: '#E2E8F0', fontWeight: '600', textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>
-                  {store.industry || store.store_category}
-                </p>
-                
-                {/* 🚀 FIXED: Location and Reviews side-by-side below industry */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '15px', flexWrap: 'wrap', fontSize: '13px', fontWeight: '500', color: '#F8FAFC' }}>
+                <div className="header-text-container" style={{ position: 'absolute', bottom: '0', left: '0', right: '0', display: 'flex', alignItems: 'flex-end', padding: '24px' }}>
+                  <div style={{ color: 'white', width: '100%' }}>
+                    <h1 className="header-title" style={{ margin: '0 0 6px 0', fontWeight: '900', textShadow: '0 2px 4px rgba(0,0,0,0.5)', lineHeight: '1.1' }}>{store.store_name}</h1>
+                    
+                    <p style={{ margin: '0 0 10px 0', fontSize: '15px', color: '#E2E8F0', fontWeight: '600', textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>
+                      {store.industry || store.store_category}
+                    </p>
+                    
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '15px', flexWrap: 'wrap', fontSize: '13px', fontWeight: '500', color: '#F8FAFC' }}>
                   {theme.showAddress && (
                     <span style={{ display: 'flex', alignItems: 'center', gap: '4px', textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>
                       <MdLocationOn size={16} /> {theme.addressText || 'Location not set'}
                     </span>
                   )}
-                  <button onClick={() => scrollToSection('reviews-section')} style={{ background: 'none', border: 'none', color: 'white', padding: 0, margin: 0, fontSize: '13px', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer', outline: 'none', textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px', textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>
                     <MdStar size={16} color="#FFFFFF" /> {totalReviews > 0 ? `${averageRating} (${totalReviews} review${totalReviews === 1 ? '' : 's'})` : 'No reviews yet'}
-                  </button>
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '4px', textShadow: '0 1px 3px rgba(0,0,0,0.6)' }}>
+                    <MdPeople size={16} color="#FFFFFF" /> {followerCount} {followerCount === 1 ? 'follower' : 'followers'}
+                  </span>
+                </div>
+                  </div>
                 </div>
               </div>
-            </div>
-          </div>
+            );
+          })()}
 
           {/* 🚀 FIXED: Polished Logo Rendering with White Border and Soft Shadow */}
           <div className="header-logo" style={{ 
@@ -600,8 +699,25 @@ export default function StoreProfilePage() {
 
         {/* Details Section */}
         <div className="header-details-container" style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-          <div className="custom-scrollbar" style={{ display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '4px' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px' }}>
             
+
+            <button
+              onClick={handleToggleFollow}
+              disabled={isTogglingFollow}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 14px',
+                backgroundColor: isFollowing ? 'var(--surface-hover)' : brandColor,
+                color: isFollowing ? 'var(--text-main)' : '#FFFFFF',
+                border: isFollowing ? '1px solid var(--border-color)' : `1px solid ${brandColor}`,
+                borderRadius: '20px', fontSize: '13px', fontWeight: '800', flexShrink: 0,
+                cursor: isTogglingFollow ? 'not-allowed' : 'pointer', transition: 'all 0.2s'
+              }}
+            >
+              {isFollowing ? <MdCheck size={16} /> : <MdPersonAdd size={16} />}
+              {isFollowing ? 'Following' : 'Follow'}
+            </button>
+
             {/* 🚀 FIXED: Button only clickable and shows arrow IF schedule is enabled */}
             <button 
               onClick={() => store.auto_schedule_enabled && setShowHoursModal(true)} 
@@ -725,22 +841,22 @@ export default function StoreProfilePage() {
 
                 {/* 💻 DESKTOP GRID LAYOUT */}
                 <div className="desktop-ui">
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(215px, 1fr))', gap: '16px' }}>
                     {groupedItems[category].map(item => (
-                      <div onClick={() => handleOpenItem(item)} key={item.id} style={{ backgroundColor: 'var(--surface-color)', borderRadius: '16px', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', transition: 'box-shadow 0.2s, transform 0.2s', cursor: 'pointer' }} onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 10px 25px rgba(0,0,0,0.1)'; }} onMouseOut={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}>
+                      <div onClick={() => handleOpenItem(item)} key={item.id} style={{ backgroundColor: 'var(--surface-color)', borderRadius: '14px', overflow: 'hidden', border: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column', transition: 'box-shadow 0.2s, transform 0.2s', cursor: 'pointer' }} onMouseOver={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 10px 25px rgba(0,0,0,0.1)'; }} onMouseOut={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}>
                         
                         {item.image_url ? (
                           <div style={{ aspectRatio: '1 / 1', width: '100%', backgroundImage: `url(${item.image_url})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundColor: 'var(--surface-hover)', borderBottom: '1px solid var(--border-color)' }} />
                         ) : (
-                          <div style={{ aspectRatio: '1 / 1', width: '100%', backgroundColor: 'var(--surface-hover)', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '40px', borderBottom: '1px solid var(--border-color)' }}><MdRestaurantMenu size={48} color="var(--icon-color)" /></div>
+                          <div style={{ aspectRatio: '1 / 1', width: '100%', backgroundColor: 'var(--surface-hover)', display: 'flex', justifyContent: 'center', alignItems: 'center', borderBottom: '1px solid var(--border-color)' }}><MdRestaurantMenu size={40} color="var(--icon-color)" /></div>
                         )}
                         
-                        <div style={{ padding: '20px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', marginBottom: '8px' }}>
-                            <h4 style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: 'var(--text-main)', lineHeight: '1.3' }}>{item.item_name}</h4>
-                            <span style={{ fontSize: '16px', fontWeight: '900', color: 'var(--text-main)', whiteSpace: 'nowrap' }}>₱{parseFloat(item.price).toFixed(2)}</span>
+                        <div style={{ padding: '14px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px', marginBottom: '6px' }}>
+                            <h4 style={{ margin: 0, fontSize: '14.5px', fontWeight: '800', color: 'var(--text-main)', lineHeight: '1.3' }}>{item.item_name}</h4>
+                            <span style={{ fontSize: '14px', fontWeight: '900', color: 'var(--text-main)', whiteSpace: 'nowrap' }}>₱{parseFloat(item.price).toFixed(2)}</span>
                           </div>
-                          {item.description && <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)', lineHeight: '1.5', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.description}</p>}
+                          {item.description && <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)', lineHeight: '1.4', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.description}</p>}
                           {renderOptionsSummary(item.options)}
                         </div>
                       </div>
@@ -872,8 +988,11 @@ export default function StoreProfilePage() {
                 <div style={{ padding: '20px', backgroundColor: 'var(--surface-color)', borderTop: '1px solid var(--border-color)', flexShrink: 0 }}>
                   <button 
                     onClick={() => {
-                      alert(`Saved to Shopping List!\n\nItem: ${activeItemModal.item_name}\nTotal: ₱${calculateItemTotal().toFixed(2)}`);
+                      const total = calculateItemTotal();
+                      addToList(activeItemModal, store, itemSelections, itemQuantity, total);
                       setActiveItemModal(null);
+                      setToast(`Added ${itemQuantity}x ${activeItemModal.item_name} (₱${total.toFixed(2)})`);
+                      setTimeout(() => setToast(null), 3500);
                     }}
                     style={{ width: '100%', padding: '16px', backgroundColor: brandColor, color: 'white', border: 'none', borderRadius: '14px', fontWeight: '900', fontSize: '15px', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', boxShadow: `0 8px 20px ${brandColor}40` }}
                   >
@@ -1049,11 +1168,11 @@ export default function StoreProfilePage() {
                         <button onClick={() => setActiveMenuId(activeMenuId === review.id ? null : review.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '4px', color: 'var(--text-muted)' }}><MdMoreVert size={20} /></button>
                         {activeMenuId === review.id && (
                           <>
-                            <div onClick={() => setActiveMenuId(null)} style={{ position: 'fixed', inset: 0, zIndex: 90 }} />
                             <div style={{ position: 'absolute', top: '100%', right: 0, backgroundColor: 'var(--surface-color)', border: '1px solid var(--border-color)', borderRadius: '12px', boxShadow: '0 8px 20px rgba(0,0,0,0.2)', zIndex: 100, width: '140px', overflow: 'hidden' }}>
-                              <button onClick={() => handleAction('report', review)} style={{ width: '100%', padding: '12px', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', color: 'var(--text-main)', fontWeight: '600' }}>Report</button>
-                              {session?.user?.id === review.user_id && (
-                                <button onClick={() => handleAction('delete', review)} style={{ width: '100%', padding: '12px', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', color: '#DC2626', fontWeight: '600', borderTop: '1px solid var(--border-color)' }}>Delete</button>
+                              {session?.user?.id === review.user_id ? (
+                                <button onClick={() => handleAction('delete', review)} style={{ width: '100%', padding: '12px', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', color: '#DC2626', fontWeight: '600' }}>Delete</button>
+                              ) : (
+                                <button onClick={() => handleAction('report', review)} style={{ width: '100%', padding: '12px', textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', fontSize: '14px', color: 'var(--text-main)', fontWeight: '600' }}>Report</button>
                               )}
                             </div>
                           </>
@@ -1156,6 +1275,23 @@ export default function StoreProfilePage() {
 
       </div>
 
+        {toast && (
+        <div style={{
+          position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)',
+          zIndex: 999999, backgroundColor: '#0F172A', color: '#FFFFFF',
+          padding: '12px 18px', borderRadius: '14px', boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
+          display: 'flex', alignItems: 'center', gap: '14px', fontSize: '13.5px', fontWeight: '700',
+          border: '1px solid rgba(255,255,255,0.12)', maxWidth: '90vw'
+        }}>
+          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{toast}</span>
+          <button
+            onClick={() => { setToast(null); navigate('/my-list'); }}
+            style={{ background: 'none', border: 'none', color: '#60A5FA', fontWeight: '800', fontSize: '13px', cursor: 'pointer', padding: 0, flexShrink: 0 }}
+          >
+            View List
+          </button>
+        </div>
+      )}
     </div>
   );
 }

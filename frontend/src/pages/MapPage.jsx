@@ -4,9 +4,9 @@ import { renderToString } from 'react-dom/server';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { supabase } from '../supabaseClient';
-import { CustomMapPin } from '../components/MapMarkers';
 import { useTheme } from '../components/ThemeContext';
 import NotificationBell from '../components/NotificationBell'; 
+import { CustomMapPin, CATEGORY_COLORS } from '../components/MapMarkers';
 import { 
   MdSearch, MdTune, MdExpandMore, MdLocationOn, 
   MdStorefront, MdClose, MdStar, MdChevronLeft, 
@@ -43,6 +43,14 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
   return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)));
 };
 
+const escapeHtml = (str) =>
+  String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
 const getCategoryIcon = (cat) => {
   switch(cat) {
     case 'All': return <MdGridView size={18} />;
@@ -55,8 +63,9 @@ const getCategoryIcon = (cat) => {
     case 'Home & Professional Services': return <MdHomeRepairService size={18} />;
     case 'Financial & Business': return <MdAccountBalance size={18} />;
     default: return <MdGridView size={18} />;
-  }
+  };
 };
+
 
 export default function MapPage() {
   const mapContainer = useRef(null);
@@ -114,6 +123,8 @@ export default function MapPage() {
 
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
+  const [avatarError, setAvatarError] = useState(false);
+  
 
   const navigate = useNavigate();
   
@@ -283,18 +294,39 @@ export default function MapPage() {
   };
 
   useEffect(() => {
-    const fetchUser = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      setSession(session);
-      if (session) {
+    const loadUser = async (currentSession) => {
+      setSession(currentSession);
+      setAvatarError(false);
+      if (currentSession) {
         try {
-          const res = await fetch(`${API_BASE_URL}/api/users/${session.user.id}`);
+          const res = await fetch(`${API_BASE_URL}/api/users/${currentSession.user.id}`);
           if (res.ok) setProfile(await res.json());
         } catch (err) { console.error(err); }
+      } else {
+        setProfile(null);
       }
     };
-    fetchUser();
+
+    supabase.auth.getSession().then(({ data: { session } }) => loadUser(session));
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      loadUser(newSession);
+    });
+
+    return () => authListener.subscription.unsubscribe();
   }, []);
+
+  const userAvatar =
+    session?.user?.user_metadata?.avatar_url ||
+    profile?.avatar_url ||
+    session?.user?.user_metadata?.picture;
+
+  const userInitial = (
+    session?.user?.user_metadata?.full_name ||
+    profile?.display_name ||
+    session?.user?.email ||
+    'U'
+  ).charAt(0).toUpperCase();
 
   const fetchStoresInBounds = async () => {
     if (!map.current) return [];
@@ -550,14 +582,16 @@ export default function MapPage() {
 
   const mapStores = useMemo(() => {
     if (!Array.isArray(stores)) return [];
+    const distanceBase = actualUserLocation || activeLocation;
     return stores.filter(store => {
       if (!store.lat || !store.lng) return false;
       if (activeCategory !== 'All' && store.store_category !== activeCategory) return false;
-      if (calculateDistance(activeLocation.lat, activeLocation.lng, store.lat, store.lng) > filters.distance) return false;
+      if (calculateDistance(distanceBase.lat, distanceBase.lng, store.lat, store.lng) > filters.distance) return false;
       if (filters.openNow && store.is_open === false) return false;
+      if (filters.minRating > 0 && (store.rating || 0) < filters.minRating) return false;
       return true;
     });
-  }, [stores, activeCategory, filters, activeLocation]);
+  }, [stores, activeCategory, filters, activeLocation, actualUserLocation]);
 
   useEffect(() => {
     if (!map.current || !isMapLoaded) return;
@@ -624,7 +658,8 @@ export default function MapPage() {
       const dist = calculateDistance(distanceBase.lat, distanceBase.lng, selectedStore.lat, selectedStore.lng).toFixed(2);
       
       const isOpen = selectedStore.is_open;
-      const coverImage = selectedStore.cover_url || selectedStore.image_url || 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?auto=format&fit=crop&w=400&q=80';
+      const coverImage = selectedStore.cover_image_url || selectedStore.cover_url || selectedStore.image_url;
+      const categoryColor = CATEGORY_COLORS[selectedStore.store_category] || '#1E293B';
       
       const rating = selectedStore.rating || 0;
       const reviewCount = selectedStore.review_count || 0;
@@ -634,28 +669,39 @@ export default function MapPage() {
       const popupSub = isDarkMode ? '#94A3B8' : '#64748B';
       const popupBorder = isDarkMode ? '#334155' : '#E2E8F0';
 
+      const headerContent = coverImage
+        ? `background-image: url('${coverImage}'); background-size: cover; background-position: center;`
+        : `background: linear-gradient(135deg, ${categoryColor} 0%, ${categoryColor}CC 100%); display: flex; align-items: center; justify-content: center;`;
+
+      const fallbackIcon = !coverImage
+        ? `<svg width="36" height="36" viewBox="0 0 24 24" fill="rgba(255,255,255,0.45)"><path d="M20 4H4v2h16V4zm1 10v-2l-1-5H4l-1 5v2h1v6h10v-6h4v6h2v-6h1zm-9 4H6v-4h6v4z"/></svg>`
+        : '';
+
       const div = document.createElement('div');
       
       div.innerHTML = `
         <div style="font-family: 'Plus Jakarta Sans', sans-serif; width: 240px; display: flex; flex-direction: column; box-sizing: border-box; overflow: hidden; background-color: ${popupBg}; border-radius: 12px;">
-          <div style="width: 100%; height: 80px; background-image: url('${coverImage}'); background-size: cover; background-position: center; border-bottom: 1px solid ${popupBorder}; position: relative;">
-             <div style="position: absolute; top: 10px; right: 10px; background-color: ${isOpen ? 'rgba(209, 250, 229, 0.85)' : 'rgba(254, 242, 242, 0.85)'}; backdrop-filter: blur(4px); padding: 4px 10px; border-radius: 9999px; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 6px rgba(0,0,0,0.08);">
-              <span style="position: relative; display: flex; width: 6px; height: 6px;">
-                  ${isOpen ? `<span style="position: absolute; display: inline-flex; height: 100%; width: 100%; border-radius: 50%; background-color: #10B981; opacity: 0.75; animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;"></span>` : ''}
-                  <span style="position: relative; display: inline-flex; border-radius: 50%; width: 6px; height: 6px; background-color: ${isOpen ? '#059669' : '#DC2626'};"></span>
+          <div style="width: 100%; height: 90px; ${headerContent} border-bottom: 1px solid ${popupBorder}; position: relative;">
+            ${fallbackIcon}
+            <div style="position: absolute; top: 10px; right: 10px; background-color: rgba(15, 23, 42, 0.35); backdrop-filter: blur(12px) saturate(160%); -webkit-backdrop-filter: blur(12px) saturate(160%); border: 1px solid rgba(255, 255, 255, 0.28); padding: 4px 9px; border-radius: 8px; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);">
+              ${isOpen ? `
+                <span style="position: relative; display: flex; width: 6px; height: 6px;">
+                  <span style="position: absolute; display: inline-flex; height: 100%; width: 100%; border-radius: 50%; background-color: #34D399; opacity: 0.8; animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;"></span>
+                  <span style="position: relative; display: inline-flex; border-radius: 50%; width: 6px; height: 6px; background-color: #34D399; box-shadow: 0 0 6px rgba(52, 211, 153, 0.9);"></span>
+                </span>
+              ` : ''}
+              <span style="font-size: 10px; font-weight: 900; letter-spacing: 0.5px; color: ${isOpen ? '#FFFFFF' : '#F1F5F9'}; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);">
+                ${isOpen ? 'OPEN' : 'CLOSED'}
               </span>
-              <span style="font-size: 10.5px; font-weight: 700; text-transform: capitalize; color: ${isOpen ? '#059669' : '#DC2626'}; letter-spacing: 0.2px;">
-                  ${isOpen ? 'Open' : 'Closed'}
-              </span>
-          </div>
+            </div>
           </div>
           
           <div style="padding: 10px 12px; box-sizing: border-box; width: 100%;">
             <h3 style="margin: 0 0 2px 0; font-size: 14px; font-weight: 800; color: ${popupText}; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;">
-              ${selectedStore.store_name}
+              ${escapeHtml(selectedStore.store_name)}
             </h3>
             <div style="font-size: 11px; color: ${popupSub}; font-weight: 600; margin-bottom: 8px; white-space: nowrap; text-overflow: ellipsis; overflow: hidden;">
-              ${selectedStore.industry || selectedStore.store_category}
+              ${escapeHtml(selectedStore.industry || selectedStore.store_category)}
             </div>
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-size: 11px;">
               ${reviewCount > 0 ? `
@@ -672,7 +718,7 @@ export default function MapPage() {
             </div>
             
             <button id="view-store-btn" style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px; background: var(--brand-primary); color: white; border: none; outline: none; -webkit-tap-highlight-color: transparent; padding: 8px; border-radius: 8px; font-weight: 800; font-size: 12px; cursor: pointer; transition: background-color 0.2s;">
-              View Full Details
+              Visit Store
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
             </button>
           </div>
@@ -709,6 +755,8 @@ export default function MapPage() {
         .desktop-ui { display: block; }
         .mobile-ui-block { display: none; }
         .mobile-ui-flex { display: none; }
+
+        @keyframes ping { 75%, 100% { transform: scale(2); opacity: 0; }}
 
         @media (max-width: 768px) {
           .desktop-ui { display: none !important; }
@@ -781,8 +829,9 @@ export default function MapPage() {
                 <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--brand-primary)' }}>{filters.distance} km</span>
               </div>
               <input type="range" min="1" max="50" value={filters.distance} onChange={(e) => setFilters({...filters, distance: Number(e.target.value)})} style={{ width: '100%', accentColor: 'var(--brand-primary)' }} />
-              <div style={{ fontSize: '11px', color: bgColors.textMuted, marginTop: '4px' }}>Searching from {activeLocation.name}</div>
-            </div>
+              <div style={{ fontSize: '11px', color: bgColors.textMuted, marginTop: '4px' }}>
+                {actualUserLocation ? 'Searching from your current location' : `Searching from ${activeLocation.name}`}</div>
+              </div>
 
             <div style={{ marginBottom: '24px' }}>
               <label style={{ display: 'block', fontSize: '13px', fontWeight: '700', color: bgColors.textMuted, marginBottom: '8px' }}>Minimum Rating</label>
@@ -805,9 +854,23 @@ export default function MapPage() {
               </div>
             </div>
 
-            <button onClick={() => setIsFilterOpen(false)} style={{ width: '100%', padding: '14px', backgroundColor: 'var(--brand-primary)', color: '#FFFFFF', border: 'none', borderRadius: '12px', fontWeight: '800', fontSize: '15px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(24, 119, 242, 0.2)' }}>
-              Show {mapStores.length} Results
-            </button>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={() => {
+                  setFilters({ distance: 10, minRating: 0, openNow: false });
+                  setActiveCategory('All');
+                }}
+                style={{ padding: '14px 18px', backgroundColor: bgColors.secondary, color: bgColors.textMain, border: `1px solid ${bgColors.border}`, borderRadius: '12px', fontWeight: '800', fontSize: '14px', cursor: 'pointer' }}
+              >
+                Reset
+              </button>
+              <button
+                onClick={() => setIsFilterOpen(false)}
+                style={{ flex: 1, padding: '14px', backgroundColor: 'var(--brand-primary)', color: '#FFFFFF', border: 'none', borderRadius: '12px', fontWeight: '800', fontSize: '15px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(24, 119, 242, 0.2)' }}
+              >
+                Show {mapStores.length} Results
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -920,9 +983,36 @@ export default function MapPage() {
             
             <div style={{ pointerEvents: 'auto' }}>
               {session ? (
-                <div onClick={() => navigate('/profile')} style={{ width: '42px', height: '42px', borderRadius: '50%', backgroundColor: bgColors.primary, backgroundImage: `url('${profile?.avatar_url || `https://ui-avatars.com/api/?name=${profile?.display_name || 'User'}&background=EFF6FF&color=1877F2`}')`, backgroundSize: 'cover', backgroundPosition: 'center', cursor: 'pointer', border: `2px solid ${bgColors.border}`, boxShadow: '0 4px 15px rgba(0,0,0,0.08)', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-                  {/* 🚀 Placeholder fallback if no avatar URL exists */}
-                  {!profile?.avatar_url && <MdPersonOutline size={24} color={bgColors.textMuted} />}
+                <div
+                  onClick={() => navigate('/profile')}
+                  style={{
+                    width: '42px',
+                    height: '42px',
+                    borderRadius: '50%',
+                    backgroundColor: !userAvatar || avatarError ? 'rgba(37, 99, 235, 0.1)' : bgColors.primary,
+                    color: 'var(--brand-primary)',
+                    cursor: 'pointer',
+                    border: `2px solid ${bgColors.border}`,
+                    boxShadow: '0 4px 15px rgba(0,0,0,0.08)',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    overflow: 'hidden',
+                    fontWeight: '800',
+                    fontSize: '15px',
+                  }}
+                >
+                  {!userAvatar || avatarError ? (
+                    userInitial
+                  ) : (
+                    <img
+                      src={userAvatar}
+                      alt="Profile"
+                      referrerPolicy="no-referrer"
+                      onError={() => setAvatarError(true)}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  )}
                 </div>
               ) : (
                 <button onClick={() => navigate('/login')} style={{ padding: '0 20px', height: '42px', backgroundColor: 'var(--brand-primary)', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '700', fontSize: '13.5px', cursor: 'pointer' }}>Sign In</button>
@@ -978,8 +1068,39 @@ export default function MapPage() {
                   <NotificationBell session={session} isSidebarMode={false} />
                 </div>
                 
-                <div onClick={() => session ? navigate('/profile') : navigate('/login')} style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: '#FFFFFF', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', flexShrink: 0, backgroundImage: session ? `url('${profile?.avatar_url || `https://ui-avatars.com/api/?name=${profile?.display_name || 'User'}&background=EFF6FF&color=1877F2`}')` : 'none', backgroundSize: 'cover', border: '2px solid #FFFFFF', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
-                  {!session && <MdPersonOutline size={22} color="var(--primary)" />}
+                <div
+                  onClick={() => session ? navigate('/profile') : navigate('/login')}
+                  style={{
+                    width: '36px',
+                    height: '36px',
+                    borderRadius: '50%',
+                    backgroundColor: '#FFFFFF',
+                    color: 'var(--brand-primary)',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    cursor: 'pointer',
+                    flexShrink: 0,
+                    border: '2px solid #FFFFFF',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                    overflow: 'hidden',
+                    fontWeight: '800',
+                    fontSize: '14px',
+                  }}
+                >
+                  {!session ? (
+                    <MdPersonOutline size={22} color="var(--brand-primary)" />
+                  ) : !userAvatar || avatarError ? (
+                    userInitial
+                  ) : (
+                    <img
+                      src={userAvatar}
+                      alt="Profile"
+                      referrerPolicy="no-referrer"
+                      onError={() => setAvatarError(true)}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  )}
                 </div>
               </div>
             </div>
@@ -993,7 +1114,7 @@ export default function MapPage() {
               
               <button onClick={() => setIsFilterOpen(true)} style={{ width: '42px', height: '42px', backgroundColor: '#FFFFFF', borderRadius: '12px', border: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', boxShadow: '0 4px 10px rgba(0,0,0,0.1)', color: 'var(--brand-primary)', flexShrink: 0, position: 'relative' }}>
                 <MdTune size={20} />
-                {(activeCategory !== 'All' || filters.openNow || filters.distance < 10) && (
+                {(activeCategory !== 'All' || filters.openNow || filters.distance !== 10 || filters.minRating > 0) && (
                   <span style={{ position: 'absolute', top: '8px', right: '8px', width: '10px', height: '10px', backgroundColor: 'var(--danger)', borderRadius: '50%', border: '2px solid #FFFFFF' }} />
                 )}
               </button>

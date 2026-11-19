@@ -25,7 +25,7 @@ import { HiMiniBeaker } from 'react-icons/hi2';
 import { LuCroissant } from 'react-icons/lu';
 
 
-const CATEGORY_COLORS = {
+export const CATEGORY_COLORS = {
   'Food & Dining': '#EF4444',             
   'Grocery & Retail': '#3B82F6',          
   'Health & Medical': '#10B981',          
